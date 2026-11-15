@@ -157,7 +157,7 @@
   <aside class="sidebar">
     <div class="brand">
       <h1>班级操作台</h1>
-      <p>浏览器本地版 · 缓存存储</p>
+      <p>数据仅存本浏览器 · 不上云、不同步</p>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="side-bottom">
@@ -248,7 +248,13 @@ function loadStore() {
   saveStore();
 }
 function saveStore() {
-  localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+    state.persist = true;
+  } catch (e) {
+    // 存储被禁用或配额不足时降级为内存态，不中断当前操作
+    state.persist = false;
+  }
 }
 
 /* ---- 仓库方法（与桌面版契约同名） ---- */
@@ -307,7 +313,7 @@ function restore(docs, logs) {
 }
 
 /* ============ 界面状态与通用反馈 ============ */
-var state = { role: "admin", current: "dashboard", operatorName: "学委", selectedId: null };
+var state = { role: "admin", current: "dashboard", operatorName: "学委", selectedId: null, persist: true };
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"◫"},
   {key:"docs",      title:"材料台账",   ico:"▤"},
@@ -377,7 +383,8 @@ function refreshAll() {
   document.getElementById("summary").textContent =
     "总数 " + s.total + " · 待审核 " + s.pending + " · 已归档 " + s.archived + " · 已驳回 " + s.rejected;
   document.getElementById("statusRight").textContent = "材料 " + s.total + " 条 · 日志 " + store.logs.length + " 条";
-  document.getElementById("statusLeft").textContent = "本地缓存模式 · " + roleLabel();
+  var persistTip = state.persist === false ? " · 存储不可用(仅本次会话)" : "";
+  document.getElementById("statusLeft").textContent = "本地缓存 · " + roleLabel() + persistTip;
   if (state.current === "dashboard") renderDashboard();
   else if (state.current === "docs") renderDocs();
   else if (state.current === "logs") renderLogs();
@@ -694,6 +701,7 @@ function bindRole() {
   function syncLabel() {
     document.getElementById("roleAdmin").classList.toggle("on", state.role === "admin");
     document.getElementById("roleStudent").classList.toggle("on", state.role === "student");
+    radios.forEach(function(r){ r.checked = (r.value === state.role); });
   }
   radios.forEach(function(r){
     r.onchange = function(){ state.role = r.value; syncLabel(); refreshAll(); };
@@ -707,7 +715,6 @@ buildDocs();
 buildSubmit();
 bindRole();
 switchView("dashboard");
-</script>
 </script>
 </body>
 </html>
