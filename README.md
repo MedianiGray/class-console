@@ -70,6 +70,11 @@ class-console/
 
 ## 四、快速开始
 
+### 下载现成程序（Windows）
+
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.2.2)
+下载附件 `class-console-v0.2.2.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
+
 ### 从源码运行（调试）
 
 1. 安装 Python 3（安装时勾选 tcl/tk，Tkinter 随标准库自带）。
