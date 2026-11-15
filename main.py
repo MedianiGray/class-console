@@ -69,6 +69,11 @@ def setup_style(root):
     style.map("TCombobox", bordercolor=[("focus", C["primary"])])
     style.configure("TRadiobutton", font=(FONT, 11))
 
+    # 面板与框架背景统一到浅底色，避免 clam 默认灰透出
+    style.configure("TFrame", background=C["content"])
+    style.configure("TLabelframe", background=C["content"], bordercolor=C["line"])
+    style.configure("TLabelframe.Label", background=C["content"], foreground=C["text"])
+
     # 表格
     style.configure("Treeview", rowheight=30, background=C["card"], fieldbackground=C["card"],
                     bordercolor=C["line"], borderwidth=1, font=(FONT, 11))
