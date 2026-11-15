@@ -99,6 +99,19 @@ assert("草稿回读附件名", dr.file === "demo.pdf");
 sandbox.clearDraft();
 assert("草稿已清除", Object.keys(sandbox.loadDraft()).length === 0);
 
+// 台账偏好持久化
+sandbox.docsFilter.q = "覃祖悦"; sandbox.docsFilter.cat = "宣传材料";
+sandbox.docsFilter.density = "compact"; sandbox.docsFilter.pageSize = 25;
+sandbox.savePrefs();
+sandbox.docsFilter.q = ""; sandbox.docsFilter.cat = "全部";
+sandbox.docsFilter.density = "comfortable"; sandbox.docsFilter.pageSize = 10;
+sandbox.applyPrefs();
+assert("偏好回填关键词", sandbox.docsFilter.q === "覃祖悦");
+assert("偏好回填类别", sandbox.docsFilter.cat === "宣传材料");
+assert("偏好回填密度", sandbox.docsFilter.density === "compact");
+assert("偏好回填条数", sandbox.docsFilter.pageSize === 25);
+assert("名称列冻结类", sandbox.renderCell({name:"x", sid:"1", time:"", status:"待审核"}, "name").indexOf("sticky-l1") >= 0);
+
 // 备份/恢复结构
 const bk = sandbox.backup();
 assert("备份含 docs/logs", Array.isArray(bk.docs) && Array.isArray(bk.logs));
