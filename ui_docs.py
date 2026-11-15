@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """材料台账视图：搜索、筛选、查看、归档、驳回。"""
 
+import csv
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from theme import FONT, C
 
@@ -83,6 +84,7 @@ class DocsView(ttk.Frame):
                                       command=self.archive)
         self.btn_reject = ttk.Button(bar, text="驳回", style="Danger.TButton",
                                      command=self.reject)
+        self.btn_csv = ttk.Button(bar, text="导出 CSV", command=self.export_csv)
         self.hint = ttk.Label(bar, text="", style="Muted.TLabel")
         self.hint.pack(side="right")
 
@@ -107,11 +109,15 @@ class DocsView(ttk.Frame):
             self.btn_archive.config(state=state)
             self.btn_reject.config(state=state)
 
-    def refresh(self):
+    def _filtered_rows(self):
         rows = self.repo.list_docs(self.q.get().strip(), self.cat.get())
         st = self.status.get()
         if st and st != "全部":
             rows = [x for x in rows if x.get("status") == st]
+        return rows
+
+    def refresh(self):
+        rows = self._filtered_rows()
         self.tree.delete(*self.tree.get_children())
         for i, d in enumerate(rows):
             row_tag = "zebra" if i % 2 else ""
@@ -138,6 +144,30 @@ class DocsView(ttk.Frame):
         self._update_actions()
 
     # ---------- 操作 ----------
+    def _reason_dialog(self, title, prompt):
+        """弹出备注录入框；返回 (确定?, 备注)。取消返回 None。"""
+        result = {"ok": False, "reason": ""}
+        dlg = tk.Toplevel(self)
+        dlg.title(title)
+        dlg.transient(self)
+        dlg.resizable(False, False)
+        ttk.Label(dlg, text=prompt).grid(row=0, column=0, sticky="w", padx=16, pady=(14, 6))
+        box = tk.Text(dlg, height=4, width=42, font=(FONT, 11))
+        box.grid(row=1, column=0, padx=16, pady=(0, 12))
+
+        def confirm():
+            result["ok"] = True
+            result["reason"] = box.get("1.0", "end").strip()
+            dlg.destroy()
+
+        btns = ttk.Frame(dlg)
+        btns.grid(row=2, column=0, pady=(0, 14))
+        ttk.Button(btns, text="取消", command=dlg.destroy).pack(side="right", padx=8)
+        ttk.Button(btns, text="确定", style="Accent.TButton", command=confirm).pack(side="right")
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
+        dlg.wait_window()
+        return result if result["ok"] else None
+
     def view(self):
         doc_id = self._selected()
         if doc_id is None:
@@ -161,6 +191,9 @@ class DocsView(ttk.Frame):
                   % (name, doc.get("cat", ""), doc.get("who", ""), doc.get("sid", ""),
                      doc.get("time", ""), doc.get("status", ""),
                      doc.get("file") or "无", doc.get("note") or "无"))
+        reason = doc.get("reason") or ""
+        if reason:
+            detail += "\n审核备注：%s" % reason
 
         trace = [l for l in self.repo.list_logs() if l.get("obj") == name]
         if trace:
@@ -183,10 +216,11 @@ class DocsView(ttk.Frame):
         if doc["status"] == "已归档":
             self.window.toast("该材料已是已归档状态")
             return
-        if not self.window.confirm("归档确认", "确定将「%s」归档吗？" % doc["name"]):
+        dlg = self._reason_dialog("归档确认", "归档「%s」，可补充归档备注（可选）：" % doc["name"])
+        if dlg is None:
             return
         try:
-            saved = self.repo.archive_doc(doc_id)
+            saved = self.repo.archive_doc(doc_id, dlg["reason"])
         except Exception as e:
             messagebox.showerror("归档失败", str(e))
             return
@@ -210,10 +244,11 @@ class DocsView(ttk.Frame):
         if doc["status"] == "已驳回":
             self.window.toast("该材料已是已驳回状态")
             return
-        if not self.window.confirm("驳回确认", "确定驳回「%s」吗？驳回后该材料将标记为已驳回。" % doc["name"]):
+        dlg = self._reason_dialog("驳回确认", "驳回「%s」，请填写驳回原因（可选）：" % doc["name"])
+        if dlg is None:
             return
         try:
-            saved = self.repo.reject_doc(doc_id)
+            saved = self.repo.reject_doc(doc_id, dlg["reason"])
         except Exception as e:
             messagebox.showerror("驳回失败", str(e))
             return
@@ -225,3 +260,27 @@ class DocsView(ttk.Frame):
                 pass
             self.window.refresh_all()
             self.window.toast("已驳回，并写入操作日志")
+
+    def export_csv(self):
+        rows = self._filtered_rows()
+        if not rows:
+            self.window.toast("当前没有可导出的材料")
+            return
+        path = filedialog.asksaveasfilename(
+            title="导出 CSV", defaultextension=".csv",
+            filetypes=[("CSV 文件", "*.csv")])
+        if not path:
+            return
+        headers = ["材料名称", "类别", "提交人", "学号", "提交时间", "状态",
+                   "附件", "备注", "审核备注"]
+        try:
+            with open(path, "w", encoding="utf-8-sig", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(headers)
+                for d in rows:
+                    w.writerow([d.get("name", ""), d.get("cat", ""), d.get("who", ""),
+                                d.get("sid", ""), d.get("time", ""), d.get("status", ""),
+                                d.get("file") or "", d.get("note", ""), d.get("reason") or ""])
+            self.window.toast("已导出 %d 条记录" % len(rows))
+        except OSError as e:
+            messagebox.showerror("导出失败", str(e))

@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from database import LocalRepository, RepositoryError  # noqa: E402
+from database import LocalRepository, RepositoryError, date_today  # noqa: E402
 
 
 def main():
@@ -130,6 +130,53 @@ def main():
     r.reject_doc(rid)
     assert [x for x in r.list_docs() if x["id"] == rid][0]["status"] == "已驳回"
     print("14. 状态流转一致 OK")
+
+    # 15. 名单 CRUD 与缺交核对
+    r.add_roster("250230", "测试生")
+    assert r.find_roster_by_sid("250230")["who"] == "测试生"
+    for bad in (("250230", "重复"), ("abc", "非数字"), ("", "无名")):
+        try:
+            r.add_roster(*bad)
+            raise SystemExit("应拦截 %s" % (bad,))
+        except RepositoryError:
+            pass
+    chk = r.roster_check()
+    assert chk["total"] == 1 and "absent" in chk and "extra" in chk
+    r.remove_roster(r.find_roster_by_sid("250230")["id"])
+    assert r.find_roster_by_sid("250230") is None
+    print("15. 名单 CRUD/核对 OK")
+
+    # 16. 任务 CRUD 与临期统计
+    tid = r.add_task({"title": "冒烟任务", "cat": "宣传材料",
+                      "deadline": date_today(), "scope": "全员"})
+    assert r.find_task(tid) is not None
+    assert r.task_stats()["due"] == 1
+    r.toggle_task(tid)
+    assert r.find_task(tid)["done"] is True
+    r.update_task(tid, {"title": "改名任务"})
+    assert r.find_task(tid)["title"] == "改名任务"
+    r.remove_task(tid)
+    assert r.find_task(tid) is None
+    print("16. 任务 CRUD/统计 OK")
+
+    # 17. 备份往返携带名单与任务
+    r.add_roster("250231", "钱七")
+    r.add_task({"title": "往返任务", "deadline": date_today()})
+    bak = r.backup()
+    assert "roster" in bak and "tasks" in bak
+    r.restore([], [])
+    r.restore(bak["docs"], bak["logs"], bak["roster"], bak["tasks"])
+    assert r.find_roster_by_sid("250231") is not None
+    assert any(t["title"] == "往返任务" for t in r.list_tasks())
+    print("17. 备份携带名单/任务 OK")
+
+    # 18. 归档 / 驳回备注留存
+    rid = r.list_docs()[0]["id"]
+    r.archive_doc(rid, "材料齐全")
+    assert [x for x in r.list_docs() if x["id"] == rid][0]["reason"] == "材料齐全"
+    r.reject_doc(rid, "证明缺失")
+    assert [x for x in r.list_docs() if x["id"] == rid][0]["reason"] == "证明缺失"
+    print("18. 备注留存 OK")
 
     print("SELFTEST OK")
 

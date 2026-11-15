@@ -45,6 +45,18 @@ class DashboardView(ttk.Frame):
                      bg=C["card"]).pack(anchor="w", padx=16, pady=(0, 14))
             self.card_values[key] = num
 
+        # 名单 / 任务摘要入口
+        notice = ttk.Frame(self)
+        notice.pack(fill="x", padx=18, pady=(10, 0))
+        self.roster_hint = tk.Label(notice, text="", fg=C["primary"], cursor="hand2",
+                                    bg=C["bg"])
+        self.roster_hint.pack(side="left")
+        self.task_hint = tk.Label(notice, text="", fg=C["primary"], cursor="hand2",
+                                  bg=C["bg"])
+        self.task_hint.pack(side="left", padx=16)
+        self.roster_hint.bind("<Button-1>", lambda e: self.window.switch("roster"))
+        self.task_hint.bind("<Button-1>", lambda e: self.window.switch("tasks"))
+
         # 中部两栏：类别分布 / 近期动态
         mid = ttk.Frame(self)
         mid.pack(fill="both", expand=True, padx=18, pady=(14, 0))
@@ -131,3 +143,13 @@ class DashboardView(ttk.Frame):
             self.doc_empty.place_forget()
         else:
             self.doc_empty.place(relx=0.5, rely=0.5, anchor="center")
+
+        # 名单 / 任务摘要（容错：旧数据缺表不阻断看板）
+        try:
+            chk = self.repo.roster_check()
+            self.roster_hint.config(text="未交 %d 人 · 查看名单核对" % len(chk["absent"]))
+            st = self.repo.task_stats()
+            self.task_hint.config(text="临期 %d · 逾期 %d · 查看任务跟踪" % (st["due"], st["overdue"]))
+        except Exception:
+            self.roster_hint.config(text="")
+            self.task_hint.config(text="")

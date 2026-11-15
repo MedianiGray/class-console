@@ -17,7 +17,7 @@ import sqlite3
 import datetime
 from pathlib import Path
 
-from seed import SEED_DOCS, SEED_LOGS
+from seed import SEED_DOCS, SEED_LOGS, SEED_ROSTER, SEED_TASKS
 
 # 预留开关：local = 本地 SQLite；remote = 未来对接远程服务（待实现）
 DATA_BACKEND = "local"
@@ -37,6 +37,28 @@ def app_data_dir() -> Path:
 def now_str() -> str:
     d = datetime.datetime.now()
     return "%02d-%02d %02d:%02d" % (d.month, d.day, d.hour, d.minute)
+
+
+def date_today() -> str:
+    d = datetime.date.today()
+    return d.strftime("%Y-%m-%d")
+
+
+def _deadline(offset: int) -> str:
+    d = datetime.date.today() + datetime.timedelta(days=offset)
+    return d.strftime("%Y-%m-%d")
+
+
+def days_until(deadline: str):
+    """返回截止日距今天的天数；空日期返回 None。"""
+    deadline = _clean(deadline)
+    if not deadline:
+        return None
+    try:
+        dl = datetime.datetime.strptime(deadline, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    return (dl - datetime.date.today()).days
 
 
 class RepositoryError(RuntimeError):
@@ -74,13 +96,28 @@ class LocalRepository:
             CREATE TABLE IF NOT EXISTS docs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT, cat TEXT, who TEXT, sid TEXT, note TEXT,
-                file TEXT, time TEXT, status TEXT, scope TEXT
+                file TEXT, time TEXT, status TEXT, scope TEXT, reason TEXT
             )""")
         c.execute("""
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 time TEXT, who TEXT, role TEXT, act TEXT, obj TEXT, src TEXT
             )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS roster (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sid TEXT, who TEXT
+            )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT, cat TEXT, scope TEXT, deadline TEXT,
+                note TEXT, done INTEGER
+            )""")
+        # 旧库迁移：补齐 docs.reason 列（已存在则忽略）
+        cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
+        if "reason" not in cols:
+            c.execute("ALTER TABLE docs ADD COLUMN reason TEXT")
         conn.commit()
         if c.execute("SELECT COUNT(*) AS n FROM docs").fetchone()["n"] == 0:
             for row in SEED_DOCS:
@@ -91,6 +128,14 @@ class LocalRepository:
             for row in SEED_LOGS:
                 c.execute("""INSERT INTO logs
                     (time,who,role,act,obj,src) VALUES (?,?,?,?,?,?)""", row)
+        if c.execute("SELECT COUNT(*) AS n FROM roster").fetchone()["n"] == 0:
+            for sid, who in SEED_ROSTER:
+                c.execute("INSERT INTO roster (sid, who) VALUES (?,?)", (sid, who))
+        if c.execute("SELECT COUNT(*) AS n FROM tasks").fetchone()["n"] == 0:
+            for title, cat, scope, note, done, offset in SEED_TASKS:
+                c.execute("""INSERT INTO tasks
+                    (title,cat,scope,deadline,note,done) VALUES (?,?,?,?,?,?)""",
+                    (title, cat, scope, _deadline(offset), note, done))
         conn.commit()
         conn.close()
 
@@ -125,14 +170,15 @@ class LocalRepository:
             _clean(data.get("who")), _clean(data.get("sid")),
             _clean(data.get("note")), _clean(data.get("file")),
             now_str(), "待审核", _clean(data.get("scope")) or "全员",
+            _clean(data.get("reason")),
         )
         if not row[0] or not row[1] or not row[2]:
             raise RepositoryError("材料名称、类别、姓名不能为空")
         conn = self._conn()
         try:
             conn.execute("""INSERT INTO docs
-                (name,cat,who,sid,note,file,time,status,scope)
-                VALUES (?,?,?,?,?,?,?,?,?)""", row)
+                (name,cat,who,sid,note,file,time,status,scope,reason)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""", row)
             conn.commit()
         except sqlite3.Error as e:
             raise RepositoryError("写入材料失败：%s" % e)
@@ -142,13 +188,14 @@ class LocalRepository:
     def _get_doc(self, conn, doc_id):
         return conn.execute("SELECT * FROM docs WHERE id=?", (doc_id,)).fetchone()
 
-    def archive_doc(self, doc_id):
+    def archive_doc(self, doc_id, reason=None):
         conn = self._conn()
         try:
             row = self._get_doc(conn, doc_id)
             if not row:
                 return None
-            conn.execute("UPDATE docs SET status='已归档' WHERE id=?", (doc_id,))
+            conn.execute("UPDATE docs SET status='已归档', reason=? WHERE id=?",
+                         (_clean(reason), doc_id))
             conn.commit()
             return dict(row)
         except sqlite3.Error as e:
@@ -156,13 +203,14 @@ class LocalRepository:
         finally:
             conn.close()
 
-    def reject_doc(self, doc_id):
+    def reject_doc(self, doc_id, reason=None):
         conn = self._conn()
         try:
             row = self._get_doc(conn, doc_id)
             if not row:
                 return None
-            conn.execute("UPDATE docs SET status='已驳回' WHERE id=?", (doc_id,))
+            conn.execute("UPDATE docs SET status='已驳回', reason=? WHERE id=?",
+                         (_clean(reason), doc_id))
             conn.commit()
             return dict(row)
         except sqlite3.Error as e:
@@ -193,6 +241,153 @@ class LocalRepository:
         finally:
             conn.close()
 
+    # ---------- 名单 ----------
+    def list_roster(self) -> list:
+        conn = self._conn()
+        try:
+            rows = conn.execute("SELECT * FROM roster ORDER BY sid").fetchall()
+            return [dict(r) for r in rows]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取名单失败：%s" % e)
+        finally:
+            conn.close()
+
+    def find_roster_by_sid(self, sid: str):
+        sid = _clean(sid)
+        return next((r for r in self.list_roster() if r["sid"] == sid), None)
+
+    def add_roster(self, sid: str, who: str):
+        sid, who = _clean(sid), _clean(who)
+        if not sid:
+            raise RepositoryError("学号不能为空")
+        if not who:
+            raise RepositoryError("姓名不能为空")
+        if not sid.isdigit():
+            raise RepositoryError("学号须为纯数字")
+        if self.find_roster_by_sid(sid):
+            raise RepositoryError("该学号已在名单中")
+        conn = self._conn()
+        try:
+            conn.execute("INSERT INTO roster (sid, who) VALUES (?,?)", (sid, who))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("写入名单失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_roster(self, rid: int):
+        conn = self._conn()
+        try:
+            conn.execute("DELETE FROM roster WHERE id=?", (rid,))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("移除名单失败：%s" % e)
+        finally:
+            conn.close()
+
+    def roster_check(self) -> dict:
+        roster = self.list_roster()
+        docs = self.list_docs()
+        roster_sids = {r["sid"] for r in roster}
+        submitted = {_clean(d.get("sid")) for d in docs if _clean(d.get("sid"))}
+        absent = [r for r in roster if r["sid"] not in submitted]
+        extra = [d for d in docs if _clean(d.get("sid")) and d["sid"] not in roster_sids]
+        return {"total": len(roster), "done": len(roster) - len(absent),
+                "absent": absent, "extra": extra}
+
+    # ---------- 任务 ----------
+    def list_tasks(self) -> list:
+        conn = self._conn()
+        try:
+            rows = conn.execute("SELECT * FROM tasks ORDER BY deadline, id").fetchall()
+            out = []
+            for r in rows:
+                d = dict(r)
+                d["done"] = bool(d.get("done"))
+                out.append(d)
+            return out
+        except sqlite3.Error as e:
+            raise RepositoryError("读取任务失败：%s" % e)
+        finally:
+            conn.close()
+
+    def find_task(self, tid: int):
+        return next((x for x in self.list_tasks() if x["id"] == tid), None)
+
+    def add_task(self, data: dict) -> int:
+        title, deadline = _clean(data.get("title")), _clean(data.get("deadline"))
+        if not title:
+            raise RepositoryError("任务标题不能为空")
+        if not deadline:
+            raise RepositoryError("请选择截止日期")
+        conn = self._conn()
+        try:
+            cur = conn.execute("""INSERT INTO tasks
+                (title,cat,scope,deadline,note,done) VALUES (?,?,?,?,?,?)""",
+                (title, _clean(data.get("cat")), _clean(data.get("scope")) or "全员",
+                 deadline, _clean(data.get("note")), 1 if data.get("done") else 0))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("写入任务失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_task(self, tid: int, data: dict):
+        conn = self._conn()
+        try:
+            if conn.execute("SELECT 1 FROM tasks WHERE id=?", (tid,)).fetchone() is None:
+                return None
+            fields = {k: _clean(data.get(k)) for k in
+                      ("title", "cat", "scope", "deadline", "note") if data.get(k) is not None}
+            if "done" in data:
+                fields["done"] = 1 if data["done"] else 0
+            if fields:
+                sets = ", ".join("%s=?" % k for k in fields)
+                conn.execute("UPDATE tasks SET %s WHERE id=?" % sets,
+                             list(fields.values()) + [tid])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新任务失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_task(self, tid: int):
+        conn = self._conn()
+        try:
+            conn.execute("DELETE FROM tasks WHERE id=?", (tid,))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("移除任务失败：%s" % e)
+        finally:
+            conn.close()
+
+    def toggle_task(self, tid: int):
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE tasks SET done = 1 - done WHERE id=?", (tid,))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("切换任务状态失败：%s" % e)
+        finally:
+            conn.close()
+
+    def task_stats(self) -> dict:
+        tasks = self.list_tasks()
+        ongoing = due = overdue = done = 0
+        for t in tasks:
+            if t["done"]:
+                done += 1
+                continue
+            left = days_until(t["deadline"])
+            if left is not None and left < 0:
+                overdue += 1
+            elif left is not None and left <= 2:
+                due += 1
+            ongoing += 1
+        return {"total": len(tasks), "ongoing": ongoing, "due": due,
+                "overdue": overdue, "done": done}
+
     # ---------- 统计 / 备份 ----------
     def stats(self) -> dict:
         conn = self._conn()
@@ -208,24 +403,30 @@ class LocalRepository:
             conn.close()
 
     def backup(self) -> dict:
-        return {"docs": self.list_docs(), "logs": self.list_logs()}
+        return {"docs": self.list_docs(), "logs": self.list_logs(),
+                "roster": self.list_roster(), "tasks": self.list_tasks()}
 
-    def restore(self, docs: list, logs: list):
+    def restore(self, docs: list, logs: list, roster=None, tasks=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
+        roster = roster if isinstance(roster, list) else []
+        tasks = tasks if isinstance(tasks, list) else []
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
             conn.execute("DELETE FROM logs")
+            conn.execute("DELETE FROM roster")
+            conn.execute("DELETE FROM tasks")
             for d in docs:
                 if not isinstance(d, dict):
                     continue
-                conn.execute("""INSERT INTO docs (name,cat,who,sid,note,file,time,status,scope)
-                    VALUES (?,?,?,?,?,?,?,?,?)""",
+                conn.execute("""INSERT INTO docs
+                    (name,cat,who,sid,note,file,time,status,scope,reason)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                     (_clean(d.get("name")), _clean(d.get("cat")), _clean(d.get("who")),
                      _clean(d.get("sid")), _clean(d.get("note")), _clean(d.get("file")),
                      _clean(d.get("time")), _clean(d.get("status")) or "待审核",
-                     _clean(d.get("scope")) or "全员"))
+                     _clean(d.get("scope")) or "全员", _clean(d.get("reason"))))
             for l in logs:
                 if not isinstance(l, dict):
                     continue
@@ -234,6 +435,19 @@ class LocalRepository:
                     (_clean(l.get("time")), _clean(l.get("who")), _clean(l.get("role")),
                      _clean(l.get("act")), _clean(l.get("obj")),
                      _clean(l.get("src")) or "本机"))
+            for r in roster:
+                if not isinstance(r, dict):
+                    continue
+                conn.execute("INSERT INTO roster (sid, who) VALUES (?,?)",
+                             (_clean(r.get("sid")), _clean(r.get("who"))))
+            for t in tasks:
+                if not isinstance(t, dict):
+                    continue
+                conn.execute("""INSERT INTO tasks
+                    (title,cat,scope,deadline,note,done) VALUES (?,?,?,?,?,?)""",
+                    (_clean(t.get("title")), _clean(t.get("cat")),
+                     _clean(t.get("scope")) or "全员", _clean(t.get("deadline")),
+                     _clean(t.get("note")), 1 if t.get("done") else 0))
             conn.commit()
         except sqlite3.Error as e:
             conn.rollback()
