@@ -53,8 +53,9 @@ class LogsView(ttk.Frame):
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
-        ttk.Button(bar, text="导出备份", command=self.export_backup).pack(side="left")
-        ttk.Button(bar, text="导入备份", command=self.import_backup).pack(side="left", padx=8)
+        self.btn_export = ttk.Button(bar, text="导出备份", command=self.export_backup)
+        self.btn_import = ttk.Button(bar, text="导入备份", command=self.import_backup)
+        self.btn_export.pack(side="left")
 
     def refresh(self):
         rows = self.repo.list_logs()
@@ -71,6 +72,11 @@ class LogsView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
+        # 导入备份仅管理员可见
+        self.btn_import.pack_forget()
+        if self.window.role == "admin":
+            self.btn_import.pack(side="left", padx=8)
+
     def export_backup(self):
         path = filedialog.asksaveasfilename(
             title="导出备份", defaultextension=".json",
@@ -85,6 +91,9 @@ class LogsView(ttk.Frame):
             messagebox.showerror("导出失败", str(e))
 
     def import_backup(self):
+        if self.window.role != "admin":
+            self.window.toast("当前视角无权执行该操作")
+            return
         path = filedialog.askopenfilename(title="选择备份文件",
                                          filetypes=[("JSON 备份", "*.json")])
         if not path:

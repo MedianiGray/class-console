@@ -42,9 +42,9 @@ class RosterView(ttk.Frame):
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
-        ttk.Button(bar, text="添加成员", command=self.add_dialog).pack(side="left")
-        ttk.Button(bar, text="移除选中", command=self.remove_selected).pack(side="left", padx=8)
-        ttk.Button(bar, text="清空名单", command=self.clear_all).pack(side="left")
+        self.btn_add = ttk.Button(bar, text="添加成员", command=self.add_dialog)
+        self.btn_remove = ttk.Button(bar, text="移除选中", command=self.remove_selected)
+        self.btn_clear = ttk.Button(bar, text="清空名单", command=self.clear_all)
 
     def _selected(self):
         sel = self.tree.selection()
@@ -70,7 +70,19 @@ class RosterView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
+        # 名单维护仅管理员可见
+        is_admin = self.window.role == "admin"
+        for b in (self.btn_add, self.btn_remove, self.btn_clear):
+            b.pack_forget()
+        if is_admin:
+            self.btn_add.pack(side="left")
+            self.btn_remove.pack(side="left", padx=8)
+            self.btn_clear.pack(side="left")
+
     def add_dialog(self):
+        if self.window.role != "admin":
+            self.window.toast("当前视角无权执行该操作")
+            return
         dlg = tk.Toplevel(self)
         dlg.title("添加成员")
         dlg.transient(self)
@@ -101,6 +113,9 @@ class RosterView(ttk.Frame):
         dlg.bind("<Return>", lambda e: submit())
 
     def remove_selected(self):
+        if self.window.role != "admin":
+            self.window.toast("当前视角无权执行该操作")
+            return
         rid = self._selected()
         if rid is None:
             self.window.toast("请先在列表中选择一名成员")
@@ -112,6 +127,9 @@ class RosterView(ttk.Frame):
         self.window.toast("成员已移除")
 
     def clear_all(self):
+        if self.window.role != "admin":
+            self.window.toast("当前视角无权执行该操作")
+            return
         rows = self.repo.list_roster()
         if not rows:
             self.window.toast("名单已是空的")

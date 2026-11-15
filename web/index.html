@@ -45,6 +45,14 @@
     border:1px solid var(--line);border-radius:8px;padding:8px 6px;cursor:pointer;min-height:38px;font-size:13px}
   .role-row input{accent-color:var(--primary)}
   .role-row label.on{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+  .summary-wrap{display:flex;align-items:center;gap:10px}
+  .role-badge{display:inline-flex;align-items:center;gap:6px;border-radius:999px;
+    padding:4px 13px;font-size:12.5px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+  .role-badge .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .role-badge.is-admin{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .role-badge.is-admin .dot{background:#fff}
+  .role-badge.is-student{background:var(--bg);color:var(--muted);border-color:var(--line-strong)}
+  .role-badge.is-student .dot{background:var(--muted)}
 
   /* 主区 */
   .main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -270,7 +278,10 @@
   <main class="main">
     <div class="topbar">
       <h2 id="viewTitle">工作台概览</h2>
-      <div class="summary" id="summary"></div>
+      <div class="summary-wrap">
+        <span id="roleBadge" class="role-badge"></span>
+        <div class="summary" id="summary"></div>
+      </div>
     </div>
     <div class="content">
       <section class="view" id="view-dashboard"></section>
@@ -654,6 +665,9 @@ function refreshAll() {
   document.getElementById("statusRight").textContent = "材料 " + s.total + " 条 · 日志 " + store.logs.length + " 条";
   var persistTip = state.persist === false ? " · 存储不可用(仅本次会话)" : "";
   document.getElementById("statusLeft").textContent = "本地缓存 · " + roleLabel() + persistTip;
+  var badge = document.getElementById("roleBadge");
+  badge.className = "role-badge " + (state.role === "admin" ? "is-admin" : "is-student");
+  badge.innerHTML = '<span class="dot"></span>' + roleLabel();
   if (state.current === "dashboard") renderDashboard();
   else if (state.current === "docs") renderDocs();
   else if (state.current === "roster") renderRoster();
@@ -1000,8 +1014,8 @@ function renderDocs() {
   /* 操作条 */
   var actions = '<button class="btn" id="btnView">查看详情</button>' +
     '<button class="btn" id="btnCsv">导出 CSV</button>' +
-    '<button class="btn" id="btnCsvImport">导入 CSV</button>' +
-    (isAdmin ? '<button class="btn primary" id="btnArchive">归档</button>' +
+    (isAdmin ? '<button class="btn" id="btnCsvImport">导入 CSV</button>' +
+               '<button class="btn primary" id="btnArchive">归档</button>' +
                '<button class="btn danger" id="btnReject">驳回</button>' : "") +
     '<span class="hint">已选 ' + (state.selectedId != null && findDoc(state.selectedId) ? "1 条" : "0 条") + "</span>";
   document.getElementById("docsActions").innerHTML = actions;
@@ -1009,7 +1023,8 @@ function renderDocs() {
   var has = state.selectedId != null && findDoc(state.selectedId);
   document.getElementById("btnView").disabled = !has;
   document.getElementById("btnCsv").onclick = exportCsv;
-  document.getElementById("btnCsvImport").onclick = function(){ document.getElementById("csvImportFile").click(); };
+  var btnImp = document.getElementById("btnCsvImport");
+  if (btnImp) btnImp.onclick = function(){ document.getElementById("csvImportFile").click(); };
   document.getElementById("csvImportFile").onchange = importCsv;
   var btnA = document.getElementById("btnArchive"), btnR = document.getElementById("btnReject");
   if (btnA) btnA.disabled = !has;
@@ -1327,6 +1342,7 @@ function copyText(text, msg) {
 }
 
 function renderRoster() {
+  var isAdmin = state.role === "admin";
   var chk = rosterCheck();
   var rows = listRoster();
   var submitted = {};
@@ -1344,8 +1360,9 @@ function renderRoster() {
   var trs = rows.map(function(r){
     var ok = submitted[r.sid];
     var tag = ok ? '<span class="tag green">已交</span>' : '<span class="tag orange">未交</span>';
+    var delCell = isAdmin ? '<button class="btn mini rb-del" data-id="' + r.id + '">移除</button>' : '<span class="muted">—</span>';
     return "<tr><td class='num-col'>" + esc(r.sid) + "</td><td>" + esc(r.who) + "</td><td>" + tag + "</td>" +
-      '<td><button class="btn mini rb-del" data-id="' + r.id + '">移除</button></td></tr>';
+      "<td>" + delCell + "</td></tr>";
   }).join("");
   var body = trs || '<tr><td colspan="4" class="empty"><div class="empty-title">名单为空</div>' +
     '<div class="empty-sub">点上方「添加一人」或「导入名单」建立班级名单</div></td></tr>';
@@ -1364,9 +1381,9 @@ function renderRoster() {
 
   document.getElementById("view-roster").innerHTML =
     '<div class="toolbar">' +
-      '<button class="btn primary" id="rbAdd">添加一人</button>' +
-      '<button class="btn" id="rbImport">导入名单</button>' +
-      '<button class="btn danger" id="rbClear">清空名单</button>' +
+      (isAdmin ? '<button class="btn primary" id="rbAdd">添加一人</button>' +
+                '<button class="btn" id="rbImport">导入名单</button>' +
+                '<button class="btn danger" id="rbClear">清空名单</button>' : "") +
       '<span class="hint" style="margin-left:auto">名单仅存本浏览器，随备份导出</span></div>' +
     '<div class="cards" style="grid-template-columns:repeat(3,1fr)">' + cards + "</div>" +
     '<div class="grid-2">' +
@@ -1382,9 +1399,10 @@ function renderRoster() {
       "</div>" +
     "</div>";
 
-  document.getElementById("rbAdd").onclick = rosterAddModal;
-  document.getElementById("rbImport").onclick = rosterImportModal;
-  document.getElementById("rbClear").onclick = rosterClear;
+  var rbA = document.getElementById("rbAdd"), rbI = document.getElementById("rbImport"), rbC = document.getElementById("rbClear");
+  if (rbA) rbA.onclick = rosterAddModal;
+  if (rbI) rbI.onclick = rosterImportModal;
+  if (rbC) rbC.onclick = rosterClear;
   var copyBtn = document.getElementById("rbCopy");
   if (copyBtn) copyBtn.onclick = function(){
     var txt = chk.absent.map(function(r){ return r.who + "（" + r.sid + "）"; }).join("、");
@@ -1449,6 +1467,7 @@ function rosterClear() {
 
 /* ============ 任务 / 截止跟踪视图 ============ */
 function renderTasks() {
+  var isAdmin = state.role === "admin";
   var st = taskStats();
   var rows = listTasks();
   var cards = [
@@ -1472,21 +1491,23 @@ function renderTasks() {
       left === 0 ? "今天截止" : left === 1 ? "明天截止" : "剩 " + left + " 天");
     return "<tr><td>" + esc(t.title) + "</td><td>" + esc(t.cat || "—") + "</td><td class='num-col'>" +
       esc(t.deadline) + "</td><td>" + mark + "</td>" +
-      '<td><button class="btn mini tg-toggle" data-id="' + t.id + '">' + (t.done ? "还原" : "完成") + "</button> " +
-      '<button class="btn mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
-      '<button class="btn mini danger tg-del" data-id="' + t.id + '">删除</button></td></tr>';
+      '<td><button class="btn mini tg-toggle" data-id="' + t.id + '">' + (t.done ? "还原" : "完成") + "</button>" +
+      (isAdmin ? ' <button class="btn mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
+      '<button class="btn mini danger tg-del" data-id="' + t.id + '">删除</button>' : "") + "</td></tr>";
   }).join("");
   var body = trs || '<tr><td colspan="5" class="empty"><div class="empty-title">暂无任务</div>' +
     '<div class="empty-sub">点上方「添加任务」登记要收的材料事项与截止日期</div></td></tr>';
 
   document.getElementById("view-tasks").innerHTML =
-    '<div class="toolbar"><button class="btn primary" id="taskAdd">添加任务</button>' +
+    '<div class="toolbar">' +
+    (isAdmin ? '<button class="btn primary" id="taskAdd">添加任务</button>' : "") +
     '<span class="hint" style="margin-left:auto">任务与截止提醒仅存本浏览器，随备份导出</span></div>' +
     '<div class="cards" style="grid-template-columns:repeat(4,1fr)">' + cards + "</div>" +
     '<div class="card panel"><div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:18%"><col></colgroup>' +
     "<thead><tr><th>任务标题</th><th>类别</th><th>截止日期</th><th>状态</th><th>操作</th></tr></thead><tbody>" + body + "</tbody></table></div></div>";
 
-  document.getElementById("taskAdd").onclick = function(){ taskModal(null); };
+  var tAdd = document.getElementById("taskAdd");
+  if (tAdd) tAdd.onclick = function(){ taskModal(null); };
   document.querySelectorAll(".tg-toggle").forEach(function(b){
     b.onclick = function(){ toggleTask(Number(b.dataset.id)); refreshAll(); };
   });
@@ -1542,6 +1563,7 @@ function taskModal(editId) {
 var ACT_TAG = { "提交":"green", "归档":"green", "驳回":"red", "查看":"muted", "修改":"orange" };
 
 function renderLogs() {
+  var isAdmin = state.role === "admin";
   var rows = listLogs();
   var trs = rows.map(function(l){
     var tag = ACT_TAG[l.act] || "orange";
@@ -1557,11 +1579,12 @@ function renderLogs() {
     '<div class="table-wrap"><table><colgroup><col style="width:18%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col><col style="width:12%"></colgroup>' +
     "<thead><tr><th>时间</th><th>操作人</th><th>角色</th><th>动作</th><th>对象</th><th>来源</th></tr></thead><tbody>" + body + "</tbody></table></div>" +
     '<div class="actions"><button class="btn" id="btnExport">导出备份</button>' +
-    '<button class="btn" id="btnImport">导入备份</button>' +
+    (isAdmin ? '<button class="btn" id="btnImport">导入备份</button>' : "") +
     '<input type="file" id="importFile" accept="application/json,.json" style="display:none"></div>';
 
   document.getElementById("btnExport").onclick = exportBackup;
-  document.getElementById("btnImport").onclick = function(){ document.getElementById("importFile").click(); };
+  var btnImp = document.getElementById("btnImport");
+  if (btnImp) btnImp.onclick = function(){ document.getElementById("importFile").click(); };
   document.getElementById("importFile").onchange = importBackup;
 }
 
