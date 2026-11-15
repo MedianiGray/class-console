@@ -122,9 +122,36 @@ const norm = sandbox.normalizeDoc({ name: "n", cat: "c" }, 3);
 assert("兜底补默认状态", norm.status === "待审核" && norm.scope === "全员" && norm.id === 4);
 assert("动作配置齐全", sandbox.typeDef("doc").actions.map(a => a.key).join(",") === "archive,reject");
 
+// 名单数据层与核对统计
+assert("种子名单 8 人", sandbox.listRoster().length === 8);
+assert("按学号查姓名", sandbox.findRosterBySid("250201").who === "覃祖悦");
+const chk0 = sandbox.rosterCheck();
+assert("核对应交人数", chk0.total === 8);
+assert("核对已交人数", chk0.done === 6);
+assert("核对未交人数", chk0.absent.length === 2);
+assert("未交名单含赵晓孙倩", chk0.absent.map(r => r.sid).sort().join(",") === "250205,250210");
+
+const newR = sandbox.addRoster("250230", "测试生");
+assert("新增名单入列", sandbox.findRosterBySid("250230").who === "测试生");
+let dupThrew = false; try { sandbox.addRoster("250230", "重复"); } catch (e) { dupThrew = true; }
+assert("重复学号拦截", dupThrew);
+let numThrew = false; try { sandbox.addRoster("abc", "非数字"); } catch (e) { numThrew = true; }
+assert("学号非纯数字拦截", numThrew);
+let emptyThrew = false; try { sandbox.addRoster("", "无名"); } catch (e) { emptyThrew = true; }
+assert("空学号拦截", emptyThrew);
+sandbox.removeRoster(newR.id);
+assert("移除名单", sandbox.findRosterBySid("250230") === null);
+
+const parsed = sandbox.parseRosterText("250231,钱七\n250232\t孙八\n\n250233，周九");
+assert("粘贴/CSV 解析三行", parsed.length === 3 && parsed[2].who === "周九");
+
 // 备份/恢复结构
 const bk = sandbox.backup();
-assert("备份含 docs/logs", Array.isArray(bk.docs) && Array.isArray(bk.logs));
+assert("备份含 docs/logs/roster", Array.isArray(bk.docs) && Array.isArray(bk.logs) && Array.isArray(bk.roster));
+sandbox.restore(bk.docs, bk.logs);
+assert("旧备份缺 roster 兜底空数组", Array.isArray(sandbox.store.roster) && sandbox.store.roster.length === 0);
+sandbox.restore(bk.docs, bk.logs, bk.roster);
+assert("恢复名单回填", sandbox.listRoster().length === 8);
 
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);
