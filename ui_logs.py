@@ -23,8 +23,7 @@ class LogsView(ttk.Frame):
 
     def _build(self):
         top = ttk.Frame(self)
-        top.pack(fill="x", padx=18, pady=(16, 10))
-        ttk.Label(top, text="操作日志", style="Title.TLabel").pack(side="left")
+        top.pack(fill="x", padx=18, pady=(4, 10))
         self.count = ttk.Label(top, text="", style="Muted.TLabel")
         self.count.pack(side="right")
 
