@@ -2,7 +2,7 @@
 
 > 面向班级学委 / 辅导员的**离线优先**材料工作台：把材料从提交、审核、归档到留痕的流程收拢在一个本地程序里闭环。
 >
-> 当前版本：**v0.2.2（本地打磨版）** ｜ 运行环境：Python 3 + Tkinter（标准库，零三方运行依赖）｜ 协议：MIT（占位，可更换）
+> 当前版本：**v0.3.0（本地打磨版）** ｜ 运行环境：Python 3 + Tkinter（标准库，零三方运行依赖）｜ 协议：MIT（占位，可更换）
 
 ## 一、项目简介
 
@@ -81,8 +81,8 @@ class-console/
 
 ### 下载现成程序（Windows）
 
-前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.2.2)
-下载附件 `class-console-v0.2.2.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.3.0)
+下载附件 `class-console-v0.3.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
 
 ### 浏览器本地缓存版
 
