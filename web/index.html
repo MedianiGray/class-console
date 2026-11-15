@@ -443,6 +443,7 @@ function normalizeDoc(raw, i) {
   row.time = clean(raw.time);
   row.status = clean(raw.status) || "待审核";
   row.scope = clean(raw.scope) || "全员";
+  row.reason = clean(raw.reason);
   return row;
 }
 function addDoc(data) {
@@ -1022,6 +1023,7 @@ function renderDrawer(d) {
       '<span class="k">可见范围</span><span class="v">' + esc(d.scope || "全员") + "</span>" +
       '<span class="k">附件</span><span class="v">' + esc(d.file || "无附件") + "</span>" +
       '<span class="k">说明</span><span class="v">' + esc(d.note || "无") + "</span>" +
+      (d.reason ? '<span class="k">审核备注</span><span class="v">' + esc(d.reason) + "</span>" : "") +
     "</div></div>" +
     '<div class="drawer-section"><h4>留痕记录</h4>' + traceHtml + "</div>";
 
@@ -1048,13 +1050,22 @@ function runAction(typeKey, id, actionKey) {
   if (!d) { toast("请先选择一条" + def.label); return; }
   if (state.role !== act.role) { toast("当前视角无权执行该操作"); return; }
   if (d.status === act.to) { toast("该" + def.label + "已是" + act.to + "状态"); return; }
-  confirmModal(act.label + "确认", act.confirm(d), function(){
-    d.status = act.to; saveStore();
-    try { addLog(act.label, d.name, state.operatorName, roleLabel()); } catch(e){}
-    refreshAll();
-    if (state.drawerId != null && findDoc(state.drawerId)) renderDrawer(findDoc(state.drawerId));
-    toast("已" + act.label + "，并写入操作日志");
-  });
+  showModal(act.label + "确认",
+    "<div>" + act.confirm(d) + "</div>" +
+    '<div class="field" style="margin-top:12px"><label>备注 / 原因（可选）</label>' +
+    '<textarea id="actReason" rows="3" placeholder="驳回可写明缺什么材料；归档可补充说明"></textarea></div>',
+    [
+      {label:"取消", cls:"btn"},
+      {label:act.label, cls:act.cls || "primary", onClick:function(){
+        d.status = act.to;
+        d.reason = clean(document.getElementById("actReason").value);
+        saveStore();
+        try { addLog(act.label, d.name, state.operatorName, roleLabel()); } catch(e){}
+        refreshAll();
+        if (state.drawerId != null && findDoc(state.drawerId)) renderDrawer(findDoc(state.drawerId));
+        toast("已" + act.label + "，并写入操作日志");
+      }}
+    ]);
 }
 function archiveSelected() {
   runAction("doc", state.selectedId != null ? state.selectedId : state.drawerId, "archive");

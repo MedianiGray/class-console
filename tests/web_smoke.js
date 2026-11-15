@@ -120,6 +120,9 @@ const okErr = sandbox.validateRecord("doc", { name: "x", who: "y", sid: "250201"
 assert("合法记录无校验错", Object.keys(okErr).length === 0);
 const norm = sandbox.normalizeDoc({ name: "n", cat: "c" }, 3);
 assert("兜底补默认状态", norm.status === "待审核" && norm.scope === "全员" && norm.id === 4);
+const normR = sandbox.normalizeDoc({ name: "n", cat: "c", reason: "材料不全" }, 0);
+assert("记录保留审核备注", normR.reason === "材料不全");
+assert("备注缺省兜底空串", sandbox.normalizeDoc({ name: "n" }, 0).reason === "");
 assert("动作配置齐全", sandbox.typeDef("doc").actions.map(a => a.key).join(",") === "archive,reject");
 
 // 名单数据层与核对统计
