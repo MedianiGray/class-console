@@ -112,8 +112,6 @@ class MainWindow(ttk.Frame):
             "submit": SubmitView(body, self.repo, self),
             "logs": LogsView(body, self.repo, self),
         }
-        for v in self.views.values():
-            v.pack(fill="both", expand=True)
 
         # 状态栏
         status = tk.Frame(self, bg="#E4EAE9", height=28)
@@ -154,13 +152,18 @@ class MainWindow(ttk.Frame):
 
     def switch(self, key):
         self.current = key
+        for k, v in self.views.items():
+            if k == key:
+                v.pack(fill="both", expand=True)
+                v.tkraise()
+            else:
+                v.pack_forget()
         for k, (btn, bar, row) in self.nav_items.items():
             active = k == key
             btn.config(bg=C["sidebar_active"] if active else C["sidebar"],
                        fg=C["primary"] if active else C["muted"])
             bar.config(bg=C["accent"] if active else C["sidebar"])
         self.title_label.config(text=dict(self.NAV)[key])
-        self.views[key].tkraise()
         self.refresh_all()
 
     def refresh_all(self):
