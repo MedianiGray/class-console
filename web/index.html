@@ -19,6 +19,8 @@
   }
   button{font-family:inherit;font-size:14px;cursor:pointer}
   input,select,textarea{font-family:inherit;font-size:15px}
+  button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+    outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
   .app{display:flex;min-height:100vh}
 
   /* 侧边栏 */
@@ -57,27 +59,44 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
     box-shadow:var(--shadow)}
   .muted{color:var(--muted)}
-  .empty{color:var(--muted);text-align:center;padding:40px 16px}
+  .empty{color:var(--muted);text-align:center;padding:34px 16px}
+  .empty .empty-title{font-size:14.5px;color:var(--text);margin-bottom:4px}
+  .empty .empty-sub{font-size:13px;margin-bottom:12px}
   .btn{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:9px 15px;min-height:40px}
   .btn:hover{background:var(--bg)}
   .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
   .btn.primary:hover{background:var(--primary-hover)}
   .btn.danger{background:var(--card);border-color:#F3C2C2;color:var(--red)}
   .btn.danger:hover{background:#FEECEC}
+  .btn.mini{min-height:34px;padding:6px 11px;font-size:13px;border-radius:8px}
   .btn:disabled{opacity:.45;cursor:not-allowed}
   .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 0}
   .toolbar label{font-size:13px;color:var(--muted)}
   .toolbar input[type=search],.toolbar select{
     border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:var(--card);min-height:40px}
   .toolbar input[type=search]{width:210px}
+  .toolbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
   .actions{display:flex;gap:10px;align-items:center;padding:12px 0}
-  .hint{margin-left:auto;font-size:13px;color:var(--muted)}
+  .hint{font-size:13px;color:var(--muted)}
+
+  /* 筛选条件标签 */
+  .chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 0 12px;min-height:8px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
+    background:var(--card);border-radius:20px;padding:5px 10px;font-size:12.5px;color:var(--text)}
+  .chip b{font-weight:600}
+  .chip button{border:0;background:transparent;color:var(--muted);font-size:14px;line-height:1;
+    padding:0 2px;cursor:pointer}
+  .chip button:hover{color:var(--red)}
+  .chip-clear{border:0;background:transparent;color:var(--primary);font-size:12.5px;cursor:pointer;padding:4px 6px}
+  .chip-clear:hover{text-decoration:underline}
 
   /* 看板 */
   .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:6px 0 16px}
-  .stat-card{padding:16px 18px}
+  .stat-card{padding:16px 18px;cursor:pointer;border:1px solid var(--line);transition:border-color .15s}
+  .stat-card:hover{border-color:var(--primary)}
   .stat-card .num{font-size:26px;font-weight:700}
   .stat-card .lbl{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .stat-card .drill{font-size:12px;color:var(--primary);margin-top:6px}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .panel{padding:14px 16px}
   .panel h3{font-size:14px;margin-bottom:12px}
@@ -87,6 +106,7 @@
   .cat-row .fill{height:100%;background:var(--primary);border-radius:6px}
   .cat-row .cnt{width:26px;text-align:right;font-size:13px;color:var(--muted)}
   .panel + .panel{margin-top:14px}
+  .dash-actions{display:flex;gap:10px;margin:4px 0 16px}
 
   /* 表格 */
   .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--card)}
@@ -97,11 +117,23 @@
   tbody tr:nth-child(even){background:var(--zebra)}
   tbody tr.sel{background:var(--primary-soft)}
   tbody tr.clickable{cursor:pointer}
+  /* 密度三档 */
+  .density-compact th,.density-compact td{padding:5px 10px}
+  .density-spacious th,.density-spacious td{padding:14px 12px}
+  /* 排序表头 */
+  th.sortable{cursor:pointer;user-select:none}
+  th.sortable:hover{color:var(--text)}
+  th .sort-ind{font-size:11px;color:var(--primary);margin-left:3px}
   .tag{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px}
   .tag.green{color:var(--green);background:#EAF7EF}
   .tag.orange{color:var(--orange);background:#FDF3E3}
   .tag.red{color:var(--red);background:#FEECEC}
   .tag.muted{color:var(--muted);background:#F1F3F6}
+
+  /* 分页 */
+  .pager{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 2px 0}
+  .pager .pg-info{font-size:13px;color:var(--muted)}
+  .pager .spacer{margin-left:auto}
 
   /* 表单 */
   .form-card{max-width:640px;margin:8px 0;padding:24px 26px}
@@ -118,7 +150,7 @@
   .err{color:var(--red);font-size:13px;min-height:20px;padding:6px 0}
   .form-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
 
-  /* 弹窗 */
+  /* 确认弹窗 */
   .mask{position:fixed;inset:0;background:rgba(31,41,55,.42);display:none;align-items:center;
     justify-content:center;padding:20px;z-index:30}
   .mask.show{display:flex}
@@ -128,13 +160,38 @@
   .modal .body{font-size:14px}
   .modal .body .kv{display:grid;grid-template-columns:86px 1fr;gap:6px 12px;padding:4px 0}
   .modal .body .kv .k{color:var(--muted)}
-  .trace{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
-  .trace h4{font-size:13px;color:var(--muted);margin-bottom:8px}
-  .trace li{list-style:none;font-size:13px;padding:4px 0;color:var(--text)}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+
+  /* 详情抽屉 */
+  .drawer-mask{position:fixed;inset:0;background:rgba(31,41,55,.32);opacity:0;pointer-events:none;
+    transition:opacity .2s;z-index:25}
+  .drawer-mask.show{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:430px;max-width:92vw;background:var(--card);
+    box-shadow:-8px 0 30px rgba(0,0,0,.14);display:flex;flex-direction:column;z-index:26;
+    transform:translateX(100%);transition:transform .22s ease}
+  .drawer.show{transform:translateX(0)}
+  .drawer header{display:flex;align-items:flex-start;gap:10px;padding:20px 22px 14px;border-bottom:1px solid var(--line)}
+  .drawer header .dh-t{flex:1;min-width:0}
+  .drawer header h3{font-size:16px;line-height:1.4;word-break:break-all}
+  .drawer header .dh-tag{margin-top:6px}
+  .drawer .dh-close{border:0;background:transparent;font-size:20px;color:var(--muted);padding:4px 8px;line-height:1}
+  .drawer .dh-close:hover{color:var(--text)}
+  .drawer-body{flex:1;overflow:auto;padding:16px 22px}
+  .drawer-section{margin-bottom:18px}
+  .drawer-section h4{font-size:12.5px;color:var(--muted);margin-bottom:10px;letter-spacing:.02em}
+  .kv{display:grid;grid-template-columns:86px 1fr;gap:8px 12px;font-size:13.5px}
+  .kv .k{color:var(--muted)}
+  .kv .v{word-break:break-all}
+  .trace{border-top:1px solid var(--line);padding-top:12px}
+  .trace h4{font-size:13px;color:var(--muted);margin-bottom:8px}
+  .trace li{list-style:none;font-size:13px;padding:5px 0;color:var(--text)}
+  .trace .t-time{color:var(--muted);margin-right:6px}
+  .drawer footer{display:flex;gap:10px;padding:14px 22px;border-top:1px solid var(--line)}
+  .drawer footer .spacer{margin-left:auto}
+
   .toast{position:fixed;left:50%;bottom:46px;transform:translateX(-50%);background:var(--text);
     color:#fff;padding:10px 18px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;
-    transition:opacity .2s;z-index:40}
+    transition:opacity .2s;z-index:40;max-width:80vw;text-align:center}
   .toast.show{opacity:.95}
 
   @media (max-width:880px){
@@ -149,6 +206,7 @@
     .content{padding:4px 16px 16px}
     .statusbar{padding:8px 16px}
     .field{grid-template-columns:1fr;gap:6px}
+    .drawer{width:100%;max-width:100%}
   }
 </style>
 </head>
@@ -194,12 +252,27 @@
     <div class="modal-actions" id="modalActions"></div>
   </div>
 </div>
+
+<div class="drawer-mask" id="drawerMask"></div>
+<aside class="drawer" id="drawer" aria-label="材料详情">
+  <header>
+    <div class="dh-t">
+      <h3 id="drawerTitle"></h3>
+      <div class="dh-tag" id="drawerTag"></div>
+    </div>
+    <button class="dh-close" id="drawerClose" aria-label="关闭详情">×</button>
+  </header>
+  <div class="drawer-body" id="drawerBody"></div>
+  <footer id="drawerFooter"></footer>
+</aside>
+
 <div class="toast" id="toast"></div>
 
 <script>
 "use strict";
 /* ============ 常量与种子数据（对齐桌面版 seed.py） ============ */
 var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班级事务"];
+var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
 
 var SEED_DOCS = [
@@ -313,7 +386,13 @@ function restore(docs, logs) {
 }
 
 /* ============ 界面状态与通用反馈 ============ */
-var state = { role: "admin", current: "dashboard", operatorName: "学委", selectedId: null, persist: true };
+var state = {
+  role: "admin", current: "dashboard", operatorName: "学委",
+  selectedId: null, persist: true, drawerId: null
+};
+var docsFilter = { q: "", cat: "全部", status: "全部", sortKey: "id", sortDir: "desc",
+  page: 1, pageSize: 10, density: "comfortable" };
+
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"◫"},
   {key:"docs",      title:"材料台账",   ico:"▤"},
@@ -334,6 +413,7 @@ function toast(msg) {
   toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 2600);
 }
 
+/* ---- 确认弹窗（破坏性 / 确认类动作继续走居中弹窗） ---- */
 function showModal(title, bodyHtml, actions) {
   document.getElementById("modalTitle").textContent = title;
   document.getElementById("modalBody").innerHTML = bodyHtml;
@@ -390,20 +470,23 @@ function refreshAll() {
   else if (state.current === "logs") renderLogs();
 }
 
-/* ============ 看板 ============ */
+/* ============ 看板（待办优先 + 卡片下钻） ============ */
 function renderDashboard() {
   var docs = store.docs, logs = listLogs();
   var s = stats();
   var pending = docs.filter(function(d){ return d.status === "待审核"; });
+
   var cardDefs = [
-    ["total", "材料总数", "var(--text)"],
-    ["pending", "待审核", "var(--orange)"],
-    ["archived", "已归档", "var(--green)"],
-    ["rejected", "已驳回", "var(--red)"]
+    {key:"total",    label:"材料总数", color:"var(--text)",   filter:"全部"},
+    {key:"pending",  label:"待审核",   color:"var(--orange)", filter:"待审核"},
+    {key:"archived", label:"已归档",   color:"var(--green)",  filter:"已归档"},
+    {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"}
   ];
   var cardsHtml = cardDefs.map(function(c){
-    return '<div class="card stat-card"><div class="num" style="color:' + c[2] + '">' + s[c[0]] +
-      '</div><div class="lbl">' + c[1] + "</div></div>";
+    return '<div class="card stat-card" data-filter="' + esc(c.filter) + '" role="button" tabindex="0">' +
+      '<div class="num" style="color:' + c.color + '">' + s[c.key] + "</div>" +
+      '<div class="lbl">' + c.label + "</div>" +
+      '<div class="drill">查看台账 →</div></div>';
   }).join("");
 
   var total = docs.length || 1;
@@ -421,63 +504,190 @@ function renderDashboard() {
   }).join("");
   var recentBody = recent || '<tr><td colspan="4" class="empty">暂无操作动态</td></tr>';
 
-  var pendRows = pending.slice(0, 5).map(function(d){
+  var pendRows = pending.slice(0, 6).map(function(d){
     return "<tr class='clickable' data-id='" + d.id + "'><td>" + esc(d.name) + "</td><td>" +
       esc(d.who) + "</td><td>" + esc(d.sid) + "</td><td>" + esc(d.time) + "</td></tr>";
   }).join("");
-  var pendBody = pendRows || '<tr><td colspan="4" class="empty">暂无待审核材料</td></tr>';
+  var pendBody = pendRows || '<tr><td colspan="4" class="empty"><div class="empty-title">暂无待审核材料</div>' +
+    '<div class="empty-sub">新材料提交后会先出现在这里等待处理</div></td></tr>';
 
   document.getElementById("view-dashboard").innerHTML =
+    '<div class="dash-actions"><button class="btn primary" id="dashNew">提交新材料</button></div>' +
     '<div class="cards">' + cardsHtml + "</div>" +
+    '<div class="card panel" style="margin-bottom:14px"><h3>待审核 · 需处理（' + pending.length + "）</h3>" +
+      '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
+      "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
+    "</div>" +
     '<div class="grid-2">' +
       '<div class="card panel"><h3>类别分布</h3>' + catHtml + "</div>" +
       '<div class="card panel"><h3>近期动态</h3>' +
         '<div class="table-wrap"><table><colgroup><col style="width:26%"><col style="width:24%"><col style="width:18%"><col></colgroup>' +
         "<thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th></tr></thead><tbody>" + recentBody + "</tbody></table></div>" +
       "</div>" +
-    "</div>" +
-    '<div class="card panel" style="margin-top:14px"><h3>待审核 · 需处理</h3>' +
-      '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
-      "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
     "</div>";
 
+  document.getElementById("dashNew").onclick = function(){ switchView("submit"); };
+
+  document.querySelectorAll("#view-dashboard .stat-card").forEach(function(card){
+    var go = function(){ drillByStatus(card.dataset.filter); };
+    card.onclick = go;
+    card.onkeydown = function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+  });
   document.querySelectorAll("#view-dashboard tbody tr.clickable").forEach(function(tr){
-    tr.onclick = function(){ switchView("docs"); state.selectedId = Number(tr.dataset.id); renderDocs(); };
+    tr.onclick = function(){ openDoc(Number(tr.dataset.id), "docs"); };
   });
 }
 
-/* ============ 材料台账 ============ */
-var docsFilter = { q: "", cat: "全部", status: "全部" };
+function drillByStatus(status) {
+  docsFilter.status = status;
+  docsFilter.page = 1;
+  switchView("docs");
+}
+
+/* ============ 材料台账：筛选 / 排序 / 分页 / 密度 ============ */
 var STATUS_TAG = { "已归档": "green", "已驳回": "red", "待审核": "orange", "待补材料": "orange" };
+var SORT_COLS = [
+  {key:"name",  label:"材料名称"},
+  {key:"who",   label:"提交人"},
+  {key:"sid",   label:"学号"},
+  {key:"id",    label:"提交时间"},
+  {key:"status",label:"状态"}
+];
+
+function filteredDocs() {
+  var q = clean(docsFilter.q).toLowerCase();
+  var rows = store.docs.filter(function(d){
+    if (docsFilter.cat !== "全部" && d.cat !== docsFilter.cat) return false;
+    if (docsFilter.status !== "全部" && d.status !== docsFilter.status) return false;
+    if (!q) return true;
+    return [d.name, d.who, d.sid].some(function(f){ return clean(f).toLowerCase().indexOf(q) >= 0; });
+  });
+  var key = docsFilter.sortKey, dir = docsFilter.sortDir === "asc" ? 1 : -1;
+  rows.sort(function(a, b){
+    var va = a[key], vb = b[key];
+    if (key === "sid") { va = String(va); vb = String(vb); }
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), "zh") * dir;
+  });
+  return rows;
+}
 
 function buildDocs() {
   var catOpts = ["全部"].concat(CATS).map(function(c){
     return '<option' + (docsFilter.cat===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
-  var stOpts = ["全部","待审核","已归档","已驳回","待补材料"].map(function(c){
+  var stOpts = STATUS_ALL.map(function(c){
     return '<option' + (docsFilter.status===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
+  var sizeOpts = [10,25,50].map(function(n){
+    return '<option value="' + n + '"' + (docsFilter.pageSize===n?" selected":"") + ">" + n + " 条/页</option>"; }).join("");
+  var densOpts = [["compact","紧凑"],["comfortable","舒适"],["spacious","宽松"]].map(function(o){
+    return '<option value="' + o[0] + '"' + (docsFilter.density===o[0]?" selected":"") + ">" + o[1] + "</option>"; }).join("");
+
   document.getElementById("view-docs").innerHTML =
     '<div class="toolbar">' +
       "<label>搜索</label><input type='search' id='fQ' placeholder='名称 / 姓名 / 学号' value='" + esc(docsFilter.q) + "'>" +
       "<label>类别</label><select id='fCat'>" + catOpts + "</select>" +
-      "<label>状态</label><select id='fStatus'>" + stOpts + "</select></div>" +
-    '<div class="table-wrap"><table><colgroup><col><col style="width:13%"><col style="width:12%"><col style="width:13%"><col style="width:18%"><col style="width:13%"><col></colgroup>' +
-      "<thead><tr><th>材料名称</th><th>类别</th><th>提交人</th><th>学号</th><th>提交时间</th><th>状态</th><th>附件</th></tr></thead>" +
+      "<label>状态</label><select id='fStatus'>" + stOpts + "</select>" +
+      '<div class="toolbar-right">' +
+        "<label>每页</label><select id='fSize'>" + sizeOpts + "</select>" +
+        "<label>密度</label><select id='fDensity'>" + densOpts + "</select>" +
+      "</div></div>" +
+    '<div class="chips" id="docChips"></div>' +
+    '<div class="table-wrap" id="docsWrap"><table>' +
+      '<colgroup><col><col style="width:13%"><col style="width:12%"><col style="width:12%"><col style="width:16%"><col style="width:13%"><col></colgroup>' +
+      '<thead id="docsHead"></thead>' +
       '<tbody id="docsBody"></tbody></table></div>' +
+    '<div class="pager" id="docPager"></div>' +
     '<div class="actions" id="docsActions"></div>';
 
-  document.getElementById("fQ").oninput = function(e){ docsFilter.q = e.target.value; renderDocs(); };
-  document.getElementById("fCat").onchange = function(e){ docsFilter.cat = e.target.value; renderDocs(); };
-  document.getElementById("fStatus").onchange = function(e){ docsFilter.status = e.target.value; renderDocs(); };
+  var qInput = document.getElementById("fQ");
+  var debounce = null;
+  qInput.oninput = function(e){
+    clearTimeout(debounce);
+    debounce = setTimeout(function(){
+      docsFilter.q = e.target.value; docsFilter.page = 1; renderDocs();
+    }, 300);
+  };
+  document.getElementById("fCat").onchange = function(e){ docsFilter.cat = e.target.value; docsFilter.page = 1; renderDocs(); };
+  document.getElementById("fStatus").onchange = function(e){ docsFilter.status = e.target.value; docsFilter.page = 1; renderDocs(); };
+  document.getElementById("fSize").onchange = function(e){ docsFilter.pageSize = Number(e.target.value); docsFilter.page = 1; renderDocs(); };
+  document.getElementById("fDensity").onchange = function(e){ docsFilter.density = e.target.value; renderDocs(); };
+}
+
+function renderHead() {
+  var cols = [
+    {key:"name",  label:"材料名称"},
+    {key:"cat",   label:"类别", sortable:false},
+    {key:"who",   label:"提交人"},
+    {key:"sid",   label:"学号"},
+    {key:"id",    label:"提交时间"},
+    {key:"status",label:"状态"},
+    {key:"file",  label:"附件", sortable:false}
+  ];
+  var thHtml = cols.map(function(c){
+    if (!c.sortable) return "<th>" + esc(c.label) + "</th>";
+    var ind = "";
+    if (docsFilter.sortKey === c.key) ind = '<span class="sort-ind">' + (docsFilter.sortDir === "asc" ? "▲" : "▼") + "</span>";
+    return '<th class="sortable" data-key="' + c.key + '">' + esc(c.label) + ind + "</th>";
+  }).join("");
+  document.getElementById("docsHead").innerHTML = "<tr>" + thHtml + "</tr>";
+  document.querySelectorAll("#docsHead th.sortable").forEach(function(th){
+    th.onclick = function(){
+      var key = th.dataset.key;
+      if (docsFilter.sortKey === key) {
+        docsFilter.sortDir = docsFilter.sortDir === "asc" ? "desc" : "asc";
+      } else {
+        docsFilter.sortKey = key;
+        docsFilter.sortDir = (key === "id") ? "desc" : "asc";
+      }
+      renderDocs();
+    };
+  });
+}
+
+function renderChips() {
+  var chips = [];
+  if (docsFilter.q) chips.push({label:"关键词", value:docsFilter.q, clear:function(){ docsFilter.q = ""; var i = document.getElementById("fQ"); if (i) i.value = ""; }});
+  if (docsFilter.cat !== "全部") chips.push({label:"类别", value:docsFilter.cat, clear:function(){ docsFilter.cat = "全部"; }});
+  if (docsFilter.status !== "全部") chips.push({label:"状态", value:docsFilter.status, clear:function(){ docsFilter.status = "全部"; }});
+  var box = document.getElementById("docChips");
+  if (!chips.length) { box.innerHTML = ""; return; }
+  box.innerHTML = chips.map(function(c, i){
+    return '<span class="chip">' + esc(c.label) + "：<b>" + esc(c.value) + "</b>" +
+      '<button data-i="' + i + '" aria-label="移除该条件">×</button></span>';
+  }).join("") + '<button class="chip-clear" id="chipClear">清除全部筛选</button>';
+  box.querySelectorAll(".chip button").forEach(function(b){
+    b.onclick = function(){ chips[Number(b.dataset.i)].clear(); docsFilter.page = 1; syncFilterControls(); renderDocs(); };
+  });
+  document.getElementById("chipClear").onclick = function(){
+    docsFilter.q = ""; docsFilter.cat = "全部"; docsFilter.status = "全部"; docsFilter.page = 1;
+    syncFilterControls(); renderDocs();
+  };
+}
+
+function syncFilterControls() {
+  var q = document.getElementById("fQ"); if (q) q.value = docsFilter.q;
+  var c = document.getElementById("fCat"); if (c) c.value = docsFilter.cat;
+  var s = document.getElementById("fStatus"); if (s) s.value = docsFilter.status;
 }
 
 function renderDocs() {
-  var rows = listDocs(docsFilter.q, docsFilter.cat);
-  if (docsFilter.status && docsFilter.status !== "全部") {
-    rows = rows.filter(function(d){ return d.status === docsFilter.status; });
-  }
+  renderHead();
+  renderChips();
+  var rows = filteredDocs();
   var isAdmin = state.role === "admin";
 
-  var trs = rows.map(function(d){
+  var total = rows.length;
+  var pages = Math.max(1, Math.ceil(total / docsFilter.pageSize));
+  if (docsFilter.page > pages) docsFilter.page = pages;
+  var start = (docsFilter.page - 1) * docsFilter.pageSize;
+  var pageRows = rows.slice(start, start + docsFilter.pageSize);
+  var rangeStart = total ? start + 1 : 0;
+  var rangeEnd = Math.min(total, start + docsFilter.pageSize);
+
+  var wrap = document.getElementById("docsWrap");
+  wrap.className = "table-wrap density-" + docsFilter.density;
+
+  var trs = pageRows.map(function(d){
     var tag = STATUS_TAG[d.status] || "orange";
     var sel = d.id === state.selectedId ? " sel" : "";
     return "<tr class='clickable" + sel + "' data-id='" + d.id + "'>" +
@@ -486,18 +696,40 @@ function renderDocs() {
       '<td><span class="tag ' + tag + '">' + esc(d.status) + "</span></td>" +
       "<td>" + esc(d.file || "无附件") + "</td></tr>";
   }).join("");
-  document.getElementById("docsBody").innerHTML =
-    trs || '<tr><td colspan="7" class="empty">暂无符合条件的材料，可到「提交材料」录入</td></tr>';
+
+  var bodyEl = document.getElementById("docsBody");
+  if (!total) {
+    var headEmpty = store.docs.length === 0;
+    bodyEl.innerHTML = '<tr><td colspan="7" class="empty">' +
+      (headEmpty
+        ? '<div class="empty-title">还没有材料</div><div class="empty-sub">点击下方「提交材料」录入第一条</div>'
+        : '<div class="empty-title">没有符合条件的材料</div><div class="empty-sub">试试放宽搜索或清除筛选条件</div>') +
+      "</td></tr>";
+  } else {
+    bodyEl.innerHTML = trs;
+  }
 
   document.querySelectorAll("#docsBody tr.clickable").forEach(function(tr){
     tr.onclick = function(){ state.selectedId = Number(tr.dataset.id); renderDocs(); };
-    tr.ondblclick = function(){ viewDoc(state.selectedId); };
+    tr.ondblclick = function(){ openDoc(state.selectedId); };
   });
 
-  var actions = '<button class="btn" id="btnView">查看</button>' +
+  /* 分页条 */
+  var pager = document.getElementById("docPager");
+  pager.innerHTML =
+    '<span class="pg-info">第 ' + rangeStart + "–" + rangeEnd + " 条，共 " + total + " 条</span>" +
+    '<span class="spacer"></span>' +
+    '<button class="btn mini" id="pgPrev" ' + (docsFilter.page <= 1 ? "disabled" : "") + ">上一页</button>" +
+    '<span class="pg-info">' + docsFilter.page + " / " + pages + " 页</span>" +
+    '<button class="btn mini" id="pgNext" ' + (docsFilter.page >= pages ? "disabled" : "") + ">下一页</button>";
+  document.getElementById("pgPrev").onclick = function(){ if (docsFilter.page > 1) { docsFilter.page -= 1; renderDocs(); } };
+  document.getElementById("pgNext").onclick = function(){ if (docsFilter.page < pages) { docsFilter.page += 1; renderDocs(); } };
+
+  /* 操作条 */
+  var actions = '<button class="btn" id="btnView">查看详情</button>' +
     (isAdmin ? '<button class="btn primary" id="btnArchive">归档</button>' +
                '<button class="btn danger" id="btnReject">驳回</button>' : "") +
-    '<span class="hint" id="docsHint">共 ' + rows.length + " 条</span>";
+    '<span class="hint">已选 ' + (state.selectedId != null && findDoc(state.selectedId) ? "1 条" : "0 条") + "</span>";
   document.getElementById("docsActions").innerHTML = actions;
 
   var has = state.selectedId != null && findDoc(state.selectedId);
@@ -505,49 +737,86 @@ function renderDocs() {
   var btnA = document.getElementById("btnArchive"), btnR = document.getElementById("btnReject");
   if (btnA) btnA.disabled = !has;
   if (btnR) btnR.disabled = !has;
-  document.getElementById("btnView").onclick = function(){ viewDoc(state.selectedId); };
+  document.getElementById("btnView").onclick = function(){ openDoc(state.selectedId); };
   if (btnA) btnA.onclick = archiveSelected;
   if (btnR) btnR.onclick = rejectSelected;
 }
 
-function viewDoc(id) {
+/* ============ 详情抽屉 ============ */
+function openDoc(id, from) {
   var d = findDoc(id);
   if (!d) { toast("请先在列表中选择一条材料"); return; }
+  state.selectedId = id; state.drawerId = id;
   try { addLog("查看", d.name, state.operatorName, roleLabel()); } catch (e) {}
-  var trace = listLogs().filter(function(l){ return l.obj === d.name; }).slice(0, 5);
-  var traceHtml = trace.length ? '<div class="trace"><h4>最近操作记录</h4><ul>' +
-    trace.map(function(l){ return "<li>" + esc(l.time) + "　" + esc(l.who) + "（" + esc(l.role) + "）· " + esc(l.act) + "</li>"; }).join("") +
-    "</ul></div>" : "";
-  showModal("材料详情",
-    '<div class="kv"><span class="k">名称</span><span>' + esc(d.name) + "</span>" +
-    '<span class="k">类别</span><span>' + esc(d.cat) + "</span>" +
-    '<span class="k">提交人</span><span>' + esc(d.who) + "（" + esc(d.sid) + "）</span>" +
-    '<span class="k">提交时间</span><span>' + esc(d.time) + "</span>" +
-    '<span class="k">状态</span><span>' + esc(d.status) + "</span>" +
-    '<span class="k">附件</span><span>' + esc(d.file || "无") + "</span>" +
-    '<span class="k">说明</span><span>' + esc(d.note || "无") + "</span></div>" + traceHtml,
-    [{label:"关闭", cls:"btn", onClick:function(){}}]);
-  refreshAll();
+  renderDrawer(d);
+  document.getElementById("drawer").classList.add("show");
+  document.getElementById("drawerMask").classList.add("show");
+  if (state.current !== "docs") renderDocs();
+}
+function closeDrawer() {
+  document.getElementById("drawer").classList.remove("show");
+  document.getElementById("drawerMask").classList.remove("show");
+  state.drawerId = null;
+}
+
+function renderDrawer(d) {
+  var tag = STATUS_TAG[d.status] || "orange";
+  document.getElementById("drawerTitle").textContent = d.name;
+  document.getElementById("drawerTag").innerHTML = '<span class="tag ' + tag + '">' + esc(d.status) + "</span>";
+
+  var trace = listLogs().filter(function(l){ return l.obj === d.name; }).slice(0, 8);
+  var traceHtml = trace.length ? '<div class="trace"><h4>操作留痕</h4><ul>' +
+    trace.map(function(l){ return "<li><span class='t-time'>" + esc(l.time) + "</span>" +
+      esc(l.who) + "（" + esc(l.role) + "）· " + esc(l.act) + "</li>"; }).join("") +
+    "</ul></div>" : '<div class="empty" style="padding:14px 0">暂无该材料的操作记录</div>';
+
+  document.getElementById("drawerBody").innerHTML =
+    '<div class="drawer-section"><h4>基本信息</h4><div class="kv">' +
+      '<span class="k">类别</span><span class="v">' + esc(d.cat) + "</span>" +
+      '<span class="k">提交人</span><span class="v">' + esc(d.who) + "（" + esc(d.sid) + "）</span>" +
+      '<span class="k">提交时间</span><span class="v">' + esc(d.time) + "</span>" +
+      '<span class="k">可见范围</span><span class="v">' + esc(d.scope || "全员") + "</span>" +
+      '<span class="k">附件</span><span class="v">' + esc(d.file || "无附件") + "</span>" +
+      '<span class="k">说明</span><span class="v">' + esc(d.note || "无") + "</span>" +
+    "</div></div>" +
+    '<div class="drawer-section"><h4>留痕记录</h4>' + traceHtml + "</div>";
+
+  var isAdmin = state.role === "admin";
+  var footer = "";
+  if (isAdmin) {
+    if (d.status !== "已归档") footer += '<button class="btn primary" id="drArchive">归档</button>';
+    if (d.status !== "已驳回") footer += '<button class="btn danger" id="drReject">驳回</button>';
+  }
+  footer += '<span class="spacer"></span><button class="btn" id="drClose">关闭</button>';
+  document.getElementById("drawerFooter").innerHTML = footer;
+  document.getElementById("drClose").onclick = closeDrawer;
+  var drA = document.getElementById("drArchive"), drR = document.getElementById("drReject");
+  if (drA) drA.onclick = archiveSelected;
+  if (drR) drR.onclick = rejectSelected;
 }
 
 function archiveSelected() {
-  var d = findDoc(state.selectedId);
+  var d = findDoc(state.selectedId != null ? state.selectedId : state.drawerId);
   if (!d) { toast("请先选择一条材料"); return; }
   if (d.status === "已归档") { toast("该材料已是已归档状态"); return; }
-  confirmModal("归档确认", "确定将「" + d.name + "」归档吗？", function(){
+  confirmModal("归档确认", "确定将「" + d.name + "」归档吗？归档后进入已归档列表。", function(){
     var saved = archiveDoc(d.id);
     if (saved) { try { addLog("归档", saved.name, state.operatorName, roleLabel()); } catch(e){} }
-    refreshAll(); toast("已归档，并写入操作日志");
+    refreshAll();
+    if (state.drawerId != null && findDoc(state.drawerId)) renderDrawer(findDoc(state.drawerId));
+    toast("已归档，并写入操作日志");
   });
 }
 function rejectSelected() {
-  var d = findDoc(state.selectedId);
+  var d = findDoc(state.selectedId != null ? state.selectedId : state.drawerId);
   if (!d) { toast("请先选择一条材料"); return; }
   if (d.status === "已驳回") { toast("该材料已是已驳回状态"); return; }
   confirmModal("驳回确认", "确定驳回「" + d.name + "」吗？驳回后该材料将标记为已驳回。", function(){
     var saved = rejectDoc(d.id);
     if (saved) { try { addLog("驳回", saved.name, state.operatorName, roleLabel()); } catch(e){} }
-    refreshAll(); toast("已驳回，并写入操作日志");
+    refreshAll();
+    if (state.drawerId != null && findDoc(state.drawerId)) renderDrawer(findDoc(state.drawerId));
+    toast("已驳回，并写入操作日志");
   });
 }
 
@@ -621,14 +890,18 @@ function submitDoc() {
 
   var dup = store.docs.some(function(d){ return d.sid === sid && d.name === name && d.cat === cat; });
   var doAdd = function(){
+    var row;
     try {
-      addDoc({name:name, cat:cat, who:who, sid:sid, note:note, file:submitFile, scope:"全员"});
+      row = addDoc({name:name, cat:cat, who:who, sid:sid, note:note, file:submitFile, scope:"全员"});
       addLog("提交", name, state.operatorName, roleLabel());
     } catch (e) { errEl.textContent = "提交失败：" + e.message; return; }
     ["sName","sWho","sSid","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("sCat").value = "";
     document.getElementById("btnRemoveFile").click();
     errEl.textContent = "";
+    docsFilter.status = "待审核"; docsFilter.page = 1;
+    state.selectedId = row.id;
+    syncFilterControls();
     switchView("docs");
     toast("材料已提交，进入待审核列表");
   };
@@ -637,7 +910,7 @@ function submitDoc() {
 }
 
 /* ============ 操作日志与备份恢复 ============ */
-var ACT_TAG = { "提交":"green", "归档":"green", "驳回":"red", "查看":"muted" };
+var ACT_TAG = { "提交":"green", "归档":"green", "驳回":"red", "查看":"muted", "修改":"orange" };
 
 function renderLogs() {
   var rows = listLogs();
@@ -647,7 +920,8 @@ function renderLogs() {
       "</td><td><span class='tag " + tag + "'>" + esc(l.act) + "</span></td><td>" +
       esc(l.obj) + "</td><td>" + esc(l.src || "本机") + "</td></tr>";
   }).join("");
-  var body = trs || '<tr><td colspan="6" class="empty">暂无操作记录，提交、归档、驳回等操作会自动记录在这里</td></tr>';
+  var body = trs || '<tr><td colspan="6" class="empty"><div class="empty-title">暂无操作记录</div>' +
+    '<div class="empty-sub">提交、归档、驳回等操作会自动记录在这里</div></td></tr>';
 
   document.getElementById("view-logs").innerHTML =
     '<div class="toolbar"><span class="hint" style="margin-left:0">共 ' + rows.length + " 条记录</span></div>" +
@@ -688,6 +962,7 @@ function importBackup(e) {
     confirmModal("导入确认", "导入将覆盖本浏览器当前全部材料与操作日志，且不可撤销。确定继续导入吗？", function(){
       try { restore(data.docs, data.logs); }
       catch (err) { toast("导入失败：" + err.message); return; }
+      closeDrawer();
       refreshAll(); toast("备份数据已导入");
     });
   };
@@ -704,10 +979,16 @@ function bindRole() {
     radios.forEach(function(r){ r.checked = (r.value === state.role); });
   }
   radios.forEach(function(r){
-    r.onchange = function(){ state.role = r.value; syncLabel(); refreshAll(); };
+    r.onchange = function(){ state.role = r.value; syncLabel(); closeDrawer(); refreshAll(); };
   });
   syncLabel();
 }
+
+document.getElementById("drawerClose").onclick = closeDrawer;
+document.getElementById("drawerMask").onclick = closeDrawer;
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape" && document.getElementById("drawer").classList.contains("show")) closeDrawer();
+});
 
 loadStore();
 buildNav();
