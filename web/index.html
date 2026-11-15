@@ -624,7 +624,7 @@ function renderHead() {
     {key:"file",  label:"附件", sortable:false}
   ];
   var thHtml = cols.map(function(c){
-    if (!c.sortable) return "<th>" + esc(c.label) + "</th>";
+    if (c.sortable === false) return "<th>" + esc(c.label) + "</th>";
     var ind = "";
     if (docsFilter.sortKey === c.key) ind = '<span class="sort-ind">' + (docsFilter.sortDir === "asc" ? "▲" : "▼") + "</span>";
     return '<th class="sortable" data-key="' + c.key + '">' + esc(c.label) + ind + "</th>";
