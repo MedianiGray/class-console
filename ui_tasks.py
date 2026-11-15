@@ -50,10 +50,11 @@ class TasksView(ttk.Frame):
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
-        ttk.Button(bar, text="添加任务", style="Accent.TButton", command=lambda: self.edit_dialog(None)).pack(side="left")
-        ttk.Button(bar, text="编辑", command=self.edit_selected).pack(side="left", padx=8)
-        ttk.Button(bar, text="完成 / 还原", command=self.toggle_selected).pack(side="left")
-        ttk.Button(bar, text="删除", command=self.remove_selected).pack(side="left", padx=8)
+        self.btn_add = ttk.Button(bar, text="添加任务", style="Accent.TButton",
+                                  command=lambda: self.edit_dialog(None))
+        self.btn_edit = ttk.Button(bar, text="编辑", command=self.edit_selected)
+        self.btn_toggle = ttk.Button(bar, text="完成 / 还原", command=self.toggle_selected)
+        self.btn_del = ttk.Button(bar, text="删除", command=self.remove_selected)
 
     def _selected(self):
         sel = self.tree.selection()
@@ -89,7 +90,20 @@ class TasksView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
+        # 任务增删改仅管理员；完成 / 还原各视角可用
+        is_admin = self.window.role == "admin"
+        for b in (self.btn_add, self.btn_edit, self.btn_del):
+            b.pack_forget()
+        self.btn_toggle.pack(side="left")
+        if is_admin:
+            self.btn_add.pack(side="left")
+            self.btn_edit.pack(side="left", padx=8)
+            self.btn_del.pack(side="left", padx=8)
+
     def edit_dialog(self, task):
+        if self.window.role != "admin":
+            self.window.toast("当前视角无权执行该操作")
+            return
         dlg = tk.Toplevel(self)
         dlg.title("编辑任务" if task else "添加任务")
         dlg.transient(self)
@@ -140,6 +154,9 @@ class TasksView(ttk.Frame):
         ttk.Button(btns, text="保存", style="Accent.TButton", command=submit).pack(side="right")
 
     def edit_selected(self):
+        if self.window.role != "admin":
+            self.window.toast("当前视角无权执行该操作")
+            return
         tid = self._selected()
         if tid is None:
             self.window.toast("请先选择一条任务")
@@ -157,6 +174,9 @@ class TasksView(ttk.Frame):
         self.window.refresh_all()
 
     def remove_selected(self):
+        if self.window.role != "admin":
+            self.window.toast("当前视角无权执行该操作")
+            return
         tid = self._selected()
         if tid is None:
             self.window.toast("请先选择一条任务")
