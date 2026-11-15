@@ -110,7 +110,8 @@ class LogsView(ttk.Frame):
             return
 
         try:
-            self.repo.restore(docs, logs)
+            self.repo.restore(docs, logs,
+                              data.get("roster", []), data.get("tasks", []))
         except Exception as e:
             messagebox.showerror("导入失败", str(e))
             return
