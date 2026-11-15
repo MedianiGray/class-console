@@ -53,6 +53,7 @@ class-console/
 ├── tests/
 │   ├── selftest.py          # 数据层回归自检（临时库，不碰本机数据）
 │   └── gui_smoke.py         # 界面冒烟回归
+├── index.html               # GitHub Pages 站点入口（自动跳转到 web/ 在线版）
 ├── web/
 │   └── index.html           # 浏览器本地缓存版（单文件，localStorage 持久化，可挂 Pages 预览）
 ├── prototypes/              # 早期网页 UI 概念原型（静态 HTML，非可运行应用）
