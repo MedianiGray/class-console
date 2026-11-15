@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案C · 自研前端+BaaS 操作台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230F766E'/%3E%3Cpath d='M6 12h12M12 6v12' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --teal:#0F766E; --teal-2:#14B8A6; --teal-soft:#E6F4F2;
+    --bg:#F6F8F8; --card:#FFFFFF; --line:#E4EAE9; --text:#162422; --muted:#5B716E;
+    --green:#16A34A; --green-soft:#EAF7EF; --orange:#F97316; --orange-soft:#FFF1E6;
+    --dark:#0B1F1D;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+
+  header{background:var(--dark);color:#E7F2F0}
+  .header-in{max-width:1180px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand-mark{width:30px;height:30px;border-radius:8px;background:var(--teal-2);display:flex;align-items:center;justify-content:center}
+  .brand-mark svg{width:16px;height:16px}
+  .brand-name{font-weight:700;font-size:15px}
+  .brand-sub{font-size:11px;color:#8FB3AE}
+  .header-right{margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .role-switch{display:flex;background:#163531;border-radius:999px;padding:3px}
+  .role-switch button{border:0;background:transparent;color:#9DBFB9;padding:6px 14px;border-radius:999px;font-size:12px;cursor:pointer}
+  .role-switch button.active{background:var(--teal-2);color:#06231F;font-weight:700}
+  .who{display:flex;align-items:center;gap:8px;font-size:13px}
+  .who .avatar{width:28px;height:28px;border-radius:50%;background:var(--teal-soft);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:20px}
+
+  .plan{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:16px}
+  .plan-title{font-weight:700;font-size:15px}
+  .plan-title small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:4px}
+  .plan-item .k{color:var(--muted);font-size:12px;margin-bottom:2px}
+  .plan-item .v{font-weight:600;font-size:13px}
+  .plan-item .v.ok{color:var(--green)}
+
+  .arch{display:flex;align-items:center;gap:10px;margin:16px 0;flex-wrap:wrap}
+  .arch-node{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:12px}
+  .arch-node b{display:block;font-size:13px;margin-bottom:2px}
+  .arch-node small{color:var(--muted)}
+  .arch-arrow{color:var(--teal-2);font-weight:700}
+
+  .layout{display:grid;grid-template-columns:180px 1fr;gap:16px}
+  .cats{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;align-self:start}
+  .cats button{display:flex;width:100%;border:0;background:transparent;text-align:left;padding:9px 12px;border-radius:8px;font-size:13px;cursor:pointer;color:var(--text)}
+  .cats button.active{background:var(--teal-soft);color:var(--teal);font-weight:700}
+  .cats .count{margin-left:auto;color:var(--muted);font-size:12px}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .doc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+  .doc-top{display:flex;align-items:center;gap:8px}
+  .doc-cat{font-size:11px;color:var(--teal);background:var(--teal-soft);padding:2px 10px;border-radius:999px;font-weight:600}
+  .doc-status{margin-left:auto}
+  .tag{display:inline-flex;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .tag.green{background:var(--green-soft);color:var(--green)}
+  .tag.orange{background:var(--orange-soft);color:var(--orange)}
+  .doc h3{font-size:14px;line-height:1.5}
+  .doc-meta{color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:3px}
+  .doc-actions{display:flex;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;color:var(--text)}
+  .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+  .btn.ghost{color:var(--teal)}
+  .btn.danger{color:#EF4444}
+
+  .log-card{margin-top:20px;background:#fff;border:1px solid var(--line);border-radius:12px}
+  .log-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .log-head h3{font-size:15px}
+  .log-head small{color:var(--muted);font-size:12px}
+  .log-head .reset{margin-left:auto}
+  .timeline{padding:18px}
+  .tl-item{display:grid;grid-template-columns:160px 24px 1fr;gap:12px;position:relative;padding-bottom:18px}
+  .tl-item:last-child{padding-bottom:0}
+  .tl-item::before{content:"";position:absolute;left:11px;top:22px;bottom:0;width:1px;background:var(--line)}
+  .tl-item:last-child::before{display:none}
+  .tl-time{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .tl-dot{width:11px;height:11px;border-radius:50%;background:var(--teal-2);margin-top:5px;position:relative;z-index:1}
+  .tl-body{font-size:13px}
+  .tl-body b{font-weight:600}
+  .tl-body .act{color:var(--teal);font-weight:600}
+  .tl-body .src{color:var(--muted);font-size:12px;margin-left:6px}
+  .empty{text-align:center;color:var(--muted);padding:36px 0;font-size:13px}
+
+  footer{max-width:1180px;margin:16px auto 24px;padding:0 20px;color:var(--muted);font-size:12px}
+  #toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(20px);background:var(--dark);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:99}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:960px){
+    .plan{grid-template-columns:1fr 1fr}
+    .layout{grid-template-columns:1fr}
+    .cats{display:flex;overflow-x:auto;gap:4px}
+    .cats button{flex:none}
+    .grid{grid-template-columns:repeat(2,1fr)}
+  }
+  @media (max-width:560px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-in">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M12 5v14" stroke="#06231F" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+      <div>
+        <div class="brand-name">Class Console · 班级操作台</div>
+        <div class="brand-sub">方案 C：自研前端 + BaaS 无服务器</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="role-switch" id="roleSwitch">
+        <button class="active" data-role="admin">管理员</button>
+        <button data-role="student">普通同学</button>
+      </div>
+      <div class="who"><div class="avatar">覃</div><span id="roleLabel">管理员 · 覃祖悦</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="plan">
+    <div class="plan-title">方案三：自研前端 + BaaS 无服务器
+      <small>静态前端部署 Pages，BaaS 提供数据库、鉴权与自定义日志，文件本体留在 WPS</small>
+    </div>
+    <div class="plan-item"><div class="k">实现方式</div><div class="v">静态前端 + BaaS 接口</div></div>
+    <div class="plan-item"><div class="k">开发量 / 周期</div><div class="v">少量代码 · 1-2 周</div></div>
+    <div class="plan-item"><div class="k">日志方式</div><div class="v">自定义操作日志表</div></div>
+    <div class="plan-item"><div class="k">信息安全</div><div class="v ok">敏感文件不入公网存储</div></div>
+  </section>
+
+  <div class="arch">
+    <div class="arch-node"><b>静态前端</b><small>GitHub Pages · 操作台页面</small></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-node"><b>BaaS 数据库</b><small>索引 / 元数据 / 权限 / 日志</small></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-node"><b>学校 WPS 云文档</b><small>文件本体存储与下载</small></div>
+  </div>
+
+  <div class="layout">
+    <aside class="cats" id="cats">
+      <button class="active" data-cat="全部">全部材料<span class="count" id="cnt-all"></span></button>
+      <button data-cat="团务材料">团务材料<span class="count"></span></button>
+      <button data-cat="奖助材料">奖助材料<span class="count"></span></button>
+      <button data-cat="学分材料">学分材料<span class="count"></span></button>
+      <button data-cat="宣传材料">宣传材料<span class="count"></span></button>
+      <button data-cat="班级事务">班级事务<span class="count"></span></button>
+    </aside>
+    <section><div class="grid" id="docGrid"></div></section>
+  </div>
+
+  <section class="log-card">
+    <div class="log-head">
+      <h3>操作日志</h3><small>写入 BaaS 日志表：操作人、角色、动作、对象、时间、来源端</small>
+      <button class="btn danger reset" id="resetBtn">重置演示数据</button>
+    </div>
+    <div class="timeline" id="timeline"></div>
+  </section>
+</div>
+
+<footer>样品边界：本页为方案形态原型，卡片与日志为本地演示数据，未接入真实 BaaS 鉴权与数据库；角色切换、归档与打开链接仅作演示。</footer>
+
+<div id="toast"></div>
+
+<script>
+  const LS_DOCS="planC_docs_v1", LS_LOGS="planC_logs_v1";
+  let docs=[], logs=[];
+  let role="admin", curCat="全部", pickedFile="";
+  let storageOK=true;
+  try{ localStorage.setItem("__p","1"); localStorage.removeItem("__p"); }catch(e){ storageOK=false; }
+
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function fmtTime(d){ return pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes()); }
+  function nextId(a){ return a.length?Math.max.apply(null,a.map(x=>x.id))+1:1; }
+
+  function seedDocs(){
+    return [
+      {id:1,name:"团日活动申报表",cat:"团务材料",who:"黄志强",time:"11-12 09:24",status:"已归档",scope:"全员"},
+      {id:2,name:"奖学金评定证明复印件",cat:"奖助材料",who:"李雨桐",time:"11-12 10:05",status:"待审核",scope:"班委"},
+      {id:3,name:"社团招新活动新闻稿",cat:"宣传材料",who:"王浩宇",time:"11-13 14:40",status:"已归档",scope:"全员"},
+      {id:4,name:"实践学分认定表",cat:"学分材料",who:"覃祖悦",time:"11-13 16:18",status:"已归档",scope:"本人"},
+      {id:5,name:"班会签到表",cat:"班级事务",who:"陈思颖",time:"11-14 08:52",status:"待审核",scope:"全员"},
+      {id:6,name:"反诈舞台剧剧照素材包",cat:"宣传材料",who:"覃祖悦",time:"11-14 10:30",status:"已归档",scope:"全员"},
+      {id:7,name:"体测成绩统计表",cat:"班级事务",who:"刘一帆",time:"11-14 11:07",status:"待补材料",scope:"全员"}
+    ];
+  }
+  function seedLogs(){
+    return [
+      {id:1,time:"11-14 11:20",who:"覃祖悦",role:"管理员",act:"查看",obj:"反诈舞台剧剧照素材包",src:"Web 端"},
+      {id:2,time:"11-14 11:07",who:"刘一帆",role:"学生",act:"上传",obj:"体测成绩统计表",src:"移动端"},
+      {id:3,time:"11-14 10:30",who:"覃祖悦",role:"管理员",act:"归档",obj:"反诈舞台剧剧照素材包",src:"Web 端"},
+      {id:4,time:"11-14 08:52",who:"陈思颖",role:"学生",act:"上传",obj:"班会签到表",src:"移动端"},
+      {id:5,time:"11-13 16:18",who:"覃祖悦",role:"管理员",act:"修改",obj:"实践学分认定表",src:"Web 端"},
+      {id:6,time:"11-13 14:40",who:"王浩宇",role:"学生",act:"提交",obj:"社团招新活动新闻稿",src:"移动端"}
+    ];
+  }
+  function load(){
+    let rd=null,rl=null;
+    if(storageOK){ try{ rd=JSON.parse(localStorage.getItem(LS_DOCS)); }catch(e){} try{ rl=JSON.parse(localStorage.getItem(LS_LOGS)); }catch(e){} }
+    docs=Array.isArray(rd)&&rd.length?rd:seedDocs();
+    logs=Array.isArray(rl)&&rl.length?rl:seedLogs();
+    save();
+  }
+  function save(){ if(storageOK){ localStorage.setItem(LS_DOCS,JSON.stringify(docs)); localStorage.setItem(LS_LOGS,JSON.stringify(logs)); } }
+  function addLog(act,obj,who){ logs.unshift({id:nextId(logs),time:fmtTime(new Date()),who:who,role:role==="admin"?"管理员":"学生",act:act,obj:obj,src:"Web 端"}); save(); }
+
+  function visible(d){
+    if(role==="admin") return true;
+    if(d.scope==="全员") return true;
+    if(d.scope==="本人"&&d.who==="覃祖悦") return true;
+    return false;
+  }
+  function statusTag(s){
+    if(s==="已归档") return '<span class="tag green">已归档</span>';
+    if(s==="待补材料") return '<span class="tag orange">待补材料</span>';
+    return '<span class="tag orange">待审核</span>';
+  }
+
+  function render(){
+    const list=docs.filter(d=>(curCat==="全部"||d.cat===curCat)&&visible(d));
+    const grid=document.getElementById("docGrid");
+    if(!list.length){
+      grid.innerHTML='<div class="empty" style="grid-column:1/-1">当前角色下暂无可见材料</div>';
+    } else {
+      grid.innerHTML=list.map(d=>`
+        <div class="doc">
+          <div class="doc-top">
+            <span class="doc-cat">${d.cat}</span>
+            <span class="doc-status tag ${d.cls||""}">${statusTag(d.status)}</span>
+          </div>
+          <h3>${d.name}</h3>
+          <div class="doc-meta">
+            <div>提交人：${d.who}</div>
+            <div>更新时间：${d.time}</div>
+            <div>可见范围：${d.scope}</div>
+          </div>
+          <div class="doc-actions">
+            <button class="btn ghost" onclick="openDoc(${d.id})">在 WPS 中打开</button>
+            ${role==="admin"&&d.status!=="已归档"?`<button class="btn primary" onclick="archive(${d.id})">归档并记日志</button>`:""}
+          </div>
+        </div>`).join("");
+    }
+    document.querySelectorAll("#cats button").forEach(b=>{
+      const c=b.dataset.cat;
+      b.querySelector(".count").textContent=docs.filter(d=>(c==="全部"||d.cat===c)&&visible(d)).length;
+    });
+  }
+  function renderLogs(){
+    const box=document.getElementById("timeline");
+    box.innerHTML = logs.length ? logs.map(l=>`
+      <div class="tl-item">
+        <div class="tl-time">${l.time}</div>
+        <div class="tl-dot"></div>
+        <div class="tl-body"><b>${l.who}</b>（${l.role}）<span class="act">${l.act}</span> ${l.obj}<span class="src">${l.src}</span></div>
+      </div>`).join("")
+      : '<div class="empty">暂无操作记录</div>';
+  }
+
+  function openDoc(id){ const d=docs.find(x=>x.id===id); if(!d)return; addLog("查看",d.name,d.who); renderLogs(); showToast("原型演示：跳转 WPS 云文档对应文件"); }
+  function archive(id){
+    const d=docs.find(x=>x.id===id); if(!d)return;
+    d.status="已归档"; addLog("归档",d.name,"覃祖悦"); save(); render(); renderLogs(); showToast("已归档，并写入一条操作日志");
+  }
+
+  document.getElementById("cats").addEventListener("click",e=>{
+    const btn=e.target.closest("button"); if(!btn)return;
+    curCat=btn.dataset.cat;
+    document.querySelectorAll("#cats button").forEach(b=>b.classList.toggle("active",b===btn));
+    render();
+  });
+  document.getElementById("roleSwitch").addEventListener("click",e=>{
+    const btn=e.target.closest("button"); if(!btn)return;
+    role=btn.dataset.role;
+    document.querySelectorAll("#roleSwitch button").forEach(b=>b.classList.toggle("active",b===btn));
+    document.getElementById("roleLabel").textContent=role==="admin"?"管理员 · 覃祖悦":"普通同学 · 覃祖悦";
+    render(); showToast(role==="admin"?"已切换为管理员视角":"已切换为普通同学视角");
+  });
+  document.getElementById("resetBtn").addEventListener("click",()=>{ docs=seedDocs(); logs=seedLogs(); save(); render(); renderLogs(); showToast("演示数据已重置"); });
+
+  let toastTimer;
+  function showToast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),2200); }
+
+  load(); render(); renderLogs();
+  if(!storageOK) showToast("当前浏览器不支持本地保存，刷新后数据会还原");
+</script>
+</body>
+</html>

@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案B · 低代码后台操作台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%233B82F6'/%3E%3Crect x='5' y='5' width='6' height='6' rx='1' fill='white'/%3E%3Crect x='13' y='5' width='6' height='6' rx='1' fill='white' opacity='.7'/%3E%3Crect x='5' y='13' width='6' height='6' rx='1' fill='white' opacity='.7'/%3E%3Crect x='13' y='13' width='6' height='6' rx='1' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --side:#172033; --side-2:#22304a; --primary:#3B82F6; --primary-soft:#EAF2FF;
+    --bg:#F3F5F9; --card:#FFFFFF; --line:#E6EAF1; --text:#1E293B; --muted:#64748B;
+    --green:#16A34A; --green-soft:#EAF7EF; --orange:#F97316; --orange-soft:#FFF1E6;
+    --red:#EF4444; --gray:#94A3B8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+
+  .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+  aside{background:var(--side);color:#CBD5E1;display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 16px}
+  .brand-mark{width:30px;height:30px;border-radius:8px;background:var(--primary);display:flex;align-items:center;justify-content:center}
+  .brand-mark svg{width:16px;height:16px}
+  .brand-name{font-weight:700;color:#fff;font-size:15px}
+  .brand-sub{font-size:11px;color:#7C8DB0}
+  nav{padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+  nav button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:transparent;color:#CBD5E1;padding:10px 12px;border-radius:8px;font-size:13px;cursor:pointer;text-align:left}
+  nav button svg{width:16px;height:16px;flex:none}
+  nav button.active{background:var(--side-2);color:#fff;font-weight:600}
+  nav button.active svg{color:var(--primary)}
+  .side-foot{margin-top:auto;padding:14px 16px;border-top:1px solid #2A3752;font-size:12px;color:#7C8DB0}
+  .side-foot b{color:#fff}
+
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{background:#fff;border-bottom:1px solid var(--line);padding:14px 22px;display:flex;align-items:center;gap:14px}
+  .crumb{font-weight:600}
+  .crumb span{color:var(--muted);font-weight:400;font-size:12px;margin-left:8px}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:7px 12px;color:var(--muted)}
+  .search input{border:0;outline:0;width:160px;font-size:13px;background:transparent}
+  .bell{position:relative;width:34px;height:34px;border-radius:8px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;background:#fff}
+  .bell svg{width:16px;height:16px}
+  .bell i{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--red)}
+  .who{display:flex;align-items:center;gap:8px}
+  .who .avatar{width:30px;height:30px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+
+  .content{padding:22px;display:flex;flex-direction:column;gap:18px}
+
+  .plan{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:16px}
+  .plan-title{font-weight:700;font-size:15px}
+  .plan-title small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:4px}
+  .plan-item .k{color:var(--muted);font-size:12px;margin-bottom:2px}
+  .plan-item .v{font-weight:600;font-size:13px}
+  .plan-item .v.warn{color:var(--orange)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .card-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  .card-head h3{font-size:15px}
+  .card-head .more{margin-left:auto;font-size:12px;color:var(--primary);cursor:pointer}
+  .card-body{padding:18px}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
+  .stat .label{color:var(--muted);font-size:12px}
+  .stat .num{font-size:26px;font-weight:700;margin:4px 0;font-variant-numeric:tabular-nums}
+  .stat .delta{font-size:12px;color:var(--green)}
+  .stat .delta.off{color:var(--orange)}
+
+  .two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:18px}
+  .bar-row{display:grid;grid-template-columns:80px 1fr 40px;gap:12px;align-items:center;padding:8px 0}
+  .bar-row .cat{font-size:13px;color:var(--muted)}
+  .bar-track{height:10px;background:#EEF2F7;border-radius:999px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:999px;background:var(--primary)}
+  .bar-row .n{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+
+  .table-scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{padding:12px 16px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);word-break:break-word}
+  th{background:#F8FAFC;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:0}
+  .tag{display:inline-flex;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .tag.green{background:var(--green-soft);color:var(--green)}
+  .tag.orange{background:var(--orange-soft);color:var(--orange)}
+  .tag.blue{background:var(--primary-soft);color:var(--primary)}
+  .tag.gray{background:#F1F5F9;color:var(--gray)}
+  .tag.red{background:#FDECEC;color:var(--red)}
+  .op{color:var(--primary);cursor:pointer;margin-right:12px;font-size:13px}
+
+  .approve{display:flex;flex-direction:column;gap:12px}
+  .app-item{border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;gap:14px;align-items:flex-start}
+  .app-item .meta{flex:1;min-width:0}
+  .app-item .meta b{font-size:14px}
+  .app-item .meta p{color:var(--muted);font-size:12px;margin-top:2px}
+  .app-actions{display:flex;gap:8px;flex:none}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer}
+  .btn.ok{background:var(--green);border-color:var(--green);color:#fff}
+  .btn.no{color:var(--red)}
+  .btn.danger{color:var(--red)}
+
+  .role-desc{color:var(--muted);font-size:12px}
+  .log-foot{margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .log-foot .count{color:var(--muted);font-size:12px}
+  .empty{text-align:center;color:var(--muted);padding:36px 0;font-size:13px}
+
+  footer{padding:0 22px 24px;color:var(--muted);font-size:12px}
+  #toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(20px);background:#1E293B;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:99}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:900px){
+    .shell{grid-template-columns:1fr}
+    nav{flex-direction:row;overflow-x:auto}
+    .side-foot{display:none}
+    .plan{grid-template-columns:1fr 1fr}
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .two-col{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside>
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="7" height="7" rx="1.2" fill="#fff"/><rect x="13" y="4" width="7" height="7" rx="1.2" fill="#fff" opacity=".65"/><rect x="4" y="13" width="7" height="7" rx="1.2" fill="#fff" opacity=".65"/><rect x="13" y="13" width="7" height="7" rx="1.2" fill="#fff"/></svg>
+      </div>
+      <div><div class="brand-name">班级操作台</div><div class="brand-sub">方案 B：低代码应用搭建台</div></div>
+    </div>
+    <nav id="nav">
+      <button class="active" data-view="dash">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        工作台概览
+      </button>
+      <button data-view="library">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+        材料库
+      </button>
+      <button data-view="approval">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+        审批中心
+      </button>
+      <button data-view="members">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        成员与权限
+      </button>
+      <button data-view="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+        操作日志
+      </button>
+      <button data-view="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        系统设置
+      </button>
+    </nav>
+    <div class="side-foot">当前身份：<b>管理员 · 覃祖悦</b></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb" id="crumb">工作台概览<span>班级操作台 / 概览</span></div>
+      <div class="top-right">
+        <div class="search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input placeholder="搜索材料 / 成员">
+        </div>
+        <div class="bell" onclick="showToast('原型演示：暂无新通知')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><i></i></div>
+        <div class="who"><div class="avatar">覃</div></div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <section class="plan">
+        <div class="plan-title">方案二：低代码平台后台
+          <small>拖拽搭建表单、列表、审批与角色权限，平台自带审计日志</small>
+        </div>
+        <div class="plan-item"><div class="k">实现方式</div><div class="v">低代码平台拖拽配置</div></div>
+        <div class="plan-item"><div class="k">开发量 / 周期</div><div class="v">少量拖拽 · 2-3 天</div></div>
+        <div class="plan-item"><div class="k">日志方式</div><div class="v">平台原生审计日志</div></div>
+        <div class="plan-item"><div class="k">信息安全</div><div class="v warn">需评估平台合规，文件独立存储</div></div>
+      </section>
+
+      <!-- 概览 -->
+      <section id="view-dash">
+        <div class="stats" id="stats"></div>
+        <div class="two-col" style="margin-top:18px">
+          <div class="card">
+            <div class="card-head"><h3>材料类别分布</h3><span class="more" onclick="switchView('library')">进入材料库</span></div>
+            <div class="card-body" id="catBars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>最近动态</h3></div>
+            <div class="card-body" id="recentList"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 材料库 -->
+      <section id="view-library" hidden>
+        <div class="card">
+          <div class="card-head"><h3>材料库</h3><span class="more">导出台账（演示）</span></div>
+          <div class="table-scroll">
+            <table>
+              <colgroup><col style="width:26%"><col style="width:15%"><col style="width:13%"><col style="width:18%"><col style="width:14%"><col style="width:14%"></colgroup>
+              <thead><tr><th>材料名称</th><th>类别</th><th>提交人</th><th>可见范围</th><th>审批状态</th><th>操作</th></tr></thead>
+              <tbody id="libBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 审批 -->
+      <section id="view-approval" hidden>
+        <div class="card">
+          <div class="card-head"><h3>待我审批</h3></div>
+          <div class="card-body approve" id="approveList"></div>
+        </div>
+      </section>
+
+      <!-- 成员权限 -->
+      <section id="view-members" hidden>
+        <div class="card">
+          <div class="card-head"><h3>角色与权限</h3></div>
+          <div class="table-scroll">
+            <table>
+              <colgroup><col style="width:18%"><col style="width:14%"><col style="width:38%"><col style="width:30%"></colgroup>
+              <thead><tr><th>角色</th><th>人数</th><th>权限说明</th><th>可见材料范围</th></tr></thead>
+              <tbody>
+                <tr><td><span class="tag blue">管理员</span></td><td>1</td><td class="role-desc">归档、审核、成员管理、日志查看</td><td>全部材料</td></tr>
+                <tr><td><span class="tag gray">班委</span></td><td>4</td><td class="role-desc">提交、维护分管类别材料，不可删除</td><td>分管类别 + 公开材料</td></tr>
+                <tr><td><span class="tag gray">普通同学</span></td><td>31</td><td class="role-desc">提交本人材料，查看公开归档</td><td>公开材料 + 本人提交记录</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 日志 -->
+      <section id="view-logs" hidden>
+        <div class="card">
+          <div class="card-head"><h3>操作审计日志</h3><span class="more">平台原生记录，不可删除</span></div>
+          <div class="table-scroll">
+            <table>
+              <colgroup><col style="width:18%"><col style="width:14%"><col style="width:14%"><col style="width:26%"><col style="width:18%"><col style="width:10%"></colgroup>
+              <thead><tr><th>时间</th><th>用户</th><th>模块</th><th>动作</th><th>来源</th><th>结果</th></tr></thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
+          <div class="log-foot" style="padding:0 18px 18px">
+            <span class="count" id="logCount"></span>
+            <button class="btn danger" id="resetBtn">重置演示数据</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section id="view-settings" hidden>
+        <div class="card">
+          <div class="card-head"><h3>系统设置</h3></div>
+          <div class="card-body" style="color:var(--muted)">原型演示区：表单字段、审批流程、消息通知等配置项在低代码平台后台拖拽完成，本页仅展示入口。</div>
+        </div>
+      </section>
+
+    </div>
+    <footer>样品边界：本页为方案形态原型，统计、列表、日志均为本地演示数据，未连接真实低代码平台与后端；审批按钮反馈仅作演示。</footer>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const LS_DOCS="planB_docs_v1", LS_LOGS="planB_logs_v1";
+  let docs=[], logs=[];
+  let storageOK=true;
+  try{ localStorage.setItem("__p","1"); localStorage.removeItem("__p"); }catch(e){ storageOK=false; }
+
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function fmtTime(d){ return pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes()); }
+  function nextId(a){ return a.length?Math.max.apply(null,a.map(x=>x.id))+1:1; }
+
+  function seedDocs(){
+    return [
+      {id:1,name:"团日活动申报表",cat:"团务材料",who:"黄志强",scope:"全员可见",status:"已归档"},
+      {id:2,name:"奖学金评定证明复印件",cat:"奖助材料",who:"李雨桐",scope:"仅班委及以上",status:"待审核"},
+      {id:3,name:"社团招新活动新闻稿",cat:"宣传材料",who:"王浩宇",scope:"全员可见",status:"已归档"},
+      {id:4,name:"实践学分认定表",cat:"学分材料",who:"覃祖悦",scope:"本人 + 管理员",status:"已归档"},
+      {id:5,name:"班会签到表",cat:"班级事务",who:"陈思颖",scope:"全员可见",status:"待审核"},
+      {id:6,name:"反诈舞台剧剧照素材包",cat:"宣传材料",who:"覃祖悦",scope:"全员可见",status:"已归档"},
+      {id:7,name:"体测成绩统计表",cat:"班级事务",who:"刘一帆",scope:"全员可见",status:"待审核"}
+    ];
+  }
+  function seedLogs(){
+    return [
+      {id:1,time:"11-14 11:20",who:"覃祖悦",mod:"材料库",act:"下载附件",src:"Web 端",res:"成功"},
+      {id:2,time:"11-14 11:07",who:"刘一帆",mod:"材料库",act:"上传文件",src:"移动端",res:"成功"},
+      {id:3,time:"11-14 10:30",who:"覃祖悦",mod:"审批中心",act:"通过归档",src:"Web 端",res:"成功"},
+      {id:4,time:"11-14 08:52",who:"陈思颖",mod:"材料库",act:"上传文件",src:"移动端",res:"成功"},
+      {id:5,time:"11-13 16:18",who:"覃祖悦",mod:"材料库",act:"编辑记录",src:"Web 端",res:"成功"},
+      {id:6,time:"11-13 14:40",who:"王浩宇",mod:"表单",act:"提交申请",src:"移动端",res:"成功"}
+    ];
+  }
+  function load(){
+    let rd=null,rl=null;
+    if(storageOK){ try{ rd=JSON.parse(localStorage.getItem(LS_DOCS)); }catch(e){} try{ rl=JSON.parse(localStorage.getItem(LS_LOGS)); }catch(e){} }
+    docs=Array.isArray(rd)&&rd.length?rd:seedDocs();
+    logs=Array.isArray(rl)&&rl.length?rl:seedLogs();
+    save();
+  }
+  function save(){ if(storageOK){ localStorage.setItem(LS_DOCS,JSON.stringify(docs)); localStorage.setItem(LS_LOGS,JSON.stringify(logs)); } }
+  function addLog(mod,act,src){ logs.unshift({id:nextId(logs),time:fmtTime(new Date()),who:"覃祖悦",mod:mod,act:act,src:src||"Web 端",res:"成功"}); save(); }
+
+  function statusTag(s){
+    if(s==="已归档") return '<span class="tag green">已归档</span>';
+    if(s==="已驳回") return '<span class="tag red">已驳回</span>';
+    if(s==="待补材料") return '<span class="tag orange">待补材料</span>';
+    return '<span class="tag orange">待审核</span>';
+  }
+
+  function renderStats(){
+    const pending=docs.filter(d=>d.status==="待审核").length;
+    const archived=docs.filter(d=>d.status==="已归档").length;
+    document.getElementById("stats").innerHTML=`
+      <div class="stat"><div class="label">材料总数</div><div class="num">${docs.length}</div><div class="delta">本周 +12</div></div>
+      <div class="stat"><div class="label">待审核</div><div class="num">${pending}</div><div class="delta off">需今日处理</div></div>
+      <div class="stat"><div class="label">已归档</div><div class="num">${archived}</div><div class="delta">归档率 ${docs.length?Math.round(archived/docs.length*100):0}%</div></div>
+      <div class="stat"><div class="label">班级成员</div><div class="num">36</div><div class="delta">班委 5 人</div></div>`;
+  }
+
+  function renderBars(){
+    const cats=["团务材料","奖助材料","学分材料","宣传材料","班级事务"];
+    const counts=cats.map(c=>({name:c,n:docs.filter(d=>d.cat===c).length}));
+    const max=Math.max.apply(null,counts.map(c=>c.n).concat([1]));
+    document.getElementById("catBars").innerHTML=counts.map(c=>`
+      <div class="bar-row"><div class="cat">${c.name}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c.n/max*100)}%"></div></div>
+      <div class="n">${c.n}</div></div>`).join("");
+  }
+
+  function renderRecent(){
+    document.getElementById("recentList").innerHTML=logs.slice(0,4).map(l=>`
+      <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)">
+        <div style="color:var(--muted);font-size:12px;min-width:72px;font-variant-numeric:tabular-nums">${l.time}</div>
+        <div style="font-size:13px">${l.who} ${l.act} 了材料</div>
+      </div>`).join("");
+  }
+
+  function renderLib(){
+    const body=document.getElementById("libBody");
+    if(!docs.length){ body.innerHTML='<tr><td colspan="6"><div class="empty">暂无材料</div></td></tr>'; return; }
+    body.innerHTML=docs.map(d=>`
+      <tr>
+        <td>${d.name}</td><td style="color:var(--muted)">${d.cat}</td><td>${d.who}</td>
+        <td>${d.scope}</td><td>${statusTag(d.status)}</td>
+        <td><span class="op" onclick="showToast('原型演示：查看详情')">查看</span></td>
+      </tr>`).join("");
+  }
+
+  function renderApproval(){
+    const apps=docs.filter(d=>d.status==="待审核");
+    const box=document.getElementById("approveList");
+    if(!apps.length){ box.innerHTML='<div class="empty">暂无待审批材料</div>'; return; }
+    box.innerHTML=apps.map(d=>`
+      <div class="app-item">
+        <div class="meta"><b>${d.name}</b><p>${d.who} · ${d.cat} · ${d.scope}</p></div>
+        <div class="app-actions">
+          <button class="btn ok" onclick="approveDoc(${d.id})">通过</button>
+          <button class="btn no" onclick="rejectDoc(${d.id})">驳回</button>
+        </div>
+      </div>`).join("");
+  }
+
+  function renderLogs(){
+    const body=document.getElementById("logBody");
+    body.innerHTML=logs.length?logs.map(l=>`
+      <tr><td style="font-variant-numeric:tabular-nums">${l.time}</td><td>${l.who}</td><td>${l.mod}</td>
+      <td>${l.act}</td><td>${l.src}</td><td><span class="tag green">${l.res}</span></td></tr>`).join("")
+      : '<tr><td colspan="6"><div class="empty">暂无日志</div></td></tr>';
+    document.getElementById("logCount").textContent="共 "+logs.length+" 条记录";
+  }
+
+  function renderAll(){ renderStats(); renderBars(); renderRecent(); renderLib(); renderApproval(); renderLogs(); }
+
+  function approveDoc(id){
+    const d=docs.find(x=>x.id===id); if(!d)return;
+    d.status="已归档"; addLog("审批中心","通过归档"); save(); renderAll(); showToast("已通过审批并归档");
+  }
+  function rejectDoc(id){
+    const d=docs.find(x=>x.id===id); if(!d)return;
+    d.status="已驳回"; addLog("审批中心","驳回申请"); save(); renderAll(); showToast("已驳回，并写入审计日志");
+  }
+
+  document.getElementById("resetBtn").addEventListener("click",()=>{ docs=seedDocs(); logs=seedLogs(); save(); renderAll(); showToast("演示数据已重置"); });
+
+  const CRUMB={dash:"工作台概览",library:"材料库",approval:"审批中心",members:"成员与权限",logs:"操作日志",settings:"系统设置"};
+  function switchView(v){
+    Object.keys(CRUMB).forEach(k=>document.getElementById("view-"+k).hidden=k!==v);
+    document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
+    document.getElementById("crumb").innerHTML=CRUMB[v]+"<span>班级操作台 / "+CRUMB[v]+"</span>";
+  }
+  document.querySelectorAll("#nav button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
+
+  let toastTimer;
+  function showToast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),2200); }
+
+  load(); renderAll();
+  if(!storageOK) showToast("当前浏览器不支持本地保存，刷新后数据会还原");
+</script>
+</body>
+</html>

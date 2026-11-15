@@ -1,0 +1,35 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---- PyInstaller 打包产物 ----
+build/
+dist/
+*.spec
+
+# ---- 本机数据与运行日志（不入库）----
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+crash.log
+console.corrupt-*.db
+
+# ---- 本地回退备份 ----
+_backup/
+
+# ---- 临时日志与打包中间产物 ----
+*.log
+prep_out.txt
+pack_out.txt
+
+# ---- 系统 / 编辑器 ----
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案A · WPS多维表格操作台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%231E6FFF'/%3E%3Cpath d='M7 8h10M7 12h10M7 16h6' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --blue:#1E6FFF; --blue-soft:#E8F1FF; --bg:#F5F7FA; --card:#FFFFFF;
+    --line:#E5E9F0; --text:#1F2329; --muted:#646A73;
+    --green:#34A853; --green-soft:#E8F7EC; --orange:#FA8C16; --orange-soft:#FFF3E2; --red:#F53F3F;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px}
+
+  .prodbar{background:#fff;border-bottom:1px solid var(--line)}
+  .prodbar .wrap{display:flex;align-items:center;gap:12px;padding-top:12px;padding-bottom:12px;flex-wrap:wrap}
+  .logo{width:32px;height:32px;border-radius:8px;background:var(--blue);display:flex;align-items:center;justify-content:center;flex:none}
+  .logo svg{width:18px;height:18px}
+  .prod-name{font-weight:700;font-size:16px}
+  .prod-sub{color:var(--muted);font-size:12px;margin-left:4px}
+  .prod-right{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+
+  .plan{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0;display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:16px}
+  .plan-title{font-weight:700;font-size:15px}
+  .plan-title small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:4px}
+  .plan-item .k{color:var(--muted);font-size:12px;margin-bottom:2px}
+  .plan-item .v{font-weight:600;font-size:13px}
+  .plan-item .v.green{color:var(--green)}
+
+  .layout{display:grid;grid-template-columns:200px 1fr;gap:16px}
+  .side{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;align-self:start}
+  .side h4{font-size:12px;color:var(--muted);font-weight:600;padding:6px 10px}
+  .side-nav{display:flex;flex-direction:column;gap:2px}
+  .side-nav button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;text-align:left;padding:9px 10px;border-radius:8px;font-size:13px;color:var(--text);cursor:pointer}
+  .side-nav button svg{width:15px;height:15px;flex:none;color:var(--muted)}
+  .side-nav button.active{background:var(--blue-soft);color:var(--blue);font-weight:600}
+  .side-nav button.active svg{color:var(--blue)}
+
+  .pane{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tabs{display:flex;gap:4px;padding:10px 12px 0;border-bottom:1px solid var(--line)}
+  .tab{border:0;background:transparent;padding:10px 14px;font-size:13px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.active{color:var(--blue);font-weight:600;border-bottom-color:var(--blue)}
+  .pane-body{padding:16px}
+
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .search{flex:1;min-width:160px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;color:var(--muted)}
+  .search input{border:0;outline:0;flex:1;font-size:13px;background:transparent}
+  select.filter{border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;background:#fff}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;color:var(--text)}
+  .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn.danger{color:var(--red)}
+
+  .table-scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{padding:11px 12px;text-align:left;font-size:13px;border-bottom:1px solid var(--line);word-break:break-word}
+  th{background:#F7F9FC;color:var(--muted);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:0}
+  .tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .tag.green{background:var(--green-soft);color:var(--green)}
+  .tag.orange{background:var(--orange-soft);color:var(--orange)}
+  .cat{color:var(--muted)}
+  .op{color:var(--blue);cursor:pointer;margin-right:12px;font-size:13px}
+  .file-cell{color:var(--muted);font-size:12px}
+  .file-cell.has{color:var(--blue)}
+
+  .form-card{max-width:560px;margin:0 auto}
+  .form-card h3{font-size:16px;margin-bottom:4px}
+  .form-card p.tip{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+  .field label .req{color:var(--red);margin-left:2px}
+  .field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;background:#fff}
+  .field textarea{resize:vertical;min-height:72px}
+  .upload{border:1.5px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer}
+  .upload svg{width:22px;height:22px;margin-bottom:6px;color:var(--muted)}
+  .upload-name{margin-top:6px;font-size:12px;color:var(--blue)}
+  .form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+
+  .note{background:var(--blue-soft);border-radius:10px;padding:10px 14px;color:var(--blue);font-size:12px;margin-bottom:14px}
+  .log-item{display:grid;grid-template-columns:150px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .log-item:last-child{border-bottom:0}
+  .log-time{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .log-body{font-size:13px}
+  .log-body b{font-weight:600}
+  .log-body .act{color:var(--blue);font-weight:600}
+  .log-foot{margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .log-foot .count{color:var(--muted);font-size:12px}
+  .empty{text-align:center;color:var(--muted);padding:36px 0;font-size:13px}
+
+  footer{max-width:1180px;margin:16px auto 24px;padding:0 16px;color:var(--muted);font-size:12px}
+  #toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(20px);background:#1F2329;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:99}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:860px){
+    .plan{grid-template-columns:1fr 1fr}
+    .layout{grid-template-columns:1fr}
+    .side{display:flex;overflow-x:auto}
+    .side h4{display:none}
+    .side-nav{flex-direction:row}
+  }
+</style>
+</head>
+<body>
+
+<header class="prodbar">
+  <div class="wrap">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>
+    <div>
+      <span class="prod-name">班级云库 · 操作台</span>
+      <span class="prod-sub">方案 A：WPS 多维表格 + 收集表单</span>
+    </div>
+    <div class="prod-right">
+      <span>校内 WPS 云文档</span>
+      <div class="avatar">覃</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="plan">
+    <div class="plan-title">方案一：WPS 多维表格 + 收集表单
+      <small>依托学校已有 WPS 生态，零代码搭建，文件本体存校内云盘</small>
+    </div>
+    <div class="plan-item"><div class="k">实现方式</div><div class="v">多维表格台账 + 表单收集</div></div>
+    <div class="plan-item"><div class="k">开发量 / 周期</div><div class="v">零代码 · 约 1 天</div></div>
+    <div class="plan-item"><div class="k">日志方式</div><div class="v">修订记录 + 自动化字段</div></div>
+    <div class="plan-item"><div class="k">信息安全</div><div class="v green">依托校内 WPS，合规可控</div></div>
+  </section>
+
+  <div class="layout">
+    <aside class="side">
+      <h4>数据表 / 表单</h4>
+      <nav class="side-nav" id="sideNav">
+        <button class="active" data-view="table">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>
+          材料归档台账
+        </button>
+        <button data-view="form">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4"/></svg>
+          材料收集表单
+        </button>
+        <button data-view="log">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          操作记录
+        </button>
+      </nav>
+    </aside>
+
+    <section class="pane">
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-view="table">归档台账</button>
+        <button class="tab" data-view="form">收集表单</button>
+        <button class="tab" data-view="log">操作记录</button>
+      </div>
+
+      <div class="pane-body">
+
+        <div id="view-table">
+          <div class="toolbar">
+            <div class="search">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="searchInput" placeholder="搜索材料名称、提交人…">
+            </div>
+            <select class="filter" id="catFilter">
+              <option value="全部">全部类别</option>
+              <option>团务材料</option><option>奖助材料</option><option>学分材料</option>
+              <option>宣传材料</option><option>班级事务</option>
+            </select>
+            <button class="btn primary" onclick="switchView('form')">新增材料记录</button>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <colgroup><col style="width:26%"><col style="width:13%"><col style="width:13%"><col style="width:17%"><col style="width:13%"><col style="width:13%"><col style="width:15%"></colgroup>
+              <thead><tr><th>材料名称</th><th>类别</th><th>提交人</th><th>提交时间</th><th>状态</th><th>附件</th><th>操作</th></tr></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="view-form" hidden>
+          <div class="form-card">
+            <h3>班级材料提交表单</h3>
+            <p class="tip">同学填写后自动汇入「材料归档台账」，并生成一条提交记录。</p>
+            <form id="submitForm">
+              <div class="field"><label>姓名<span class="req">*</span></label><input type="text" id="fName" placeholder="请输入姓名" required></div>
+              <div class="field"><label>学号<span class="req">*</span></label><input type="text" id="fSid" placeholder="请输入学号" required></div>
+              <div class="field">
+                <label>材料类别<span class="req">*</span></label>
+                <select id="fCat" required>
+                  <option value="">请选择类别</option>
+                  <option>团务材料</option><option>奖助材料</option><option>学分材料</option>
+                  <option>宣传材料</option><option>班级事务</option>
+                </select>
+              </div>
+              <div class="field"><label>材料说明</label><textarea id="fNote" placeholder="补充材料用途、对应活动等信息"></textarea></div>
+              <div class="field">
+                <label>上传附件</label>
+                <div class="upload" id="uploadBox">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0 4 4m-4-4L8 8"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                  <div>点击选择附件（演示版仅记录文件名）</div>
+                  <div class="upload-name" id="fileName"></div>
+                </div>
+                <input type="file" id="fFile" hidden>
+              </div>
+              <div class="form-actions">
+                <button type="reset" class="btn">清空</button>
+                <button type="submit" class="btn primary">提交材料</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div id="view-log" hidden>
+          <div class="note">日志来源：多维表格自带修订记录 + 自动化规则（新增记录自动写入操作人、时间、动作类型）。</div>
+          <div id="logList"></div>
+          <div class="log-foot">
+            <span class="count" id="logCount"></span>
+            <button class="btn danger" id="resetBtn">重置演示数据</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+<footer>样品边界：本页为方案形态原型，台账与日志为本地演示数据，未连接真实 WPS 多维表格与后端；附件仅记录文件名。</footer>
+
+<div id="toast"></div>
+
+<script>
+  const LS_DOCS = "planA_docs_v1", LS_LOGS = "planA_logs_v1";
+  let docs = [], logs = [], pickedFile = "";
+  let storageOK = true;
+  try{ localStorage.setItem("__p","1"); localStorage.removeItem("__p"); }catch(e){ storageOK = false; }
+
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function fmtTime(d){ return pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes()); }
+  function nextId(a){ return a.length ? Math.max.apply(null, a.map(x=>x.id))+1 : 1; }
+
+  function seedDocs(){
+    return [
+      {id:1,name:"团日活动申报表",cat:"团务材料",who:"黄志强",sid:"250211",note:"十月主题团日活动",file:"",time:"11-12 09:24",status:"已归档"},
+      {id:2,name:"奖学金评定证明复印件",cat:"奖助材料",who:"李雨桐",sid:"250203",note:"校级奖学金评定",file:"证明复印件.pdf",time:"11-12 10:05",status:"待审核"},
+      {id:3,name:"社团招新活动新闻稿",cat:"宣传材料",who:"王浩宇",sid:"250217",note:"计算机网络协会招新",file:"新闻稿.docx",time:"11-13 14:40",status:"已归档"},
+      {id:4,name:"实践学分认定表",cat:"学分材料",who:"覃祖悦",sid:"250201",note:"暑期实践学分认定",file:"认定表.pdf",time:"11-13 16:18",status:"已归档"},
+      {id:5,name:"班会签到表",cat:"班级事务",who:"陈思颖",sid:"250208",note:"11 月第二次班会",file:"签到表.xlsx",time:"11-14 08:52",status:"待审核"},
+      {id:6,name:"反诈舞台剧剧照素材包",cat:"宣传材料",who:"覃祖悦",sid:"250201",note:"《签名的重量》剧照",file:"素材包.zip",time:"11-14 10:30",status:"已归档"},
+      {id:7,name:"体测成绩统计表",cat:"班级事务",who:"刘一帆",sid:"250222",note:"本学期体测汇总",file:"",time:"11-14 11:07",status:"待补材料"}
+    ];
+  }
+  function seedLogs(){
+    return [
+      {id:1,time:"11-14 11:20",who:"覃祖悦",role:"管理员",act:"查看",obj:"反诈舞台剧剧照素材包"},
+      {id:2,time:"11-14 11:07",who:"刘一帆",role:"学生",act:"提交",obj:"体测成绩统计表"},
+      {id:3,time:"11-14 10:30",who:"覃祖悦",role:"管理员",act:"归档",obj:"反诈舞台剧剧照素材包"},
+      {id:4,time:"11-14 08:52",who:"陈思颖",role:"学生",act:"提交",obj:"班会签到表"},
+      {id:5,time:"11-13 16:18",who:"覃祖悦",role:"管理员",act:"修改",obj:"实践学分认定表"},
+      {id:6,time:"11-13 14:40",who:"王浩宇",role:"学生",act:"提交",obj:"社团招新活动新闻稿"}
+    ];
+  }
+  function load(){
+    let rd=null, rl=null;
+    if(storageOK){ try{ rd=JSON.parse(localStorage.getItem(LS_DOCS)); }catch(e){} try{ rl=JSON.parse(localStorage.getItem(LS_LOGS)); }catch(e){} }
+    docs = Array.isArray(rd)&&rd.length ? rd : seedDocs();
+    logs = Array.isArray(rl)&&rl.length ? rl : seedLogs();
+    save();
+  }
+  function save(){ if(storageOK){ localStorage.setItem(LS_DOCS,JSON.stringify(docs)); localStorage.setItem(LS_LOGS,JSON.stringify(logs)); } }
+  function addLog(act,obj,who,role){ logs.unshift({id:nextId(logs),time:fmtTime(new Date()),who:who,role:role||"学生",act:act,obj:obj}); save(); }
+
+  function statusTag(s){
+    if(s==="已归档") return '<span class="tag green">已归档</span>';
+    if(s==="待补材料") return '<span class="tag orange">待补材料</span>';
+    return '<span class="tag orange">待审核</span>';
+  }
+
+  function renderDocs(){
+    const q=document.getElementById("searchInput").value.trim().toLowerCase();
+    const cat=document.getElementById("catFilter").value;
+    const list=docs.filter(d=>(cat==="全部"||d.cat===cat)&&(!q||d.name.toLowerCase().includes(q)||d.who.toLowerCase().includes(q)));
+    const body=document.getElementById("tableBody");
+    if(!list.length){ body.innerHTML='<tr><td colspan="7"><div class="empty">没有符合条件的材料</div></td></tr>'; return; }
+    body.innerHTML=list.map(d=>`
+      <tr>
+        <td>${d.name}</td><td class="cat">${d.cat}</td><td>${d.who}</td>
+        <td style="font-variant-numeric:tabular-nums">${d.time}</td>
+        <td>${statusTag(d.status)}</td>
+        <td class="file-cell ${d.file?"has":""}">${d.file||"无附件"}</td>
+        <td>
+          <span class="op" onclick="viewDoc(${d.id})">查看</span>
+          ${d.status!=="已归档"?`<span class="op" onclick="archiveDoc(${d.id})">归档</span>`:""}
+        </td>
+      </tr>`).join("");
+  }
+  function renderLogs(){
+    const box=document.getElementById("logList");
+    box.innerHTML = logs.length ? logs.map(l=>`
+      <div class="log-item"><div class="log-time">${l.time}</div>
+      <div class="log-body"><b>${l.who}</b>（${l.role}）<span class="act">${l.act}</span> ${l.obj}</div></div>`).join("")
+      : '<div class="empty">暂无操作记录</div>';
+    document.getElementById("logCount").textContent = "共 "+logs.length+" 条记录";
+  }
+  function renderAll(){ renderDocs(); renderLogs(); }
+
+  function viewDoc(id){ const d=docs.find(x=>x.id===id); if(!d)return; addLog("查看",d.name,d.who,"学生"); renderLogs(); showToast("已查看："+d.name); }
+  function archiveDoc(id){ const d=docs.find(x=>x.id===id); if(!d)return; d.status="已归档"; addLog("归档",d.name,"覃祖悦","管理员"); save(); renderAll(); showToast("已归档，并写入操作记录"); }
+
+  document.getElementById("submitForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    const name=document.getElementById("fName").value.trim(), sid=document.getElementById("fSid").value.trim(),
+      cat=document.getElementById("fCat").value, note=document.getElementById("fNote").value.trim();
+    if(!name||!sid||!cat){ showToast("请填写姓名、学号并选择类别"); return; }
+    const doc={id:nextId(docs), name:note||(cat+" · "+name), cat:cat, who:name, sid:sid, note:note, file:pickedFile, time:fmtTime(new Date()), status:"待审核"};
+    docs.unshift(doc); addLog("提交",doc.name,name,"学生");
+    save(); renderAll();
+    this.reset(); pickedFile=""; document.getElementById("fileName").textContent="";
+    switchView("table"); showToast("材料已提交，进入待审核列表");
+  });
+  document.getElementById("uploadBox").addEventListener("click",()=>document.getElementById("fFile").click());
+  document.getElementById("fFile").addEventListener("change",function(){ pickedFile=this.files.length?this.files[0].name:""; document.getElementById("fileName").textContent=pickedFile?"已选择："+pickedFile:""; });
+  document.getElementById("searchInput").addEventListener("input",renderDocs);
+  document.getElementById("catFilter").addEventListener("change",renderDocs);
+  document.getElementById("resetBtn").addEventListener("click",()=>{ docs=seedDocs(); logs=seedLogs(); save(); renderAll(); showToast("演示数据已重置"); });
+
+  function switchView(v){
+    ["table","form","log"].forEach(x=>document.getElementById("view-"+x).hidden=x!==v);
+    document.querySelectorAll("#tabs .tab").forEach(t=>t.classList.toggle("active",t.dataset.view===v));
+    document.querySelectorAll("#sideNav button").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
+  }
+  document.querySelectorAll("#tabs .tab").forEach(t=>t.addEventListener("click",()=>switchView(t.dataset.view)));
+  document.querySelectorAll("#sideNav button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
+
+  let toastTimer;
+  function showToast(msg){ const el=document.getElementById("toast"); el.textContent=msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),2200); }
+
+  load(); renderAll();
+  if(!storageOK) showToast("当前浏览器不支持本地保存，刷新后数据会还原");
+</script>
+</body>
+</html>
