@@ -155,13 +155,36 @@ assert("移除名单", sandbox.findRosterBySid("250230") === null);
 const parsed = sandbox.parseRosterText("250231,钱七\n250232\t孙八\n\n250233，周九");
 assert("粘贴/CSV 解析三行", parsed.length === 3 && parsed[2].who === "周九");
 
+// 任务数据层与截止统计
+assert("种子任务 2 条", sandbox.listTasks().length === 2);
+const tst0 = sandbox.taskStats();
+assert("任务总数", tst0.total === 2);
+assert("任务已完成 1", tst0.done === 1);
+assert("进行中 1", tst0.ongoing === 1);
+const nt = sandbox.addTask({ title:"冒烟任务", cat:"宣传材料", deadline:sandbox.dateToday(), scope:"全员", note:"n" });
+assert("新增任务入列", sandbox.findTask(nt.id) != null);
+assert("今天截止计入临期", sandbox.taskStats().due === 1);
+let t1 = false; try { sandbox.addTask({ title:"", deadline:"2026-12-01" }); } catch(e){ t1 = true; }
+assert("缺标题拦截", t1);
+let t2 = false; try { sandbox.addTask({ title:"x", deadline:"" }); } catch(e){ t2 = true; }
+assert("缺截止日期拦截", t2);
+sandbox.toggleTask(nt.id);
+assert("完成切换", sandbox.findTask(nt.id).done === true);
+sandbox.updateTask(nt.id, { title:"改名任务" });
+assert("更新任务标题", sandbox.findTask(nt.id).title === "改名任务");
+sandbox.removeTask(nt.id);
+assert("移除任务", sandbox.findTask(nt.id) === null);
+const normT = sandbox.normalizeTask({ title:"x", cat:"c" }, 2);
+assert("任务兜底范围与完成态", normT.scope === "全员" && normT.done === false && normT.id === 3);
+
 // 备份/恢复结构
 const bk = sandbox.backup();
-assert("备份含 docs/logs/roster", Array.isArray(bk.docs) && Array.isArray(bk.logs) && Array.isArray(bk.roster));
+assert("备份含 docs/logs/roster/tasks", Array.isArray(bk.docs) && Array.isArray(bk.logs) && Array.isArray(bk.roster) && Array.isArray(bk.tasks));
 sandbox.restore(bk.docs, bk.logs);
 assert("旧备份缺 roster 兜底空数组", Array.isArray(sandbox.store.roster) && sandbox.store.roster.length === 0);
-sandbox.restore(bk.docs, bk.logs, bk.roster);
+sandbox.restore(bk.docs, bk.logs, bk.roster, bk.tasks);
 assert("恢复名单回填", sandbox.listRoster().length === 8);
+assert("恢复任务回填", sandbox.listTasks().length === 2);
 
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);
