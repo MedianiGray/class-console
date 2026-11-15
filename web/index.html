@@ -276,6 +276,7 @@
       <section class="view" id="view-dashboard"></section>
       <section class="view" id="view-docs"></section>
       <section class="view" id="view-roster"></section>
+      <section class="view" id="view-tasks"></section>
       <section class="view" id="view-submit"></section>
       <section class="view" id="view-logs"></section>
     </div>
@@ -385,9 +386,13 @@ var SEED_ROSTER = [
   {sid:"250205", who:"赵晓"},
   {sid:"250210", who:"孙倩"}
 ];
+var SEED_TASKS = [
+  {title:"十月团日材料收集", cat:"团务材料", scope:"全员", note:"收齐各小组团日活动记录", done:false, offset:3},
+  {title:"奖学金评定证明回收", cat:"奖助材料", scope:"班委", note:"核对证明复印件齐全", done:true, offset:-2}
+];
 
 /* ============ 本地缓存存储层（对齐仓库契约） ============ */
-var store = { docs: [], logs: [], roster: [], seq: { doc: 0, log: 0 } };
+var store = { docs: [], logs: [], roster: [], tasks: [], seq: { doc: 0, log: 0 } };
 
 function nowStr() {
   var d = new Date();
@@ -405,6 +410,7 @@ function loadStore() {
         store.docs = data.docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
         store.logs = data.logs.filter(function(l){ return l && typeof l === "object"; });
         store.roster = Array.isArray(data.roster) ? data.roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
+        store.tasks = Array.isArray(data.tasks) ? data.tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
         store.seq = data.seq || { doc: store.docs.length, log: store.logs.length };
         return;
       }
@@ -413,6 +419,12 @@ function loadStore() {
   store.docs = SEED_DOCS.map(function(d, i){ return Object.assign({id: i+1}, d); });
   store.logs = SEED_LOGS.map(function(l, i){ return Object.assign({id: i+1}, l); });
   store.roster = SEED_ROSTER.map(function(r, i){ return Object.assign({id: i+1}, r); });
+  store.tasks = SEED_TASKS.map(function(t, i){
+    var d = new Date(); d.setDate(d.getDate() + (t.offset || 0));
+    function pad(n){ return (n < 10 ? "0" : "") + n; }
+    var ds = d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+    return { id: i+1, title:t.title, cat:t.cat, scope:t.scope, note:t.note, done:t.done, deadline:ds };
+  });
   store.seq = { doc: store.docs.length, log: store.logs.length };
   saveStore();
 }
@@ -476,6 +488,52 @@ function addRoster(sid, who){
 }
 function removeRoster(id){ store.roster = store.roster.filter(function(r){ return r.id !== id; }); saveStore(); }
 
+/* ---- 任务 / 截止跟踪 ---- */
+function normalizeTask(raw, i){
+  return {
+    id: (i || 0) + 1,
+    title: clean(raw.title), cat: clean(raw.cat), scope: clean(raw.scope) || "全员",
+    deadline: clean(raw.deadline), note: clean(raw.note), done: !!raw.done
+  };
+}
+function listTasks(){ return store.tasks.slice().sort(function(a,b){ return a.deadline < b.deadline ? -1 : 1; }); }
+function findTask(id){ return store.tasks.find(function(t){ return t.id === id; }) || null; }
+function addTask(data){
+  var row = normalizeTask(data, store.seq.task || 0);
+  if (!row.title) throw new Error("任务标题不能为空");
+  if (!row.deadline) throw new Error("请选择截止日期");
+  var maxId = store.tasks.length ? Math.max.apply(null, store.tasks.map(function(x){ return x.id; })) : 0;
+  row.id = maxId + 1;
+  store.tasks.push(row); saveStore(); return row;
+}
+function updateTask(id, data){
+  var t = findTask(id); if (!t) return null;
+  ["title","cat","scope","deadline","note"].forEach(function(k){ if (data[k] != null) t[k] = clean(data[k]); });
+  if (typeof data.done === "boolean") t.done = data.done;
+  saveStore(); return t;
+}
+function removeTask(id){ store.tasks = store.tasks.filter(function(t){ return t.id !== id; }); saveStore(); }
+function toggleTask(id){ var t = findTask(id); if (t) { t.done = !t.done; saveStore(); } }
+
+function dateToday(){ var d = new Date(); function p(n){ return (n<10?"0":"")+n; }
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function daysUntil(deadline){
+  if (!deadline) return null;
+  var today = new Date(dateToday()); var dl = new Date(deadline + "T00:00:00");
+  return Math.round((dl - today) / 86400000);
+}
+function taskStats(){
+  var ongoing = 0, due = 0, overdue = 0, done = 0;
+  store.tasks.forEach(function(t){
+    if (t.done) { done++; return; }
+    var left = daysUntil(t.deadline);
+    if (left != null && left < 0) overdue++;
+    else if (left != null && left <= 2) due++;
+    ongoing++;
+  });
+  return { total: store.tasks.length, ongoing: ongoing, due: due, overdue: overdue, done: done };
+}
+
 /* 核对：应交（名单）/ 已交（有材料）/ 未交 / 名单外材料 */
 function rosterCheck(){
   var submitted = {};
@@ -500,8 +558,8 @@ function stats() {
     rejected: store.docs.filter(function(d){ return d.status === "已驳回"; }).length
   };
 }
-function backup(){ return { docs: store.docs, logs: store.logs, roster: store.roster }; }
-function restore(docs, logs, roster) {
+function backup(){ return { docs: store.docs, logs: store.logs, roster: store.roster, tasks: store.tasks }; }
+function restore(docs, logs, roster, tasks) {
   if (!Array.isArray(docs) || !Array.isArray(logs)) throw new Error("备份数据结构不正确");
   store.docs = docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
   store.logs = logs.filter(function(l){ return l && typeof l === "object"; }).map(function(l,i){
@@ -509,6 +567,7 @@ function restore(docs, logs, roster) {
       act:clean(l.act), obj:clean(l.obj), src:clean(l.src) || "本机"};
   });
   store.roster = Array.isArray(roster) ? roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
+  store.tasks = Array.isArray(tasks) ? tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
   store.seq = { doc: store.docs.length, log: store.logs.length };
   saveStore();
 }
@@ -525,6 +584,7 @@ var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"◫"},
   {key:"docs",      title:"材料台账",   ico:"▤"},
   {key:"roster",    title:"名单核对",   ico:"☺"},
+  {key:"tasks",     title:"任务跟踪",   ico:"◷"},
   {key:"submit",    title:"提交材料",   ico:"✎"},
   {key:"logs",      title:"操作日志",   ico:"☰"}
 ];
@@ -597,6 +657,7 @@ function refreshAll() {
   if (state.current === "dashboard") renderDashboard();
   else if (state.current === "docs") renderDocs();
   else if (state.current === "roster") renderRoster();
+  else if (state.current === "tasks") renderTasks();
   else if (state.current === "logs") renderLogs();
 }
 
@@ -607,16 +668,19 @@ function renderDashboard() {
   var pending = docs.filter(function(d){ return d.status === "待审核"; });
 
   var chk = rosterCheck();
+  var tsk = taskStats();
   var cardDefs = [
     {key:"total",    label:"材料总数", color:"var(--text)",   filter:"全部"},
     {key:"pending",  label:"待审核",   color:"var(--orange)", filter:"待审核"},
     {key:"archived", label:"已归档",   color:"var(--green)",  filter:"已归档"},
     {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"},
-    {key:"absent",   label:"未交材料", color:"var(--red)",    filter:"__roster"}
+    {key:"absent",   label:"未交材料", color:"var(--red)",    filter:"__roster"},
+    {key:"due",      label:"临期任务", color:"var(--orange)", filter:"__tasks"},
+    {key:"overdue",  label:"逾期任务", color:"var(--red)",    filter:"__tasks"}
   ];
   var cardsHtml = cardDefs.map(function(c){
-    var val = c.key === "absent" ? chk.absent.length : s[c.key];
-    var drill = c.filter === "__roster" ? "查看名单 →" : "查看台账 →";
+    var val = c.key === "absent" ? chk.absent.length : (c.key === "due" || c.key === "overdue") ? tsk[c.key] : s[c.key];
+    var drill = c.filter === "__roster" ? "查看名单 →" : c.filter === "__tasks" ? "查看任务 →" : "查看台账 →";
     return '<div class="card stat-card" data-filter="' + esc(c.filter) + '" role="button" tabindex="0">' +
       '<div class="num" style="color:' + c.color + '">' + val + "</div>" +
       '<div class="lbl">' + c.label + "</div>" +
@@ -647,7 +711,7 @@ function renderDashboard() {
 
   document.getElementById("view-dashboard").innerHTML =
     '<div class="dash-actions"><button class="btn primary" id="dashNew">提交新材料</button></div>' +
-    '<div class="cards" style="grid-template-columns:repeat(5,1fr)">' + cardsHtml + "</div>" +
+    '<div class="cards" style="grid-template-columns:repeat(7,1fr)">' + cardsHtml + "</div>" +
     '<div class="card panel" style="margin-bottom:14px"><h3>待审核 · 需处理（' + pending.length + "）</h3>" +
       '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
       "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
@@ -665,6 +729,7 @@ function renderDashboard() {
   document.querySelectorAll("#view-dashboard .stat-card").forEach(function(card){
     var go = function(){
       if (card.dataset.filter === "__roster") { switchView("roster"); return; }
+      if (card.dataset.filter === "__tasks") { switchView("tasks"); return; }
       drillByStatus(card.dataset.filter);
     };
     card.onclick = go;
@@ -1382,6 +1447,97 @@ function rosterClear() {
   });
 }
 
+/* ============ 任务 / 截止跟踪视图 ============ */
+function renderTasks() {
+  var st = taskStats();
+  var rows = listTasks();
+  var cards = [
+    {label:"进行中",    num:st.ongoing, color:"var(--text)"},
+    {label:"临期(≤2天)", num:st.due,    color:"var(--orange)"},
+    {label:"已逾期",    num:st.overdue, color:"var(--red)"},
+    {label:"已完成",    num:st.done,    color:"var(--green)"}
+  ].map(function(c){
+    return '<div class="card stat-card" style="cursor:default"><div class="num" style="color:' + c.color + '">' + c.num +
+      "</div><div class=\"lbl\">" + c.label + "</div></div>";
+  }).join("");
+
+  var trs = rows.map(function(t){
+    var left = daysUntil(t.deadline);
+    var mark;
+    if (t.done) mark = '<span class="tag green">已完成</span>';
+    else if (left < 0) mark = '<span class="tag red">已逾期 ' + (-left) + " 天</span>";
+    else if (left <= 2) mark = '<span class="tag orange">临期</span>';
+    else mark = '<span class="tag">进行中</span>';
+    var leftText = left == null ? "—" : (left < 0 ? "逾期 " + (-left) + " 天" :
+      left === 0 ? "今天截止" : left === 1 ? "明天截止" : "剩 " + left + " 天");
+    return "<tr><td>" + esc(t.title) + "</td><td>" + esc(t.cat || "—") + "</td><td class='num-col'>" +
+      esc(t.deadline) + "</td><td>" + mark + "</td>" +
+      '<td><button class="btn mini tg-toggle" data-id="' + t.id + '">' + (t.done ? "还原" : "完成") + "</button> " +
+      '<button class="btn mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
+      '<button class="btn mini danger tg-del" data-id="' + t.id + '">删除</button></td></tr>';
+  }).join("");
+  var body = trs || '<tr><td colspan="5" class="empty"><div class="empty-title">暂无任务</div>' +
+    '<div class="empty-sub">点上方「添加任务」登记要收的材料事项与截止日期</div></td></tr>';
+
+  document.getElementById("view-tasks").innerHTML =
+    '<div class="toolbar"><button class="btn primary" id="taskAdd">添加任务</button>' +
+    '<span class="hint" style="margin-left:auto">任务与截止提醒仅存本浏览器，随备份导出</span></div>' +
+    '<div class="cards" style="grid-template-columns:repeat(4,1fr)">' + cards + "</div>" +
+    '<div class="card panel"><div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:18%"><col></colgroup>' +
+    "<thead><tr><th>任务标题</th><th>类别</th><th>截止日期</th><th>状态</th><th>操作</th></tr></thead><tbody>" + body + "</tbody></table></div></div>";
+
+  document.getElementById("taskAdd").onclick = function(){ taskModal(null); };
+  document.querySelectorAll(".tg-toggle").forEach(function(b){
+    b.onclick = function(){ toggleTask(Number(b.dataset.id)); refreshAll(); };
+  });
+  document.querySelectorAll(".tg-edit").forEach(function(b){
+    b.onclick = function(){ taskModal(Number(b.dataset.id)); };
+  });
+  document.querySelectorAll(".tg-del").forEach(function(b){
+    b.onclick = function(){
+      var t = findTask(Number(b.dataset.id));
+      confirmModal("删除任务", "确定删除任务「" + (t ? t.title : "") + "」吗？", function(){
+        removeTask(Number(b.dataset.id)); refreshAll(); toast("任务已删除");
+      });
+    };
+  });
+}
+
+function taskModal(editId) {
+  var t = editId != null ? findTask(editId) : null;
+  var catOpts = CATS.map(function(c){ return "<option>" + esc(c) + "</option>"; }).join("");
+  showModal(t ? "编辑任务" : "添加任务",
+    '<div class="field"><label>任务标题 <span class="req">*</span></label><input id="tkTitle" type="text" autocomplete="off"></div>' +
+    '<div class="field"><label>关联类别</label><select id="tkCat"><option value="">未关联</option>' + catOpts + "</select></div>" +
+    '<div class="field"><label>截止日期 <span class="req">*</span></label><input id="tkDeadline" type="date"></div>' +
+    '<div class="field"><label>应交范围</label><select id="tkScope"><option>全员</option><option>班委</option></select></div>' +
+    '<div class="field"><label>备注</label><textarea id="tkNote" rows="2"></textarea></div>' +
+    '<div class="err" id="tkErr"></div>',
+    [
+      {label:"取消", cls:"btn"},
+      {label:"保存", cls:"btn primary", onClick:function(){
+        var data = {
+          title: document.getElementById("tkTitle").value,
+          cat: document.getElementById("tkCat").value,
+          deadline: document.getElementById("tkDeadline").value,
+          scope: document.getElementById("tkScope").value,
+          note: document.getElementById("tkNote").value
+        };
+        try {
+          if (t) updateTask(t.id, data); else addTask(data);
+        } catch(e){ document.getElementById("tkErr").textContent = e.message; return; }
+        refreshAll(); toast("任务已保存");
+      }}
+    ]);
+  if (t) {
+    document.getElementById("tkTitle").value = t.title;
+    document.getElementById("tkCat").value = t.cat || "";
+    document.getElementById("tkDeadline").value = t.deadline;
+    document.getElementById("tkScope").value = t.scope || "全员";
+    document.getElementById("tkNote").value = t.note || "";
+  }
+}
+
 /* ============ 操作日志与备份恢复 ============ */
 var ACT_TAG = { "提交":"green", "归档":"green", "驳回":"red", "查看":"muted", "修改":"orange" };
 
@@ -1520,7 +1676,7 @@ function importBackup(e) {
       toast("导入失败：备份结构不正确，docs / logs 应为列表"); return;
     }
     confirmModal("导入确认", "导入将覆盖本浏览器当前全部材料与操作日志，且不可撤销。确定继续导入吗？", function(){
-      try { restore(data.docs, data.logs, data.roster); }
+      try { restore(data.docs, data.logs, data.roster, data.tasks); }
       catch (err) { toast("导入失败：" + err.message); return; }
       state.selected = {}; state.selectedId = null;
       closeDrawer();
