@@ -28,10 +28,29 @@ def main():
     app.confirm = lambda title, msg: True
     root.update()
 
-    for k in ("dashboard", "submit", "logs", "docs"):
+    for k in ("dashboard", "docs", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
     print("视图切换 OK")
+
+    # 名单视图：添加 / 移除
+    rv = app.views["roster"]
+    repo.add_roster("250210", "孙倩")
+    rv.refresh(); root.update()
+    assert repo.find_roster_by_sid("250210") is not None
+    chk = repo.roster_check()
+    assert chk["total"] == 1
+    print("名单视图 OK")
+
+    # 任务视图：添加 / 切换完成 / 统计
+    tv = app.views["tasks"]
+    tid = repo.add_task({"title": "冒烟任务", "deadline": "2099-01-01"})
+    tv.refresh(); root.update()
+    assert repo.find_task(tid) is not None
+    repo.toggle_task(tid)
+    assert repo.find_task(tid)["done"] is True
+    repo.remove_task(tid)
+    print("任务视图 OK")
 
     sv = app.views["submit"]
 
@@ -57,6 +76,7 @@ def main():
     print("校验 OK")
 
     dv = app.views["docs"]
+    dv._reason_dialog = lambda title, prompt: {"ok": True, "reason": "冒烟备注"}
     first = dv.tree.get_children()[0]
     dv.tree.selection_set(first); dv.archive(); root.update()
     first = dv.tree.get_children()[0]
