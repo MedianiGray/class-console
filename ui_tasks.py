@@ -24,8 +24,7 @@ class TasksView(ttk.Frame):
 
     def _build(self):
         top = ttk.Frame(self)
-        top.pack(fill="x", padx=18, pady=(16, 10))
-        ttk.Label(top, text="任务与截止跟踪", style="Title.TLabel").pack(side="left")
+        top.pack(fill="x", padx=18, pady=(4, 10))
         self.summary = ttk.Label(top, text="", style="Muted.TLabel")
         self.summary.pack(side="right")
 
