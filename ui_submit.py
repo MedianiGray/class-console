@@ -24,11 +24,9 @@ class SubmitView(ttk.Frame):
         card.pack(padx=32, pady=24, fill="both", expand=True)
         card.columnconfigure(1, weight=1)
 
-        ttk.Label(card, text="提交班级材料", style="Title.TLabel").grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=24, pady=(22, 2))
         ttk.Label(card, text="带 * 为必填项，提交后进入待审核列表并生成操作记录",
-                  style="Sub.TLabel").grid(row=1, column=0, columnspan=2, sticky="w",
-                                           padx=24, pady=(0, 16))
+                  style="Sub.TLabel").grid(row=0, column=0, columnspan=2, sticky="w",
+                                           padx=24, pady=(12, 16))
 
         self.var_name = tk.StringVar()
         self.var_sid = tk.StringVar()
