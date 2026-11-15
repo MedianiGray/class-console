@@ -82,7 +82,8 @@ class-console/
 
 `web/index.html` 是单文件网页版，功能与桌面版对齐（看板、台账、提交、审核、日志、备份恢复），
 数据保存在浏览器 localStorage 缓存，离线可用、无需后端。直接用浏览器打开该文件即可；
-部署到 GitHub Pages 后可通过公网网址预览。注意：浏览器缓存与桌面版 SQLite 数据各自独立，互不同步。
+已部署到 GitHub Pages，公网预览：<https://medianigray.github.io/class-console/>。
+注意：浏览器缓存与桌面版 SQLite 数据各自独立，互不同步。
 
 ### 从源码运行（调试）
 
