@@ -21,9 +21,8 @@ class DashboardView(ttk.Frame):
 
     def _build(self):
         header = ttk.Frame(self)
-        header.pack(fill="x", padx=18, pady=(16, 12))
-        ttk.Label(header, text="工作台概览", style="Title.TLabel").pack(side="left")
-        ttk.Label(header, text="材料收集、审核与留痕一览", style="Sub.TLabel").pack(side="left", padx=10)
+        header.pack(fill="x", padx=18, pady=(4, 10))
+        ttk.Label(header, text="材料收集、审核与留痕一览", style="Sub.TLabel").pack(side="left")
 
         # 统计卡片
         cards = ttk.Frame(self)
@@ -45,21 +44,35 @@ class DashboardView(ttk.Frame):
                      bg=C["card"]).pack(anchor="w", padx=16, pady=(0, 14))
             self.card_values[key] = num
 
-        # 名单 / 任务摘要入口
+        # 名单 / 任务摘要入口（浅底 chip）
         notice = ttk.Frame(self)
         notice.pack(fill="x", padx=18, pady=(10, 0))
-        self.roster_hint = tk.Label(notice, text="", fg=C["primary"], cursor="hand2",
-                                    bg=C["bg"])
-        self.roster_hint.pack(side="left")
-        self.task_hint = tk.Label(notice, text="", fg=C["primary"], cursor="hand2",
-                                  bg=C["bg"])
-        self.task_hint.pack(side="left", padx=16)
+        self.roster_chip, self.roster_hint = self._make_chip(notice)
+        self.roster_chip.pack(side="left")
+        self.task_chip, self.task_hint = self._make_chip(notice)
+        self.task_chip.pack(side="left", padx=10)
         self.roster_hint.bind("<Button-1>", lambda e: self.window.switch("roster"))
         self.task_hint.bind("<Button-1>", lambda e: self.window.switch("tasks"))
 
-        # 中部两栏：类别分布 / 近期动态
+        # 待审核置顶（优先处理，按内容高度排布）
+        bottom = ttk.LabelFrame(self, text="待审核 · 需处理")
+        bottom.pack(fill="x", padx=18, pady=(14, 0))
+        doc_cols = ("name", "who", "sid", "time")
+        self.doc_tree = ttk.Treeview(bottom, columns=doc_cols, show="headings",
+                                     selectmode="browse", height=5)
+        doc_heads = {"name": "材料名称", "who": "提交人", "sid": "学号", "time": "提交时间"}
+        doc_widths = {"name": 300, "who": 100, "sid": 100, "time": 130}
+        for c in doc_cols:
+            self.doc_tree.heading(c, text=doc_heads[c])
+            self.doc_tree.column(c, width=doc_widths[c], anchor="w", stretch=True)
+        self.doc_tree.pack(fill="x", padx=12, pady=10)
+        self.doc_tree.bind("<Double-1>", lambda e: self.window.switch("docs"))
+
+        self.doc_empty = ttk.Label(bottom, text="暂无待审核材料", style="Muted.TLabel")
+
+        # 中部两栏：类别分布 / 近期动态（占据剩余空间）
         mid = ttk.Frame(self)
-        mid.pack(fill="both", expand=True, padx=18, pady=(14, 0))
+        mid.pack(fill="both", expand=True, padx=18, pady=(14, 16))
         mid.columnconfigure(0, weight=1, uniform="m")
         mid.columnconfigure(1, weight=1, uniform="m")
 
@@ -73,26 +86,18 @@ class DashboardView(ttk.Frame):
         log_cols = ("time", "who", "act", "obj")
         self.log_tree = ttk.Treeview(right, columns=log_cols, show="headings", selectmode="browse")
         log_heads = {"time": "时间", "who": "操作人", "act": "动作", "obj": "对象"}
-        log_widths = {"time": 110, "who": 90, "act": 70, "obj": 220}
+        log_widths = {"time": 92, "who": 76, "act": 58, "obj": 180}
         for c in log_cols:
             self.log_tree.heading(c, text=log_heads[c])
             self.log_tree.column(c, width=log_widths[c], anchor="w", stretch=True)
         self.log_tree.pack(fill="both", expand=True, padx=12, pady=10)
 
-        # 底部：待审核置顶
-        bottom = ttk.LabelFrame(self, text="待审核 · 需处理")
-        bottom.pack(fill="both", expand=True, padx=18, pady=(14, 16))
-        doc_cols = ("name", "who", "sid", "time")
-        self.doc_tree = ttk.Treeview(bottom, columns=doc_cols, show="headings", selectmode="browse")
-        doc_heads = {"name": "材料名称", "who": "提交人", "sid": "学号", "time": "提交时间"}
-        doc_widths = {"name": 300, "who": 100, "sid": 100, "time": 130}
-        for c in doc_cols:
-            self.doc_tree.heading(c, text=doc_heads[c])
-            self.doc_tree.column(c, width=doc_widths[c], anchor="w", stretch=True)
-        self.doc_tree.pack(fill="both", expand=True, padx=12, pady=10)
-        self.doc_tree.bind("<Double-1>", lambda e: self.window.switch("docs"))
-
-        self.doc_empty = ttk.Label(bottom, text="暂无待审核材料", style="Muted.TLabel")
+    def _make_chip(self, parent):
+        chip = tk.Frame(parent, bg=C["primary_soft"])
+        lbl = tk.Label(chip, text="", fg=C["primary"], bg=C["primary_soft"],
+                       cursor="hand2", font=(FONT, 10))
+        lbl.pack(padx=12, pady=6)
+        return chip, lbl
 
     def refresh(self):
         try:
@@ -124,7 +129,7 @@ class DashboardView(ttk.Frame):
             bar_bg.pack(side="left", fill="x", expand=True, padx=8)
             if n > 0:
                 bar = tk.Frame(bar_bg, bg=C["primary"], height=10)
-                bar.pack(side="left", fill="y", ipadx=int(160 * n / total))
+                bar.place(relwidth=n / total, relheight=1, rely=0)
             tk.Label(row, text=str(n), width=4, anchor="e", bg=C["card"],
                      fg=C["muted"]).pack(side="right")
 
