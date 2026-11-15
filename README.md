@@ -53,6 +53,8 @@ class-console/
 ├── tests/
 │   ├── selftest.py          # 数据层回归自检（临时库，不碰本机数据）
 │   └── gui_smoke.py         # 界面冒烟回归
+├── web/
+│   └── index.html           # 浏览器本地缓存版（单文件，localStorage 持久化，可挂 Pages 预览）
 ├── prototypes/              # 早期网页 UI 概念原型（静态 HTML，非可运行应用）
 │   ├── 方案A-WPS多维表格原型.html
 │   ├── 方案B-低代码后台原型.html
@@ -74,6 +76,12 @@ class-console/
 
 前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.2.2)
 下载附件 `class-console-v0.2.2.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
+
+### 浏览器本地缓存版
+
+`web/index.html` 是单文件网页版，功能与桌面版对齐（看板、台账、提交、审核、日志、备份恢复），
+数据保存在浏览器 localStorage 缓存，离线可用、无需后端。直接用浏览器打开该文件即可；
+部署到 GitHub Pages 后可通过公网网址预览。注意：浏览器缓存与桌面版 SQLite 数据各自独立，互不同步。
 
 ### 从源码运行（调试）
 
