@@ -112,6 +112,16 @@ assert("偏好回填密度", sandbox.docsFilter.density === "compact");
 assert("偏好回填条数", sandbox.docsFilter.pageSize === 25);
 assert("名称列冻结类", sandbox.renderCell({name:"x", sid:"1", time:"", status:"待审核"}, "name").indexOf("sticky-l1") >= 0);
 
+// schema 校验与兜底
+const vErr = sandbox.validateRecord("doc", { name: "", who: "", sid: "abc", cat: "" });
+assert("校验拦截必填", vErr.name && vErr.who && vErr.cat);
+assert("校验拦截学号格式", /纯数字/.test(vErr.sid));
+const okErr = sandbox.validateRecord("doc", { name: "x", who: "y", sid: "250201", cat: "团务材料" });
+assert("合法记录无校验错", Object.keys(okErr).length === 0);
+const norm = sandbox.normalizeDoc({ name: "n", cat: "c" }, 3);
+assert("兜底补默认状态", norm.status === "待审核" && norm.scope === "全员" && norm.id === 4);
+assert("动作配置齐全", sandbox.typeDef("doc").actions.map(a => a.key).join(",") === "archive,reject");
+
 // 备份/恢复结构
 const bk = sandbox.backup();
 assert("备份含 docs/logs", Array.isArray(bk.docs) && Array.isArray(bk.logs));

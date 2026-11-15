@@ -315,6 +315,48 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
 
+/* ============ 类型配置（schema 驱动：列 / 字段 / 校验 / 动作 / 导出共用一份定义） ============ */
+/* 新增一类业务时，在此追加一段类型配置即可；列表、表单、校验、动作管线按配置渲染。 */
+var TYPES = {
+  doc: {
+    label: "材料",
+    searchKeys: ["name", "who", "sid"],
+    columns: [
+      {key:"name",  label:"材料名称", sortable:true, frozen:"l1"},
+      {key:"cat",   label:"类别",     sortable:false},
+      {key:"who",   label:"提交人",   sortable:true},
+      {key:"sid",   label:"学号",     sortable:true, num:true},
+      {key:"id",    label:"提交时间", sortable:true},
+      {key:"status",label:"状态",     sortable:true, tag:"status"},
+      {key:"file",  label:"附件",     sortable:false}
+    ],
+    fields: [
+      {key:"name", label:"材料名称", type:"text",     required:true},
+      {key:"who",  label:"姓名",     type:"text",     required:true},
+      {key:"sid",  label:"学号",     type:"sid",      required:true},
+      {key:"cat",  label:"材料类别", type:"select",   options:CATS, required:true},
+      {key:"note", label:"材料说明", type:"textarea"},
+      {key:"file", label:"附件",     type:"file"}
+    ],
+    statuses: ["待审核", "已归档", "已驳回"],
+    filters: [
+      {key:"cat",    label:"类别", options:["全部"].concat(CATS)},
+      {key:"status", label:"状态", options:STATUS_ALL}
+    ],
+    actions: [
+      {key:"archive", label:"归档", to:"已归档", role:"admin", cls:"primary",
+       confirm:function(r){ return "确定将「" + r.name + "」归档吗？归档后进入已归档列表。"; }},
+      {key:"reject",  label:"驳回", to:"已驳回", role:"admin", cls:"danger",
+       confirm:function(r){ return "确定驳回「" + r.name + "」吗？驳回后该材料将标记为已驳回。"; }}
+    ]
+  }
+};
+function typeDef(key){ return TYPES[key] || TYPES.doc; }
+function fieldDef(typeKey, key){
+  var f = typeDef(typeKey).fields.filter(function(x){ return x.key === key; })[0];
+  return f || null;
+}
+
 var SEED_DOCS = [
   {name:"团日活动申报表", cat:"团务材料", who:"黄志强", sid:"250211", note:"十月主题团日活动", file:"", time:"11-12 09:24", status:"已归档", scope:"全员"},
   {name:"奖学金评定证明复印件", cat:"奖助材料", who:"李雨桐", sid:"250203", note:"校级奖学金评定", file:"证明复印件.pdf", time:"11-12 10:05", status:"待审核", scope:"班委"},
@@ -349,7 +391,8 @@ function loadStore() {
     if (raw) {
       var data = JSON.parse(raw);
       if (data && Array.isArray(data.docs) && Array.isArray(data.logs)) {
-        store.docs = data.docs; store.logs = data.logs;
+        store.docs = data.docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
+        store.logs = data.logs.filter(function(l){ return l && typeof l === "object"; });
         store.seq = data.seq || { doc: store.docs.length, log: store.logs.length };
         return;
       }
@@ -380,12 +423,19 @@ function listDocs(q, cat) {
     return [d.name, d.who, d.sid].some(function(f){ return clean(f).toLowerCase().indexOf(q) >= 0; });
   }).sort(function(a,b){ return b.id - a.id; });
 }
+/* 按类型 schema 对一条记录做字段兜底，缺字段补空串，状态/范围给默认值 */
+function normalizeDoc(raw, i) {
+  var row = { id: i + 1 };
+  TYPES.doc.fields.forEach(function(f){ row[f.key] = clean(raw[f.key]); });
+  row.time = clean(raw.time);
+  row.status = clean(raw.status) || "待审核";
+  row.scope = clean(raw.scope) || "全员";
+  return row;
+}
 function addDoc(data) {
-  var row = {
-    name: clean(data.name), cat: clean(data.cat), who: clean(data.who), sid: clean(data.sid),
-    note: clean(data.note), file: clean(data.file), time: nowStr(),
-    status: "待审核", scope: clean(data.scope) || "全员"
-  };
+  var row = normalizeDoc(data, store.seq.doc);
+  row.time = nowStr();
+  row.status = "待审核";
   if (!row.name || !row.cat || !row.who) throw new Error("材料名称、类别、姓名不能为空");
   store.seq.doc += 1; row.id = store.seq.doc;
   store.docs.push(row); saveStore();
@@ -412,11 +462,7 @@ function stats() {
 function backup(){ return { docs: store.docs, logs: store.logs }; }
 function restore(docs, logs) {
   if (!Array.isArray(docs) || !Array.isArray(logs)) throw new Error("备份数据结构不正确");
-  store.docs = docs.filter(function(d){ return d && typeof d === "object"; }).map(function(d,i){
-    return {id: i+1, name:clean(d.name), cat:clean(d.cat), who:clean(d.who), sid:clean(d.sid),
-      note:clean(d.note), file:clean(d.file), time:clean(d.time),
-      status:clean(d.status) || "待审核", scope:clean(d.scope) || "全员"};
-  });
+  store.docs = docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
   store.logs = logs.filter(function(l){ return l && typeof l === "object"; }).map(function(l,i){
     return {id: i+1, time:clean(l.time), who:clean(l.who), role:clean(l.role),
       act:clean(l.act), obj:clean(l.obj), src:clean(l.src) || "本机"};
@@ -586,15 +632,7 @@ function drillByStatus(status) {
 
 /* ============ 材料台账：筛选 / 排序 / 分页 / 密度 ============ */
 var STATUS_TAG = { "已归档": "green", "已驳回": "red", "待审核": "orange", "待补材料": "orange" };
-var DOC_COLS = [
-  {key:"name",  label:"材料名称", sortable:true},
-  {key:"cat",   label:"类别", sortable:false},
-  {key:"who",   label:"提交人", sortable:true},
-  {key:"sid",   label:"学号", sortable:true},
-  {key:"id",    label:"提交时间", sortable:true},
-  {key:"status",label:"状态", sortable:true},
-  {key:"file",  label:"附件", sortable:false}
-];
+var DOC_COLS = TYPES.doc.columns;
 var COLS_KEY = "classconsole_web_cols";
 function hiddenCols(){ try { return JSON.parse(localStorage.getItem(COLS_KEY)) || []; } catch(e){ return []; } }
 function saveHiddenCols(arr){ try { localStorage.setItem(COLS_KEY, JSON.stringify(arr)); } catch(e){} }
@@ -696,21 +734,28 @@ function buildDocs() {
   });
 }
 
+function cellValue(d, key) {
+  if (key === "id") return d.time || "";
+  if (key === "file") return d.file || "无附件";
+  return d[key] == null ? "" : d[key];
+}
 function renderCell(d, key) {
-  if (key === "name") return "<td class='sticky-l1'>" + esc(d.name) + "</td>";
-  if (key === "cat") return "<td>" + esc(d.cat) + "</td>";
-  if (key === "who") return "<td>" + esc(d.who) + "</td>";
-  if (key === "sid") return "<td class='num-col'>" + esc(d.sid) + "</td>";
-  if (key === "id") return "<td>" + esc(d.time) + "</td>";
-  if (key === "status") { var tag = STATUS_TAG[d.status] || "orange"; return '<td><span class="tag ' + tag + '">' + esc(d.status) + "</span></td>"; }
-  if (key === "file") return "<td>" + esc(d.file || "无附件") + "</td>";
-  return "<td></td>";
+  var col = DOC_COLS.filter(function(c){ return c.key === key; })[0] || {};
+  var cls = [];
+  if (col.frozen === "l1") cls.push("sticky-l1");
+  if (col.num) cls.push("num-col");
+  var clsAttr = cls.length ? ' class="' + cls.join(" ") + '"' : "";
+  if (col.tag === "status") {
+    var tag = STATUS_TAG[d.status] || "orange";
+    return '<td' + clsAttr + '><span class="tag ' + tag + '">' + esc(d.status) + "</span></td>";
+  }
+  return "<td" + clsAttr + ">" + esc(cellValue(d, key)) + "</td>";
 }
 
 function renderHead() {
   var cols = visibleCols();
   var thHtml = cols.map(function(c){
-    var sticky = c.key === "name" ? " sticky-l1" : "";
+    var sticky = c.frozen === "l1" ? " sticky-l1" : "";
     if (!c.sortable) return "<th class='" + sticky.trim() + "'>" + esc(c.label) + "</th>";
     var ind = docsFilter.sortKey === c.key ? '<span class="sort-ind">' + (docsFilter.sortDir === "asc" ? "▲" : "▼") + "</span>" : "";
     return '<th class="sortable' + sticky + '" data-key="' + c.key + '">' + esc(c.label) + ind + "</th>";
@@ -944,29 +989,28 @@ function renderDrawer(d) {
   if (drR) drR.onclick = rejectSelected;
 }
 
-function archiveSelected() {
-  var d = findDoc(state.selectedId != null ? state.selectedId : state.drawerId);
-  if (!d) { toast("请先选择一条材料"); return; }
-  if (d.status === "已归档") { toast("该材料已是已归档状态"); return; }
-  confirmModal("归档确认", "确定将「" + d.name + "」归档吗？归档后进入已归档列表。", function(){
-    var saved = archiveDoc(d.id);
-    if (saved) { try { addLog("归档", saved.name, state.operatorName, roleLabel()); } catch(e){} }
+/* 通用动作管线：按类型配置校验角色、状态、确认文案，改状态并写留痕 */
+function runAction(typeKey, id, actionKey) {
+  var def = typeDef(typeKey);
+  var act = def.actions.filter(function(a){ return a.key === actionKey; })[0];
+  var d = findDoc(id);
+  if (!act) { toast("未知操作"); return; }
+  if (!d) { toast("请先选择一条" + def.label); return; }
+  if (state.role !== act.role) { toast("当前视角无权执行该操作"); return; }
+  if (d.status === act.to) { toast("该" + def.label + "已是" + act.to + "状态"); return; }
+  confirmModal(act.label + "确认", act.confirm(d), function(){
+    d.status = act.to; saveStore();
+    try { addLog(act.label, d.name, state.operatorName, roleLabel()); } catch(e){}
     refreshAll();
     if (state.drawerId != null && findDoc(state.drawerId)) renderDrawer(findDoc(state.drawerId));
-    toast("已归档，并写入操作日志");
+    toast("已" + act.label + "，并写入操作日志");
   });
 }
+function archiveSelected() {
+  runAction("doc", state.selectedId != null ? state.selectedId : state.drawerId, "archive");
+}
 function rejectSelected() {
-  var d = findDoc(state.selectedId != null ? state.selectedId : state.drawerId);
-  if (!d) { toast("请先选择一条材料"); return; }
-  if (d.status === "已驳回") { toast("该材料已是已驳回状态"); return; }
-  confirmModal("驳回确认", "确定驳回「" + d.name + "」吗？驳回后该材料将标记为已驳回。", function(){
-    var saved = rejectDoc(d.id);
-    if (saved) { try { addLog("驳回", saved.name, state.operatorName, roleLabel()); } catch(e){} }
-    refreshAll();
-    if (state.drawerId != null && findDoc(state.drawerId)) renderDrawer(findDoc(state.drawerId));
-    toast("已驳回，并写入操作日志");
-  });
+  runAction("doc", state.selectedId != null ? state.selectedId : state.drawerId, "reject");
 }
 
 /* ============ 提交材料 ============ */
@@ -1055,6 +1099,22 @@ function clearSubmit() {
 }
 
 function setFieldErr(id, msg){ var el = document.getElementById(id); if (el) el.textContent = msg || ""; }
+function cap(s){ return String(s).charAt(0).toUpperCase() + String(s).slice(1); }
+function errId(key){ return "e" + cap(key); }
+
+/* 按类型 schema 跑必填与格式校验，返回 {字段key: 报错文案} */
+function validateRecord(typeKey, values) {
+  var def = typeDef(typeKey), errs = {};
+  def.fields.forEach(function(f){
+    var v = clean(values[f.key]);
+    if (f.required && !v) { errs[f.key] = (f.type === "select" ? "请选择" : "请填写") + f.label; return; }
+    if (f.type === "sid" && v) {
+      if (!/^\d+$/.test(v)) errs[f.key] = "学号需为纯数字";
+      else if (!(v.length >= 4 && v.length <= 12)) errs[f.key] = "学号长度应为 4-12 位";
+    }
+  });
+  return errs;
+}
 
 function submitDoc() {
   var name = clean(document.getElementById("sName").value);
@@ -1063,17 +1123,11 @@ function submitDoc() {
   var cat = clean(document.getElementById("sCat").value);
   var note = clean(document.getElementById("sNote").value);
 
-  var errs = {};
-  if (!name) errs.name = "请填写材料名称";
-  if (!who) errs.who = "请填写姓名";
-  if (!sid) errs.sid = "请填写学号";
-  else if (!/^\d+$/.test(sid)) errs.sid = "学号需为纯数字";
-  else if (!(sid.length >= 4 && sid.length <= 12)) errs.sid = "学号长度应为 4-12 位";
-  if (!cat) errs.cat = "请选择材料类别";
-  setFieldErr("eName", errs.name);
-  setFieldErr("eWho", errs.who);
-  setFieldErr("eSid", errs.sid);
-  setFieldErr("eCat", errs.cat);
+  var errs = validateRecord("doc", {name:name, who:who, sid:sid, cat:cat, note:note});
+  typeDef("doc").fields.forEach(function(f){
+    if (f.type === "file") return;
+    setFieldErr(errId(f.key), errs[f.key]);
+  });
   var errEl = document.getElementById("sErr");
   if (Object.keys(errs).length) { errEl.textContent = ""; return; }
 
@@ -1086,7 +1140,7 @@ function submitDoc() {
     } catch (e) { errEl.textContent = "提交失败：" + e.message; return; }
     ["sName","sWho","sSid","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("sCat").value = "";
-    ["eName","eWho","eSid","eCat"].forEach(function(id){ setFieldErr(id, ""); });
+    typeDef("doc").fields.forEach(function(f){ if (f.type !== "file") setFieldErr(errId(f.key), ""); });
     clearDraft();
     document.getElementById("btnRemoveFile").click();
     errEl.textContent = "";
