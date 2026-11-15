@@ -275,6 +275,7 @@
     <div class="content">
       <section class="view" id="view-dashboard"></section>
       <section class="view" id="view-docs"></section>
+      <section class="view" id="view-roster"></section>
       <section class="view" id="view-submit"></section>
       <section class="view" id="view-logs"></section>
     </div>
@@ -374,9 +375,19 @@ var SEED_LOGS = [
   {time:"11-13 16:18", who:"覃祖悦", role:"管理员", act:"修改", obj:"实践学分认定表", src:"本机"},
   {time:"11-13 14:40", who:"王浩宇", role:"同学", act:"提交", obj:"社团招新活动新闻稿", src:"本机"}
 ];
+var SEED_ROSTER = [
+  {sid:"250201", who:"覃祖悦"},
+  {sid:"250203", who:"李雨桐"},
+  {sid:"250208", who:"陈思颖"},
+  {sid:"250211", who:"黄志强"},
+  {sid:"250217", who:"王浩宇"},
+  {sid:"250222", who:"刘一帆"},
+  {sid:"250205", who:"赵晓"},
+  {sid:"250210", who:"孙倩"}
+];
 
 /* ============ 本地缓存存储层（对齐仓库契约） ============ */
-var store = { docs: [], logs: [], seq: { doc: 0, log: 0 } };
+var store = { docs: [], logs: [], roster: [], seq: { doc: 0, log: 0 } };
 
 function nowStr() {
   var d = new Date();
@@ -393,6 +404,7 @@ function loadStore() {
       if (data && Array.isArray(data.docs) && Array.isArray(data.logs)) {
         store.docs = data.docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
         store.logs = data.logs.filter(function(l){ return l && typeof l === "object"; });
+        store.roster = Array.isArray(data.roster) ? data.roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
         store.seq = data.seq || { doc: store.docs.length, log: store.logs.length };
         return;
       }
@@ -400,6 +412,7 @@ function loadStore() {
   } catch (e) { /* 缓存损坏则重建种子 */ }
   store.docs = SEED_DOCS.map(function(d, i){ return Object.assign({id: i+1}, d); });
   store.logs = SEED_LOGS.map(function(l, i){ return Object.assign({id: i+1}, l); });
+  store.roster = SEED_ROSTER.map(function(r, i){ return Object.assign({id: i+1}, r); });
   store.seq = { doc: store.docs.length, log: store.logs.length };
   saveStore();
 }
@@ -444,6 +457,33 @@ function addDoc(data) {
 function findDoc(id){ return store.docs.find(function(d){ return d.id === id; }) || null; }
 function archiveDoc(id){ var d = findDoc(id); if(!d) return null; d.status = "已归档"; saveStore(); return d; }
 function rejectDoc(id){ var d = findDoc(id); if(!d) return null; d.status = "已驳回"; saveStore(); return d; }
+
+/* ---- 班级名单（学号—姓名对照） ---- */
+function normalizeRoster(raw, i){
+  return { id: (i || 0) + 1, sid: clean(raw.sid), who: clean(raw.who) };
+}
+function listRoster(){ return store.roster.slice().sort(function(a,b){ return a.sid.localeCompare(b.sid); }); }
+function findRosterBySid(sid){ var s = clean(sid); return store.roster.find(function(r){ return r.sid === s; }) || null; }
+function addRoster(sid, who){
+  sid = clean(sid); who = clean(who);
+  if (!sid || !who) throw new Error("学号、姓名不能为空");
+  if (!/^\d+$/.test(sid)) throw new Error("学号需为纯数字");
+  if (findRosterBySid(sid)) throw new Error("该学号已在名单中");
+  var maxId = store.roster.length ? Math.max.apply(null, store.roster.map(function(x){ return x.id; })) : 0;
+  var r = { id: maxId + 1, sid: sid, who: who };
+  store.roster.push(r); saveStore(); return r;
+}
+function removeRoster(id){ store.roster = store.roster.filter(function(r){ return r.id !== id; }); saveStore(); }
+
+/* 核对：应交（名单）/ 已交（有材料）/ 未交 / 名单外材料 */
+function rosterCheck(){
+  var submitted = {};
+  store.docs.forEach(function(d){ if (d.sid) submitted[d.sid] = true; });
+  var absent = store.roster.filter(function(r){ return !submitted[r.sid]; });
+  var rosterSids = store.roster.map(function(r){ return r.sid; });
+  var extra = store.docs.filter(function(d){ return d.sid && rosterSids.indexOf(d.sid) < 0; });
+  return { total: store.roster.length, done: store.roster.length - absent.length, absent: absent, extra: extra };
+}
 function listLogs(){ return store.logs.slice().sort(function(a,b){ return b.id - a.id; }); }
 function addLog(act, obj, who, role, src) {
   store.seq.log += 1;
@@ -459,14 +499,15 @@ function stats() {
     rejected: store.docs.filter(function(d){ return d.status === "已驳回"; }).length
   };
 }
-function backup(){ return { docs: store.docs, logs: store.logs }; }
-function restore(docs, logs) {
+function backup(){ return { docs: store.docs, logs: store.logs, roster: store.roster }; }
+function restore(docs, logs, roster) {
   if (!Array.isArray(docs) || !Array.isArray(logs)) throw new Error("备份数据结构不正确");
   store.docs = docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
   store.logs = logs.filter(function(l){ return l && typeof l === "object"; }).map(function(l,i){
     return {id: i+1, time:clean(l.time), who:clean(l.who), role:clean(l.role),
       act:clean(l.act), obj:clean(l.obj), src:clean(l.src) || "本机"};
   });
+  store.roster = Array.isArray(roster) ? roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
   store.seq = { doc: store.docs.length, log: store.logs.length };
   saveStore();
 }
@@ -482,6 +523,7 @@ var docsFilter = { q: "", cat: "全部", status: "全部", sortKey: "id", sortDi
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"◫"},
   {key:"docs",      title:"材料台账",   ico:"▤"},
+  {key:"roster",    title:"名单核对",   ico:"☺"},
   {key:"submit",    title:"提交材料",   ico:"✎"},
   {key:"logs",      title:"操作日志",   ico:"☰"}
 ];
@@ -553,6 +595,7 @@ function refreshAll() {
   document.getElementById("statusLeft").textContent = "本地缓存 · " + roleLabel() + persistTip;
   if (state.current === "dashboard") renderDashboard();
   else if (state.current === "docs") renderDocs();
+  else if (state.current === "roster") renderRoster();
   else if (state.current === "logs") renderLogs();
 }
 
@@ -562,17 +605,21 @@ function renderDashboard() {
   var s = stats();
   var pending = docs.filter(function(d){ return d.status === "待审核"; });
 
+  var chk = rosterCheck();
   var cardDefs = [
     {key:"total",    label:"材料总数", color:"var(--text)",   filter:"全部"},
     {key:"pending",  label:"待审核",   color:"var(--orange)", filter:"待审核"},
     {key:"archived", label:"已归档",   color:"var(--green)",  filter:"已归档"},
-    {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"}
+    {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"},
+    {key:"absent",   label:"未交材料", color:"var(--red)",    filter:"__roster"}
   ];
   var cardsHtml = cardDefs.map(function(c){
+    var val = c.key === "absent" ? chk.absent.length : s[c.key];
+    var drill = c.filter === "__roster" ? "查看名单 →" : "查看台账 →";
     return '<div class="card stat-card" data-filter="' + esc(c.filter) + '" role="button" tabindex="0">' +
-      '<div class="num" style="color:' + c.color + '">' + s[c.key] + "</div>" +
+      '<div class="num" style="color:' + c.color + '">' + val + "</div>" +
       '<div class="lbl">' + c.label + "</div>" +
-      '<div class="drill">查看台账 →</div></div>';
+      '<div class="drill">' + drill + "</div></div>";
   }).join("");
 
   var total = docs.length || 1;
@@ -599,7 +646,7 @@ function renderDashboard() {
 
   document.getElementById("view-dashboard").innerHTML =
     '<div class="dash-actions"><button class="btn primary" id="dashNew">提交新材料</button></div>' +
-    '<div class="cards">' + cardsHtml + "</div>" +
+    '<div class="cards" style="grid-template-columns:repeat(5,1fr)">' + cardsHtml + "</div>" +
     '<div class="card panel" style="margin-bottom:14px"><h3>待审核 · 需处理（' + pending.length + "）</h3>" +
       '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
       "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
@@ -615,7 +662,10 @@ function renderDashboard() {
   document.getElementById("dashNew").onclick = function(){ switchView("submit"); };
 
   document.querySelectorAll("#view-dashboard .stat-card").forEach(function(card){
-    var go = function(){ drillByStatus(card.dataset.filter); };
+    var go = function(){
+      if (card.dataset.filter === "__roster") { switchView("roster"); return; }
+      drillByStatus(card.dataset.filter);
+    };
     card.onclick = go;
     card.onkeydown = function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
   });
@@ -1030,6 +1080,22 @@ function saveDraft(){
 }
 function clearDraft(){ try { localStorage.removeItem(DRAFT_KEY); } catch(e){} }
 
+/* 学号匹配名单：空姓名自动带出；已填姓名与名单不符时就近警告（不拦截提交） */
+function linkRoster() {
+  var sid = clean(document.getElementById("sSid").value);
+  var whoEl = document.getElementById("sWho");
+  var warn = document.getElementById("sWhoWarn");
+  if (!whoEl || !warn) return;
+  var ro = findRosterBySid(sid);
+  if (ro) {
+    if (!whoEl.value.trim()) { whoEl.value = ro.who; saveDraft(); }
+    var mismatch = whoEl.value.trim() && whoEl.value.trim() !== ro.who;
+    warn.textContent = mismatch ? "学号 " + sid + " 对应名单姓名为「" + ro.who + "」，与当前填写不一致" : "";
+  } else {
+    warn.textContent = "";
+  }
+}
+
 function buildSubmit() {
   var catOptions = CATS.map(function(c){ return "<option>" + esc(c) + "</option>"; }).join("");
   document.getElementById("view-submit").innerHTML =
@@ -1037,7 +1103,7 @@ function buildSubmit() {
       "<h3>提交班级材料</h3>" +
       '<p class="sub">带 * 为必填项，提交后进入待审核列表并生成操作记录</p>' +
       '<div class="field"><label>材料名称 <span class="req">*</span></label><input id="sName" type="text" autocomplete="off"><div class="ferr" id="eName"></div></div>' +
-      '<div class="field"><label>姓名 <span class="req">*</span></label><input id="sWho" type="text" autocomplete="off"><div class="ferr" id="eWho"></div></div>' +
+      '<div class="field"><label>姓名 <span class="req">*</span></label><input id="sWho" type="text" autocomplete="off"><div class="ferr" id="eWho"></div><div class="hint" id="sWhoWarn" style="color:var(--orange);min-height:16px"></div></div>' +
       '<div class="field"><label>学号 <span class="req">*</span></label><input id="sSid" type="text" inputmode="numeric" autocomplete="off"><div class="ferr" id="eSid"></div></div>' +
       '<div class="field"><label>材料类别 <span class="req">*</span></label><select id="sCat"><option value="">请选择类别</option>' + catOptions + "</select><div class=\"ferr\" id=\"eCat\"></div></div>" +
       '<div class="field"><label>材料说明</label><textarea id="sNote"></textarea></div>' +
@@ -1065,6 +1131,9 @@ function buildSubmit() {
     el.addEventListener("input", saveDraft);
     el.addEventListener("change", saveDraft);
   });
+  $("sSid").addEventListener("input", linkRoster);
+  $("sWho").addEventListener("input", linkRoster);
+  linkRoster();
 
   $("btnPick").onclick = function(){ $("sFile").click(); };
   $("sFile").onchange = function(e){
@@ -1090,6 +1159,7 @@ function clearSubmit() {
     ["sName","sWho","sSid","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("sCat").value = "";
     ["eName","eWho","eSid","eCat"].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = ""; });
+    var warn = document.getElementById("sWhoWarn"); if (warn) warn.textContent = "";
     document.getElementById("sErr").textContent = "";
     clearDraft();
     document.getElementById("btnRemoveFile").click();
@@ -1152,6 +1222,149 @@ function submitDoc() {
   };
   if (dup) confirmModal("重复提交确认", "学号 " + sid + " 已提交过「" + name + "」，是否仍要再次提交？", doAdd);
   else doAdd();
+}
+
+/* ============ 名单核对视图 ============ */
+function parseRosterText(text) {
+  var rows = [];
+  String(text).split(/\r?\n/).forEach(function(line){
+    line = line.trim(); if (!line) return;
+    var parts = line.split(/[,，\t]/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if (parts.length >= 2) rows.push({ sid: parts[0], who: parts[1] });
+  });
+  return rows;
+}
+function copyText(text, msg) {
+  function fallback(){
+    var ta = document.createElement("textarea"); ta.value = text;
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch(e){}
+    ta.remove();
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function(){ toast(msg); }, function(){ fallback(); toast(msg); });
+  } else { fallback(); toast(msg); }
+}
+
+function renderRoster() {
+  var chk = rosterCheck();
+  var rows = listRoster();
+  var submitted = {};
+  store.docs.forEach(function(d){ if (d.sid) submitted[d.sid] = true; });
+
+  var cards = [
+    {label:"应交人数", num:chk.total, color:"var(--text)"},
+    {label:"已交人数", num:chk.done,  color:"var(--green)"},
+    {label:"未交人数", num:chk.absent.length, color:"var(--red)"}
+  ].map(function(c){
+    return '<div class="card stat-card" style="cursor:default"><div class="num" style="color:' + c.color + '">' + c.num +
+      "</div><div class=\"lbl\">" + c.label + "</div></div>";
+  }).join("");
+
+  var trs = rows.map(function(r){
+    var ok = submitted[r.sid];
+    var tag = ok ? '<span class="tag green">已交</span>' : '<span class="tag orange">未交</span>';
+    return "<tr><td class='num-col'>" + esc(r.sid) + "</td><td>" + esc(r.who) + "</td><td>" + tag + "</td>" +
+      '<td><button class="btn mini rb-del" data-id="' + r.id + '">移除</button></td></tr>';
+  }).join("");
+  var body = trs || '<tr><td colspan="4" class="empty"><div class="empty-title">名单为空</div>' +
+    '<div class="empty-sub">点上方「添加一人」或「导入名单」建立班级名单</div></td></tr>';
+
+  var absentHtml = chk.absent.length ? chk.absent.map(function(r){
+    return "<li>" + esc(r.who) + "（" + esc(r.sid) + "）</li>";
+  }).join("") : '<div class="empty" style="padding:14px 0">所有人都已提交材料</div>';
+
+  var extraSids = [];
+  var extraRows = chk.extra.filter(function(d){
+    if (extraSids.indexOf(d.sid) < 0) { extraSids.push(d.sid); return true; } return false;
+  });
+  var extraHtml = extraRows.length ? extraRows.map(function(d){
+    return "<li>" + esc(d.who) + "（" + esc(d.sid) + "）· " + esc(d.name) + "</li>";
+  }).join("") : '<div class="empty" style="padding:10px 0">材料提交人均在名单内</div>';
+
+  document.getElementById("view-roster").innerHTML =
+    '<div class="toolbar">' +
+      '<button class="btn primary" id="rbAdd">添加一人</button>' +
+      '<button class="btn" id="rbImport">导入名单</button>' +
+      '<button class="btn danger" id="rbClear">清空名单</button>' +
+      '<span class="hint" style="margin-left:auto">名单仅存本浏览器，随备份导出</span></div>' +
+    '<div class="cards" style="grid-template-columns:repeat(3,1fr)">' + cards + "</div>" +
+    '<div class="grid-2">' +
+      '<div class="card panel"><h3>班级名单（' + rows.length + "）</h3>" +
+        '<div class="table-wrap"><table><colgroup><col style="width:26%"><col><col style="width:18%"><col style="width:18%"></colgroup>' +
+        "<thead><tr><th>学号</th><th>姓名</th><th>提交情况</th><th>操作</th></tr></thead><tbody>" + body + "</tbody></table></div>" +
+      "</div>" +
+      "<div>" +
+        '<div class="card panel"><h3>未交清单（' + chk.absent.length + "）</h3><ul class=\"trace\">" + absentHtml + "</ul>" +
+          (chk.absent.length ? '<div class="actions"><button class="btn mini" id="rbCopy">复制催办文本</button></div>' : "") +
+        "</div>" +
+        '<div class="card panel" style="margin-top:14px"><h3>名单外的材料提交人</h3><ul class="trace">' + extraHtml + "</ul></div>" +
+      "</div>" +
+    "</div>";
+
+  document.getElementById("rbAdd").onclick = rosterAddModal;
+  document.getElementById("rbImport").onclick = rosterImportModal;
+  document.getElementById("rbClear").onclick = rosterClear;
+  var copyBtn = document.getElementById("rbCopy");
+  if (copyBtn) copyBtn.onclick = function(){
+    var txt = chk.absent.map(function(r){ return r.who + "（" + r.sid + "）"; }).join("、");
+    copyText("以下同学尚未提交材料：" + txt, "未交清单已复制");
+  };
+  document.querySelectorAll(".rb-del").forEach(function(b){
+    b.onclick = function(){ removeRoster(Number(b.dataset.id)); refreshAll(); toast("已从名单移除"); };
+  });
+}
+
+function rosterAddModal() {
+  showModal("添加名单",
+    '<div class="field"><label>学号</label><input id="roSid" type="text" inputmode="numeric" autocomplete="off"></div>' +
+    '<div class="field"><label>姓名</label><input id="roWho" type="text" autocomplete="off"></div>' +
+    '<div class="err" id="roErr"></div>',
+    [
+      {label:"取消", cls:"btn"},
+      {label:"添加", cls:"btn primary", onClick:function(){
+        var sid = clean(document.getElementById("roSid").value), who = clean(document.getElementById("roWho").value);
+        try { addRoster(sid, who); }
+        catch(e){ document.getElementById("roErr").textContent = e.message; return; }
+        refreshAll(); toast("已加入名单");
+      }}
+    ]);
+}
+function rosterImportModal() {
+  showModal("批量导入名单",
+    '<p class="hint" style="margin-bottom:10px">每行一条，格式：学号,姓名（逗号或制表符分隔）；也可选择 CSV / TXT 文件。</p>' +
+    '<textarea id="roImportText" rows="6" placeholder="250201,覃祖悦&#10;250203,李雨桐"></textarea>' +
+    '<input type="file" id="roImportFile" accept=".csv,.txt" style="display:none">' +
+    '<div class="actions"><button class="btn" id="roPickFile">选择 CSV / TXT 文件</button></div>' +
+    '<div class="err" id="roImportErr"></div>',
+    [
+      {label:"取消", cls:"btn"},
+      {label:"导入", cls:"btn primary", onClick:applyRosterImport}
+    ]);
+  document.getElementById("roPickFile").onclick = function(){ document.getElementById("roImportFile").click(); };
+  document.getElementById("roImportFile").onchange = function(e){
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){ document.getElementById("roImportText").value = reader.result; };
+    reader.readAsText(f, "utf-8"); e.target.value = "";
+  };
+}
+function applyRosterImport() {
+  var rows = parseRosterText(document.getElementById("roImportText").value);
+  if (!rows.length) { document.getElementById("roImportErr").textContent = "未解析到有效行"; return; }
+  var added = 0, dup = 0, bad = 0;
+  rows.forEach(function(r){
+    try { addRoster(r.sid, r.who); added++; }
+    catch(e){ if (/已在名单/.test(e.message)) dup++; else bad++; }
+  });
+  refreshAll();
+  toast("导入完成：新增 " + added + " 人" + (dup ? "，重复 " + dup : "") + (bad ? "，失败 " + bad : ""));
+}
+function rosterClear() {
+  if (!store.roster.length) { toast("名单已是空的"); return; }
+  confirmModal("清空名单", "确定清空全部 " + store.roster.length + " 名名单成员吗？此操作不可撤销。", function(){
+    store.roster = []; saveStore(); refreshAll(); toast("名单已清空");
+  });
 }
 
 /* ============ 操作日志与备份恢复 ============ */
@@ -1230,7 +1443,7 @@ function importBackup(e) {
       toast("导入失败：备份结构不正确，docs / logs 应为列表"); return;
     }
     confirmModal("导入确认", "导入将覆盖本浏览器当前全部材料与操作日志，且不可撤销。确定继续导入吗？", function(){
-      try { restore(data.docs, data.logs); }
+      try { restore(data.docs, data.logs, data.roster); }
       catch (err) { toast("导入失败：" + err.message); return; }
       state.selected = {}; state.selectedId = null;
       closeDrawer();
