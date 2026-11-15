@@ -761,7 +761,8 @@ function buildDocs() {
       '<tbody id="docsBody"></tbody></table></div>' +
     '<div class="pager" id="docPager"></div>' +
     '<div class="bulk-bar" id="bulkBar"></div>' +
-    '<div class="actions" id="docsActions"></div>';
+    '<div class="actions" id="docsActions"></div>' +
+    '<input type="file" id="csvImportFile" accept=".csv,.txt" style="display:none">';
 
   var qInput = document.getElementById("fQ");
   var debounce = null;
@@ -934,6 +935,7 @@ function renderDocs() {
   /* 操作条 */
   var actions = '<button class="btn" id="btnView">查看详情</button>' +
     '<button class="btn" id="btnCsv">导出 CSV</button>' +
+    '<button class="btn" id="btnCsvImport">导入 CSV</button>' +
     (isAdmin ? '<button class="btn primary" id="btnArchive">归档</button>' +
                '<button class="btn danger" id="btnReject">驳回</button>' : "") +
     '<span class="hint">已选 ' + (state.selectedId != null && findDoc(state.selectedId) ? "1 条" : "0 条") + "</span>";
@@ -942,6 +944,8 @@ function renderDocs() {
   var has = state.selectedId != null && findDoc(state.selectedId);
   document.getElementById("btnView").disabled = !has;
   document.getElementById("btnCsv").onclick = exportCsv;
+  document.getElementById("btnCsvImport").onclick = function(){ document.getElementById("csvImportFile").click(); };
+  document.getElementById("csvImportFile").onchange = importCsv;
   var btnA = document.getElementById("btnArchive"), btnR = document.getElementById("btnReject");
   if (btnA) btnA.disabled = !has;
   if (btnR) btnR.disabled = !has;
@@ -1440,6 +1444,68 @@ function exportCsv() {
   document.body.appendChild(a); a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 200);
   toast("已导出 " + rows.length + " 条");
+}
+
+/* CSV 解析：支持引号包裹、引号内逗号与换行、双引号转义 */
+function parseCsv(text) {
+  var rows = [], row = [], cell = "", inQ = false;
+  for (var i = 0; i < text.length; i++) {
+    var c = text[i];
+    if (inQ) {
+      if (c === '"') {
+        if (text[i+1] === '"') { cell += '"'; i++; }
+        else inQ = false;
+      } else cell += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { row.push(cell); cell = ""; }
+      else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ""; }
+      else if (c !== '\r') cell += c;
+    }
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(x){ return clean(x); }); });
+}
+
+var CSV_HEAD = { name:"材料名称", cat:"类别", who:"提交人", sid:"学号", note:"说明", file:"附件" };
+function mapCsvHeader(header) {
+  var idx = {};
+  Object.keys(CSV_HEAD).forEach(function(key){
+    var pos = header.indexOf(CSV_HEAD[key]);
+    if (pos >= 0) idx[key] = pos;
+  });
+  return idx;
+}
+
+function importCsv(e) {
+  var file = e.target.files && e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    var rows = parseCsv(reader.result);
+    if (!rows.length) { toast("CSV 未解析到有效内容"); return; }
+    var header = rows[0].map(function(x){ return clean(x); });
+    var hasHead = header.some(function(h){ return CSV_HEAD.name === h || CSV_HEAD.who === h || CSV_HEAD.sid === h; });
+    var idx = hasHead ? mapCsvHeader(header) : { name:0, cat:1, who:2, sid:3, note:4, file:5 };
+    var body = hasHead ? rows.slice(1) : rows;
+    var added = 0, skipped = 0, dup = 0;
+    body.forEach(function(r){
+      var vals = {
+        name: clean(r[idx.name]), cat: clean(r[idx.cat]), who: clean(r[idx.who]),
+        sid: clean(r[idx.sid]), note: clean(r[idx.note]), file: clean(r[idx.file])
+      };
+      if (Object.keys(validateRecord("doc", vals)).length) { skipped++; return; }
+      var exists = store.docs.some(function(d){ return d.sid === vals.sid && d.name === vals.name && d.cat === vals.cat; });
+      if (exists) { dup++; return; }
+      try { addDoc(vals); added++; } catch(err){ skipped++; }
+    });
+    state.selected = {}; state.selectedId = null;
+    refreshAll();
+    try { addLog("导入", "CSV 材料 " + added + " 条", state.operatorName, roleLabel()); } catch(err){}
+    toast("导入完成：新增 " + added + " 条" + (dup ? "，重复 " + dup : "") + (skipped ? "，跳过 " + skipped : ""));
+  };
+  reader.readAsText(file, "utf-8");
+  e.target.value = "";
 }
 
 function importBackup(e) {

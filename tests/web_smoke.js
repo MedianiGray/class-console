@@ -78,6 +78,13 @@ assert("CSV 引号翻倍", sandbox.csvCell('说"你好"') === '"说""你好"""')
 assert("CSV 换行包裹", sandbox.csvCell("行1\n行2") === '"行1\n行2"');
 assert("CSV 空值兜底", sandbox.csvCell(null) === "");
 
+// CSV 导入解析
+const csvRows = sandbox.parseCsv('材料名称,类别,提交人,学号,说明,附件\n"证明,复印件",奖助材料,李雨桐,250203,备注,');
+assert("CSV 解析表头与一行", csvRows.length === 2 && csvRows[1][0] === "证明,复印件");
+assert("CSV 引号翻倍还原", sandbox.parseCsv('"说""你好""",x')[0][0] === '说"你好"');
+const headIdx = sandbox.mapCsvHeader(["材料名称","类别","提交人","学号","提交时间","状态","附件","说明"]);
+assert("CSV 表头列映射", headIdx.name === 0 && headIdx.who === 2 && headIdx.file === 6 && headIdx.note === 7);
+
 // 列显隐偏好
 sandbox.saveHiddenCols(["sid", "file"]);
 assert("隐藏列记录", sandbox.hiddenCols().join(",") === "sid,file");
