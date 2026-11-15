@@ -564,13 +564,6 @@ function drillByStatus(status) {
 
 /* ============ 材料台账：筛选 / 排序 / 分页 / 密度 ============ */
 var STATUS_TAG = { "已归档": "green", "已驳回": "red", "待审核": "orange", "待补材料": "orange" };
-var SORT_COLS = [
-  {key:"name",  label:"材料名称"},
-  {key:"who",   label:"提交人"},
-  {key:"sid",   label:"学号"},
-  {key:"id",    label:"提交时间"},
-  {key:"status",label:"状态"}
-];
 
 function filteredDocs() {
   var q = clean(docsFilter.q).toLowerCase();
@@ -693,6 +686,7 @@ function syncFilterControls() {
 function renderDocs() {
   renderHead();
   renderChips();
+  syncFilterControls();
   var rows = filteredDocs();
   var isAdmin = state.role === "admin";
 
@@ -1041,6 +1035,7 @@ function importBackup(e) {
     confirmModal("导入确认", "导入将覆盖本浏览器当前全部材料与操作日志，且不可撤销。确定继续导入吗？", function(){
       try { restore(data.docs, data.logs); }
       catch (err) { toast("导入失败：" + err.message); return; }
+      state.selected = {}; state.selectedId = null;
       closeDrawer();
       refreshAll(); toast("备份数据已导入");
     });
