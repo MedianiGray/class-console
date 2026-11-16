@@ -70,6 +70,11 @@ sandbox.archiveDoc(row.id);
 assert("归档状态", sandbox.findDoc(row.id).status === "已归档");
 sandbox.rejectDoc(row.id);
 assert("驳回状态", sandbox.findDoc(row.id).status === "已驳回");
+assert("自动编号按类别前缀", /^学分-\d{3}$/.test(row.code));
+assert("种子记录编号回填", sandbox.listDocs().every(function(d){ return /^[一-龥]+-\d{3}$/.test(d.code); }));
+const manual = sandbox.addDoc({ name:"手改编号", cat:"团务材料", who:"甲", sid:"250233", code:"团务-999" });
+assert("手填编号保留", manual.code === "团务-999");
+assert("路径字段兜底", sandbox.normalizeDoc({ name:"n", path:"D:/x/a.pdf" }, 0).path === "D:/x/a.pdf");
 
 // CSV 转义
 assert("CSV 纯文本原样", sandbox.csvCell("普通文本") === "普通文本");
@@ -92,7 +97,7 @@ const vis = sandbox.visibleCols().map(c => c.key);
 assert("可见列不含隐藏项", vis.indexOf("sid") < 0 && vis.indexOf("file") < 0);
 assert("可见列保留名称", vis.indexOf("name") >= 0);
 sandbox.saveHiddenCols([]);
-assert("恢复全显", sandbox.visibleCols().length === 7);
+assert("恢复全显", sandbox.visibleCols().length === 8);
 
 // 草稿暂存
 els["sName"].value = "草稿名称"; els["sWho"].value = "张三"; els["sSid"].value = "250201";
