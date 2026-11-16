@@ -20,13 +20,9 @@ class DashboardView(ttk.Frame):
         self._build()
 
     def _build(self):
-        header = ttk.Frame(self)
-        header.pack(fill="x", padx=18, pady=(4, 10))
-        ttk.Label(header, text="材料收集、审核与留痕一览", style="Sub.TLabel").pack(side="left")
-
         # 统计卡片
         cards = ttk.Frame(self)
-        cards.pack(fill="x", padx=18)
+        cards.pack(fill="x", padx=18, pady=(4, 0))
         self.card_values = {}
         card_defs = [
             ("total", "材料总数", C["text"]),
@@ -38,10 +34,12 @@ class DashboardView(ttk.Frame):
             card = tk.Frame(cards, bg=C["card"], highlightbackground=C["line"], highlightthickness=1)
             card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 10, 0))
             cards.columnconfigure(i, weight=1)
-            num = tk.Label(card, text="0", font=(FONT, 24, "bold"), fg=color, bg=C["card"])
-            num.pack(anchor="w", padx=16, pady=(14, 2))
-            tk.Label(card, text=label, font=(FONT, 10), fg=C["muted"],
-                     bg=C["card"]).pack(anchor="w", padx=16, pady=(0, 14))
+            row = tk.Frame(card, bg=C["card"])
+            row.pack(fill="x", padx=14, pady=12)
+            num = tk.Label(row, text="0", font=(FONT, 20, "bold"), fg=color, bg=C["card"])
+            num.pack(side="left", padx=(0, 10))
+            tk.Label(row, text=label, font=(FONT, 10), fg=C["muted"],
+                     bg=C["card"]).pack(side="left", anchor="s")
             self.card_values[key] = num
 
         # 名单 / 任务摘要入口（浅底 chip）
