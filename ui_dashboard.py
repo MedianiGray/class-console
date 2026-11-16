@@ -54,8 +54,9 @@ class DashboardView(ttk.Frame):
         self.roster_hint.bind("<Button-1>", lambda e: self.window.switch("roster"))
         self.task_hint.bind("<Button-1>", lambda e: self.window.switch("tasks"))
 
-        # 待审核置顶（优先处理，按内容高度排布）
-        bottom = ttk.LabelFrame(self, text="待审核 · 需处理")
+        # 待办置顶（标题与内容按岗位区分处理 / 跟进 / 本人关注）
+        self.bottom_frame = ttk.LabelFrame(self, text="待审核 · 需处理")
+        bottom = self.bottom_frame
         bottom.pack(fill="x", padx=18, pady=(14, 0))
         doc_cols = ("name", "who", "sid", "time")
         self.doc_tree = ttk.Treeview(bottom, columns=doc_cols, show="headings",
@@ -81,7 +82,8 @@ class DashboardView(ttk.Frame):
         self.cat_box = tk.Frame(left, bg=C["card"])
         self.cat_box.pack(fill="both", expand=True, padx=12, pady=10)
 
-        right = ttk.LabelFrame(mid, text="近期动态")
+        self.right_frame = ttk.LabelFrame(mid, text="近期动态")
+        right = self.right_frame
         right.grid(row=0, column=1, sticky="nsew")
         log_cols = ("time", "who", "act", "obj")
         self.log_tree = ttk.Treeview(right, columns=log_cols, show="headings", selectmode="browse")
@@ -106,6 +108,12 @@ class DashboardView(ttk.Frame):
         except Exception as e:
             self.window.show_status("看板加载失败：%s" % e)
             return
+
+        can_archive = self.window.can("docs:archive")
+        can_roster = self.window.can("roster:manage")
+        can_task = self.window.can("task:manage")
+        can_logs = self.window.can("logs:view")
+        is_applicant = self.window.role == "applicant"
 
         pending = [d for d in docs if d.get("status") == "待审核"]
         archived = [d for d in docs if d.get("status") == "已归档"]
@@ -133,28 +141,52 @@ class DashboardView(ttk.Frame):
             tk.Label(row, text=str(n), width=4, anchor="e", bg=C["card"],
                      fg=C["muted"]).pack(side="right")
 
-        # 近期动态（最近 6 条）
-        self.log_tree.delete(*self.log_tree.get_children())
-        for l in logs[:6]:
-            self.log_tree.insert("", "end", values=(
-                l.get("time", ""), l.get("who", ""), l.get("act", ""), l.get("obj", "")))
+        # 近期动态：仅日志查看权限可见
+        if can_logs:
+            self.right_frame.grid()
+            self.log_tree.delete(*self.log_tree.get_children())
+            for l in logs[:6]:
+                self.log_tree.insert("", "end", values=(
+                    l.get("time", ""), l.get("who", ""), l.get("act", ""), l.get("obj", "")))
+        else:
+            self.right_frame.grid_remove()
 
-        # 待审核置顶（最多 5 条）
+        # 待办队列：审核岗处理待审，经办人跟进，申请人看本人需关注项
+        if is_applicant:
+            focus = pending + rejected
+            self.bottom_frame.config(text="需我关注的材料（%d）" % len(focus))
+        elif can_archive:
+            focus = pending
+            self.bottom_frame.config(text="待审核 · 需处理（%d）" % len(pending))
+        else:
+            focus = pending
+            self.bottom_frame.config(text="待审核 · 跟进（%d）" % len(pending))
         self.doc_tree.delete(*self.doc_tree.get_children())
-        for d in pending[:5]:
+        for d in focus[:5]:
             self.doc_tree.insert("", "end", tags=(d.get("id"),), values=(
                 d.get("name", ""), d.get("who", ""), d.get("sid", ""), d.get("time", "")))
-        if pending:
+        if focus:
             self.doc_empty.place_forget()
         else:
             self.doc_empty.place(relx=0.5, rely=0.5, anchor="center")
 
-        # 名单 / 任务摘要（容错：旧数据缺表不阻断看板）
-        try:
-            chk = self.repo.roster_check()
-            self.roster_hint.config(text="未交 %d 人 · 查看名单核对" % len(chk["absent"]))
-            st = self.repo.task_stats()
-            self.task_hint.config(text="临期 %d · 逾期 %d · 查看任务跟踪" % (st["due"], st["overdue"]))
-        except Exception:
-            self.roster_hint.config(text="")
-            self.task_hint.config(text="")
+        # 名单 / 任务摘要 chip：按权限显隐（容错：旧数据缺表不阻断看板）
+        if can_roster:
+            self.roster_chip.pack(side="left")
+            try:
+                chk = self.repo.roster_check()
+                self.roster_hint.config(text="未交 %d 人 · 查看名单核对" % len(chk["absent"]))
+            except Exception:
+                self.roster_hint.config(text="")
+        else:
+            self.roster_chip.pack_forget()
+
+        if can_task:
+            self.task_chip.pack(side="left", padx=10)
+            try:
+                st = self.repo.task_stats()
+                self.task_hint.config(text="临期 %d · 逾期 %d · 查看任务跟踪" % (st["due"], st["overdue"]))
+            except Exception:
+                self.task_hint.config(text="")
+        else:
+            self.task_chip.pack_forget()
