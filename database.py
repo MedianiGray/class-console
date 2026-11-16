@@ -77,12 +77,24 @@ def _like_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# 类别 → 编号前缀（编号形如 团务-001）
+CAT_PREFIX = {
+    "团务材料": "团务", "奖助材料": "奖助", "学分材料": "学分",
+    "宣传材料": "宣传", "班级事务": "事务",
+}
+
+
+def code_prefix(cat: str) -> str:
+    return CAT_PREFIX.get(_clean(cat), "材料")
+
+
 class LocalRepository:
     """本地 SQLite 仓库。远程方案实现同名方法后可无缝替换。"""
 
     def __init__(self, db_path: Path):
         self.db_path = str(db_path)
         self._init_db()
+        self._backfill_codes()
 
     def _conn(self):
         conn = sqlite3.connect(self.db_path)
@@ -96,7 +108,8 @@ class LocalRepository:
             CREATE TABLE IF NOT EXISTS docs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT, cat TEXT, who TEXT, sid TEXT, note TEXT,
-                file TEXT, time TEXT, status TEXT, scope TEXT, reason TEXT
+                file TEXT, path TEXT, code TEXT, time TEXT,
+                status TEXT, scope TEXT, reason TEXT
             )""")
         c.execute("""
             CREATE TABLE IF NOT EXISTS logs (
@@ -114,10 +127,11 @@ class LocalRepository:
                 title TEXT, cat TEXT, scope TEXT, deadline TEXT,
                 note TEXT, done INTEGER
             )""")
-        # 旧库迁移：补齐 docs.reason 列（已存在则忽略）
+        # 旧库迁移：补齐 reason / code / path 列（已存在则忽略）
         cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
-        if "reason" not in cols:
-            c.execute("ALTER TABLE docs ADD COLUMN reason TEXT")
+        for miss in ("reason", "code", "path"):
+            if miss not in cols:
+                c.execute("ALTER TABLE docs ADD COLUMN %s TEXT" % miss)
         conn.commit()
         if c.execute("SELECT COUNT(*) AS n FROM docs").fetchone()["n"] == 0:
             for row in SEED_DOCS:
@@ -162,23 +176,68 @@ class LocalRepository:
         finally:
             conn.close()
 
+    def next_code(self, cat: str) -> str:
+        """按类别生成下一个编号：前缀 + 三位流水号（如 团务-001）。"""
+        prefix = code_prefix(cat)
+        maxn = 0
+        for d in self.list_docs():
+            code = d.get("code") or ""
+            if code.startswith(prefix + "-"):
+                tail = code.split("-", 1)[1]
+                if tail.isdigit():
+                    maxn = max(maxn, int(tail))
+        return "%s-%03d" % (prefix, maxn + 1)
+
+    def _backfill_codes(self):
+        """旧库 / 种子记录缺编号时，按类别顺序补齐。"""
+        conn = self._conn()
+        try:
+            rows = conn.execute("SELECT id, cat, code FROM docs").fetchall()
+            used = {}
+            for r in rows:
+                prefix = code_prefix(r["cat"])
+                code = _clean(r["code"])
+                if code:
+                    used.setdefault(prefix, set()).add(code)
+                    continue
+                maxn = 0
+                for c in used.get(prefix, set()):
+                    if c.startswith(prefix + "-") and c.split("-", 1)[1].isdigit():
+                        maxn = max(maxn, int(c.split("-", 1)[1]))
+                maxn += 1
+                new_code = "%s-%03d" % (prefix, maxn)
+                used.setdefault(prefix, set()).add(new_code)
+                conn.execute("UPDATE docs SET code=? WHERE id=?", (new_code, r["id"]))
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+        finally:
+            conn.close()
+
     def add_doc(self, data: dict):
         if not isinstance(data, dict):
             raise RepositoryError("提交数据格式不正确")
-        row = (
-            _clean(data.get("name")), _clean(data.get("cat")),
-            _clean(data.get("who")), _clean(data.get("sid")),
-            _clean(data.get("note")), _clean(data.get("file")),
-            now_str(), "待审核", _clean(data.get("scope")) or "全员",
-            _clean(data.get("reason")),
-        )
-        if not row[0] or not row[1] or not row[2]:
+        name = _clean(data.get("name"))
+        cat = _clean(data.get("cat"))
+        who = _clean(data.get("who"))
+        sid = _clean(data.get("sid"))
+        note = _clean(data.get("note"))
+        file_name = _clean(data.get("file"))
+        path = _clean(data.get("path"))
+        code = _clean(data.get("code"))
+        if not code:
+            code = self.next_code(cat)
+        scope = _clean(data.get("scope")) or "全员"
+        reason = _clean(data.get("reason"))
+        if not name or not cat or not who:
             raise RepositoryError("材料名称、类别、姓名不能为空")
+        row = (name, cat, who, sid, note, file_name, path, code,
+               now_str(), "待审核", scope, reason)
         conn = self._conn()
         try:
             conn.execute("""INSERT INTO docs
-                (name,cat,who,sid,note,file,time,status,scope,reason)
-                VALUES (?,?,?,?,?,?,?,?,?,?)""", row)
+                (name,cat,who,sid,note,file,path,code,time,status,scope,reason)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", row)
             conn.commit()
         except sqlite3.Error as e:
             raise RepositoryError("写入材料失败：%s" % e)
@@ -421,10 +480,11 @@ class LocalRepository:
                 if not isinstance(d, dict):
                     continue
                 conn.execute("""INSERT INTO docs
-                    (name,cat,who,sid,note,file,time,status,scope,reason)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (name,cat,who,sid,note,file,path,code,time,status,scope,reason)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (_clean(d.get("name")), _clean(d.get("cat")), _clean(d.get("who")),
                      _clean(d.get("sid")), _clean(d.get("note")), _clean(d.get("file")),
+                     _clean(d.get("path")), _clean(d.get("code")),
                      _clean(d.get("time")), _clean(d.get("status")) or "待审核",
                      _clean(d.get("scope")) or "全员", _clean(d.get("reason"))))
             for l in logs:
@@ -454,6 +514,7 @@ class LocalRepository:
             raise RepositoryError("导入备份失败：%s" % e)
         finally:
             conn.close()
+        self._backfill_codes()
 
 
 def build_repository():
