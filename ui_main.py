@@ -13,36 +13,60 @@ from ui_roster import RosterView
 from ui_tasks import TasksView
 from theme import FONT, C
 
+# 岗位与权限点模型（与 web/index.html 对齐）。
+# handler 经办人 / reviewer 审核者 / manager 汇总者 / applicant 申请人。
+# 本地单机先做界面层裁剪；身份认证与强制权限留后端阶段。
+ROLES = {
+    "handler":   {"label": "经办人", "operator": "学委"},
+    "reviewer":  {"label": "审核者", "operator": "辅导员"},
+    "manager":   {"label": "汇总者", "operator": "负责人"},
+    "applicant": {"label": "申请人", "operator": "同学"},
+}
+PERMISSIONS = {
+    "handler":   ["docs:create", "docs:edit", "docs:reject", "docs:export",
+                  "roster:manage", "task:manage", "logs:view"],
+    "reviewer":  ["docs:create", "docs:edit", "docs:archive", "docs:reject", "docs:export",
+                  "roster:manage", "task:manage", "backup:restore", "logs:view"],
+    "manager":   ["docs:archive", "docs:reject", "docs:export",
+                  "roster:manage", "task:manage", "template:config",
+                  "backup:restore", "logs:view", "config:manage"],
+    "applicant": ["docs:create", "docs:edit"],
+}
+
 
 class MainWindow(ttk.Frame):
+    # (key, 标题, 所需权限点；None 表示所有岗位可见)
     NAV = [
-        ("dashboard", "◫ 工作台概览"),
-        ("docs", "▤ 材料台账"),
-        ("collect", "▣ 文件夹收集"),
-        ("roster", "☺ 名单核对"),
-        ("tasks", "◷ 任务跟踪"),
-        ("submit", "✎ 提交材料"),
-        ("logs", "☰ 操作日志"),
+        ("dashboard", "◫ 工作台概览", None),
+        ("docs", "▤ 材料台账", None),
+        ("collect", "▣ 文件夹收集", "docs:create"),
+        ("roster", "☺ 名单核对", "roster:manage"),
+        ("tasks", "◷ 任务跟踪", "task:manage"),
+        ("submit", "✎ 提交材料", "docs:create"),
+        ("logs", "☰ 操作日志", "logs:view"),
     ]
 
     def __init__(self, master, repo):
         super().__init__(master)
         self.repo = repo
-        self.role = "admin"
+        self.role = "handler"
         self.current = "docs"
-        self.operator_name = "学委"  # 本地默认操作人，后续可在设置中修改
+        self.operator_name = ROLES[self.role]["operator"]
         self._status_default = "本地模式 · 数据保存在本机"
         self._build()
         self.refresh_all()
 
+    def can(self, perm):
+        return perm in PERMISSIONS.get(self.role, [])
+
     def role_label(self):
-        return "管理员" if self.role == "admin" else "同学"
+        return ROLES.get(self.role, ROLES["handler"])["label"]
 
     def _refresh_role_badge(self):
-        if self.role == "admin":
-            self.role_badge.config(text="管理员", bg=C["primary"], fg="#FFFFFF")
+        if self.role == "applicant":
+            self.role_badge.config(text=self.role_label(), bg=C["bg"], fg=C["muted"])
         else:
-            self.role_badge.config(text="同学", bg=C["bg"], fg=C["muted"])
+            self.role_badge.config(text=self.role_label(), bg=C["primary"], fg="#FFFFFF")
 
     # ---------- 界面搭建 ----------
     def _build(self):
@@ -59,11 +83,35 @@ class MainWindow(ttk.Frame):
         tk.Label(brand, text="本地桌面版", bg=C["sidebar"], fg=C["muted"],
                  font=(FONT, 10)).pack(anchor="w", pady=(3, 0))
 
+        self.nav_box = tk.Frame(sidebar, bg=C["sidebar"])
+        self.nav_box.pack(fill="x", pady=6)
+        self._build_nav()
+
+        role_box = tk.Frame(sidebar, bg=C["sidebar"])
+        role_box.pack(side="bottom", fill="x", pady=18)
+        tk.Label(role_box, text="当前视角", bg=C["sidebar"], fg=C["muted"],
+                 font=(FONT, 10)).pack(anchor="w", padx=18)
+        self.role_var = tk.StringVar(value=self.role)
+        role_row = tk.Frame(role_box, bg=C["sidebar"])
+        role_row.pack(padx=12, pady=(10, 0))
+        for role_key, meta in ROLES.items():
+            ttk.Radiobutton(role_row, text=meta["label"], variable=self.role_var,
+                            value=role_key, command=self._toggle_role).pack(side="left", padx=4)
+
+    def _nav_visible(self, key):
+        for k, _label, perm in self.NAV:
+            if k == key:
+                return not perm or self.can(perm)
+        return False
+
+    def _build_nav(self):
+        for (_btn, _bar, row) in getattr(self, "nav_items", {}).values():
+            row.destroy()
         self.nav_items = {}
-        nav_box = tk.Frame(sidebar, bg=C["sidebar"])
-        nav_box.pack(fill="x", pady=6)
-        for key, label in self.NAV:
-            row = tk.Frame(nav_box, bg=C["sidebar"])
+        for key, label, perm in self.NAV:
+            if perm and not self.can(perm):
+                continue
+            row = tk.Frame(self.nav_box, bg=C["sidebar"])
             row.pack(fill="x", pady=2)
             bar = tk.Frame(row, bg=C["sidebar"], width=3)
             bar.pack(side="left", fill="y")
@@ -74,18 +122,6 @@ class MainWindow(ttk.Frame):
                             command=lambda k=key: self.switch(k))
             btn.pack(side="left", fill="x", expand=True)
             self.nav_items[key] = (btn, bar, row)
-
-        role_box = tk.Frame(sidebar, bg=C["sidebar"])
-        role_box.pack(side="bottom", fill="x", pady=18)
-        tk.Label(role_box, text="当前视角", bg=C["sidebar"], fg=C["muted"],
-                 font=(FONT, 10)).pack(anchor="w", padx=18)
-        self.role_var = tk.StringVar(value="管理员")
-        role_row = tk.Frame(role_box, bg=C["sidebar"])
-        role_row.pack(padx=12, pady=(10, 0))
-        ttk.Radiobutton(role_row, text="管理员", variable=self.role_var, value="管理员",
-                        command=self._toggle_role).pack(side="left", padx=4)
-        ttk.Radiobutton(role_row, text="同学", variable=self.role_var, value="同学",
-                        command=self._toggle_role).pack(side="left", padx=4)
 
         # 内容区
         content = tk.Frame(self, bg=C["content"])
@@ -136,8 +172,7 @@ class MainWindow(ttk.Frame):
 
     def _restore_status(self):
         try:
-            role_text = "管理员" if self.role == "admin" else "同学"
-            self.status_left.config(text="%s · %s" % (self._status_default, role_text))
+            self.status_left.config(text="%s · %s" % (self._status_default, self.role_label()))
         except tk.TclError:
             pass
 
@@ -149,11 +184,22 @@ class MainWindow(ttk.Frame):
 
     # ---------- 行为 ----------
     def _toggle_role(self):
-        self.role = "admin" if self.role_var.get() == "管理员" else "student"
+        self.role = self.role_var.get()
+        self.operator_name = ROLES[self.role]["operator"]
+        self._build_nav()
         self._refresh_role_badge()
-        self.refresh_all()
+        target = self.current if self._nav_visible(self.current) else "dashboard"
+        self.switch(target)
+
+    def _nav_title(self, key):
+        return next((label for k, label, _p in self.NAV if k == key), key)
 
     def switch(self, key):
+        if not self._nav_visible(key):
+            if self.current != "dashboard":
+                self.toast("当前视角无权访问该模块")
+                self.switch("dashboard")
+            return
         self.current = key
         for k, v in self.views.items():
             if k == key:
@@ -166,7 +212,7 @@ class MainWindow(ttk.Frame):
             btn.config(bg=C["sidebar_active"] if active else C["sidebar"],
                        fg=C["primary"] if active else C["muted"])
             bar.config(bg=C["accent"] if active else C["sidebar"])
-        self.title_label.config(text=dict(self.NAV)[key])
+        self.title_label.config(text=self._nav_title(key))
         self.refresh_all()
 
     def refresh_all(self):
