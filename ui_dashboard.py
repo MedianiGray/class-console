@@ -31,7 +31,7 @@ class DashboardView(ttk.Frame):
             ("rejected", "已驳回", C["red"]),
         ]
         for i, (key, label, color) in enumerate(card_defs):
-            card = tk.Frame(cards, bg=C["card"], highlightbackground=C["line"], highlightthickness=1)
+            card = tk.Frame(cards, bg=C["card"], highlightthickness=0)
             card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 10, 0))
             cards.columnconfigure(i, weight=1)
             row = tk.Frame(card, bg=C["card"])
