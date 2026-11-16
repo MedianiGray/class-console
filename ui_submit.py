@@ -16,6 +16,8 @@ class SubmitView(ttk.Frame):
         self.repo = repo
         self.window = window
         self.file_name = ""
+        self.file_path = ""
+        self._last_suggest = ""
         self._submitting = False
         self._build()
 
@@ -32,6 +34,7 @@ class SubmitView(ttk.Frame):
         self.var_sid = tk.StringVar()
         self.var_cat = tk.StringVar()
         self.var_title = tk.StringVar()
+        self.var_code = tk.StringVar()
         self.var_note = tk.Text(card, height=4, font=(FONT, 11))
 
         self._row_entry(card, 2, "材料名称 *", self.var_title)
@@ -42,15 +45,18 @@ class SubmitView(ttk.Frame):
         cat_cb = ttk.Combobox(card, textvariable=self.var_cat, values=self.CATS,
                               state="readonly")
         cat_cb.grid(row=5, column=1, sticky="ew", pady=10)
+        cat_cb.bind("<<ComboboxSelected>>", lambda e: self._suggest_code())
         cat_cb.bind("<Return>", lambda e: self.submit())
         cat_cb.bind("<Escape>", lambda e: self.clear())
 
-        ttk.Label(card, text="材料说明").grid(row=6, column=0, sticky="nw", padx=(24, 12), pady=10)
-        self.var_note.grid(row=6, column=1, sticky="ew", pady=10)
+        self._row_entry(card, 6, "材料编号（留空自动）", self.var_code)
 
-        ttk.Label(card, text="附件").grid(row=7, column=0, sticky="nw", padx=(24, 12), pady=10)
+        ttk.Label(card, text="材料说明").grid(row=7, column=0, sticky="nw", padx=(24, 12), pady=10)
+        self.var_note.grid(row=7, column=1, sticky="ew", pady=10)
+
+        ttk.Label(card, text="附件").grid(row=8, column=0, sticky="nw", padx=(24, 12), pady=10)
         attach = ttk.Frame(card)
-        attach.grid(row=7, column=1, sticky="w", pady=10)
+        attach.grid(row=8, column=1, sticky="w", pady=10)
         self.var_file = tk.StringVar(value="未选择文件")
         self.file_label = ttk.Label(attach, textvariable=self.var_file, style="Muted.TLabel")
         self.file_label.pack(side="left", padx=(0, 12))
@@ -60,10 +66,10 @@ class SubmitView(ttk.Frame):
 
         # 内联错误提示
         self.err_label = ttk.Label(card, text="", foreground=C["red"], font=(FONT, 10))
-        self.err_label.grid(row=8, column=0, columnspan=2, sticky="w", padx=24, pady=(6, 0))
+        self.err_label.grid(row=9, column=0, columnspan=2, sticky="w", padx=24, pady=(6, 0))
 
         actions = ttk.Frame(card)
-        actions.grid(row=9, column=0, columnspan=2, sticky="e", padx=24, pady=(18, 22))
+        actions.grid(row=10, column=0, columnspan=2, sticky="e", padx=24, pady=(18, 22))
         ttk.Button(actions, text="清空", command=self.clear).pack(side="right", padx=8)
         self.btn_submit = ttk.Button(actions, text="提交材料", style="Accent.TButton",
                                      command=self.submit)
@@ -79,15 +85,28 @@ class SubmitView(ttk.Frame):
         entry.bind("<Return>", lambda e: self.submit())
         entry.bind("<Escape>", lambda e: self.clear())
 
+    # ---------- 编号建议 ----------
+    def _suggest_code(self, *_):
+        cat = self.var_cat.get()
+        if not cat:
+            return
+        suggest = self.repo.next_code(cat)
+        cur = self.var_code.get().strip()
+        if not cur or cur == self._last_suggest:
+            self.var_code.set(suggest)
+            self._last_suggest = suggest
+
     # ---------- 附件 ----------
     def pick_file(self):
         path = filedialog.askopenfilename(title="选择附件")
         if path:
+            self.file_path = path
             self.file_name = os.path.basename(path)
             self.var_file.set(self.file_name)
 
     def remove_file(self):
         self.file_name = ""
+        self.file_path = ""
         self.var_file.set("未选择文件")
 
     # ---------- 校验 ----------
@@ -121,6 +140,8 @@ class SubmitView(ttk.Frame):
         self.var_name.set("")
         self.var_sid.set("")
         self.var_cat.set("")
+        self.var_code.set("")
+        self._last_suggest = ""
         self.var_note.delete("1.0", "end")
         self.remove_file()
         self.err_label.config(text="")
@@ -146,7 +167,8 @@ class SubmitView(ttk.Frame):
         try:
             self.repo.add_doc({
                 "name": title, "cat": cat, "who": name, "sid": sid,
-                "note": note, "file": self.file_name, "scope": "全员"
+                "note": note, "file": self.file_name, "path": self.file_path,
+                "code": self.var_code.get().strip(), "scope": "全员"
             })
         except Exception as e:
             self._submitting = False
@@ -165,6 +187,8 @@ class SubmitView(ttk.Frame):
         self.var_name.set("")
         self.var_sid.set("")
         self.var_cat.set("")
+        self.var_code.set("")
+        self._last_suggest = ""
         self.var_note.delete("1.0", "end")
         self.remove_file()
         self.err_label.config(text="")
