@@ -118,8 +118,9 @@ class DocsView(ttk.Frame):
         has = self._selected() is not None
         state = "normal" if has else "disabled"
         self.btn_view.config(state=state)
-        if self.window.role == "admin":
+        if self.window.can("docs:archive"):
             self.btn_archive.config(state=state)
+        if self.window.can("docs:reject"):
             self.btn_reject.config(state=state)
 
     def _filtered_rows(self):
@@ -152,12 +153,12 @@ class DocsView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
-        # 同学视角隐藏审核按钮
-        is_admin = self.window.role == "admin"
-        for b in (self.btn_archive, self.btn_reject):
-            b.pack_forget()
-        if is_admin:
+        # 按权限点控制审核按钮显隐
+        self.btn_archive.pack_forget()
+        self.btn_reject.pack_forget()
+        if self.window.can("docs:archive"):
             self.btn_archive.pack(side="left", padx=8)
+        if self.window.can("docs:reject"):
             self.btn_reject.pack(side="left")
         self.btn_view.pack(side="left")
         self._update_actions()
@@ -253,6 +254,9 @@ class DocsView(ttk.Frame):
         messagebox.showinfo("材料详情", detail)
 
     def archive(self):
+        if not self.window.can("docs:archive"):
+            self.window.toast("当前视角无权归档")
+            return
         doc_id = self._selected()
         if doc_id is None:
             self.window.toast("请先选择一条材料")
@@ -281,6 +285,9 @@ class DocsView(ttk.Frame):
             self.window.toast("已归档，并写入操作日志")
 
     def reject(self):
+        if not self.window.can("docs:reject"):
+            self.window.toast("当前视角无权驳回")
+            return
         doc_id = self._selected()
         if doc_id is None:
             self.window.toast("请先选择一条材料")
