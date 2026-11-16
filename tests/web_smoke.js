@@ -76,6 +76,21 @@ const manual = sandbox.addDoc({ name:"手改编号", cat:"团务材料", who:"�
 assert("手填编号保留", manual.code === "团务-999");
 assert("路径字段兜底", sandbox.normalizeDoc({ name:"n", path:"D:/x/a.pdf" }, 0).path === "D:/x/a.pdf");
 
+// 模板材料：类型 / 扩展内容 / 附件 / 模板前缀编号 / 备份往返
+const mt = sandbox.addDoc({ name:"学风建设班会", cat:"团务材料", who:"主持人",
+  form_type:"meeting", extra:{topic:"学风建设", place:"301"},
+  attachments:[{name:"合影.jpg", path:"", kind:"照片"}] });
+assert("模板类型写入", mt.form_type === "meeting");
+assert("模板扩展内容往返", mt.extra.topic === "学风建设" && mt.extra.place === "301");
+assert("模板附件落库", mt.attachments.length === 1 && mt.attachments[0].name === "合影.jpg");
+assert("模板编号前缀", /^班会-\d{3}$/.test(mt.code));
+const mtRow = sandbox.findDoc(mt.id);
+assert("模板详情附件清单", mtRow.attachments.length === 1);
+const bakT = sandbox.backup();
+sandbox.restore(bakT.docs, bakT.logs, bakT.roster, bakT.tasks);
+const mt2 = sandbox.listDocs().find(d => d.name === "学风建设班会");
+assert("模板备份往返", mt2.form_type === "meeting" && mt2.extra.topic === "学风建设" && mt2.attachments.length === 1);
+
 // CSV 转义
 assert("CSV 纯文本原样", sandbox.csvCell("普通文本") === "普通文本");
 assert("CSV 逗号加引号", sandbox.csvCell("a,b") === '"a,b"');
