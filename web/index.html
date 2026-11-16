@@ -736,6 +736,9 @@ var PERMISSIONS = {
 };
 function can(perm){ var set = PERMISSIONS[state.role] || []; return set.indexOf(perm) >= 0; }
 function navVisible(n){ return !n.perm || can(n.perm); }
+/* 岗位默认台账筛选：有归档权的审核岗先看待审核，其余看全部 */
+function docDefaultStatus(){ return can("docs:archive") ? "待审核" : "全部"; }
+function applyRoleDefaults(){ docsFilter.status = docDefaultStatus(); docsFilter.page = 1; }
 
 function esc(s){ return clean(s).replace(/[&<>"']/g, function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; });
@@ -821,6 +824,11 @@ function renderDashboard() {
   var docs = store.docs, logs = listLogs();
   var s = stats();
   var pending = docs.filter(function(d){ return d.status === "待审核"; });
+  var rejected = docs.filter(function(d){ return d.status === "已驳回"; });
+
+  var canArchive = can("docs:archive"), canRoster = can("roster:manage"),
+      canTask = can("task:manage"), canLogs = can("logs:view");
+  var isApplicant = state.role === "applicant";
 
   var chk = rosterCheck();
   var tsk = taskStats();
@@ -829,10 +837,10 @@ function renderDashboard() {
     {key:"pending",  label:"待审核",   color:"var(--orange)", filter:"待审核"},
     {key:"archived", label:"已归档",   color:"var(--green)",  filter:"已归档"},
     {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"},
-    {key:"absent",   label:"未交材料", color:"var(--red)",    filter:"__roster"},
-    {key:"due",      label:"临期任务", color:"var(--orange)", filter:"__tasks"},
-    {key:"overdue",  label:"逾期任务", color:"var(--red)",    filter:"__tasks"}
-  ];
+    {key:"absent",   label:"未交材料", color:"var(--red)",    filter:"__roster", perm:"roster:manage"},
+    {key:"due",      label:"临期任务", color:"var(--orange)", filter:"__tasks",  perm:"task:manage"},
+    {key:"overdue",  label:"逾期任务", color:"var(--red)",    filter:"__tasks",  perm:"task:manage"}
+  ].filter(function(c){ return !c.perm || can(c.perm); });
   var cardsHtml = cardDefs.map(function(c){
     var val = c.key === "absent" ? chk.absent.length : (c.key === "due" || c.key === "overdue") ? tsk[c.key] : s[c.key];
     var drill = c.filter === "__roster" ? "查看名单 →" : c.filter === "__tasks" ? "查看任务 →" : "查看台账 →";
@@ -857,26 +865,59 @@ function renderDashboard() {
   }).join("");
   var recentBody = recent || '<tr><td colspan="4" class="empty">暂无操作动态</td></tr>';
 
-  var pendRows = pending.slice(0, 6).map(function(d){
+  /* 主待办队列：按岗位区分处理 / 跟进 / 本人关注 */
+  var focusDocs, queueTitle, queueEmpty;
+  if (isApplicant) {
+    focusDocs = pending.concat(rejected);
+    queueTitle = "需我关注的材料（" + focusDocs.length + "）";
+    queueEmpty = '<tr><td colspan="4" class="empty"><div class="empty-title">暂无需要你跟进的材料</div>' +
+      '<div class="empty-sub">你提交的材料进入审核后会显示在这里</div></td></tr>';
+  } else if (canArchive) {
+    focusDocs = pending;
+    queueTitle = "待审核 · 需处理（" + pending.length + "）";
+    queueEmpty = '<tr><td colspan="4" class="empty"><div class="empty-title">暂无待审核材料</div>' +
+      '<div class="empty-sub">新材料提交后会先出现在这里等待处理</div></td></tr>';
+  } else {
+    focusDocs = pending;
+    queueTitle = "待审核 · 跟进（" + pending.length + "）";
+    queueEmpty = '<tr><td colspan="4" class="empty"><div class="empty-title">暂无待审核材料</div>' +
+      '<div class="empty-sub">新材料提交后会先出现在这里跟进流转</div></td></tr>';
+  }
+  var pendRows = focusDocs.slice(0, 6).map(function(d){
     return "<tr class='clickable' data-id='" + d.id + "'><td>" + esc(d.name) + "</td><td>" +
       esc(d.who) + "</td><td>" + esc(d.sid) + "</td><td>" + esc(d.time) + "</td></tr>";
   }).join("");
-  var pendBody = pendRows || '<tr><td colspan="4" class="empty"><div class="empty-title">暂无待审核材料</div>' +
-    '<div class="empty-sub">新材料提交后会先出现在这里等待处理</div></td></tr>';
+  var pendBody = pendRows || queueEmpty;
+
+  /* 未交材料清单：仅名单维护岗位可见 */
+  var absentRows = chk.absent.slice(0, 6).map(function(r){
+    return "<tr class='clickable-roster'><td>" + esc(r.who) + "</td><td>" + esc(r.sid) + "</td></tr>";
+  }).join("");
+  var absentBody = absentRows || '<tr><td colspan="2" class="empty">名单内成员均已交材料</td></tr>';
+
+  var rightPanel = "";
+  if (canLogs) {
+    rightPanel = '<div class="card panel"><h3>近期动态</h3>' +
+      '<div class="table-wrap"><table><colgroup><col style="width:26%"><col style="width:24%"><col style="width:18%"><col></colgroup>' +
+      "<thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th></tr></thead><tbody>" + recentBody + "</tbody></table></div>" +
+      "</div>";
+  } else if (canRoster) {
+    rightPanel = '<div class="card panel"><h3>未交材料 · 名单核对（' + chk.absent.length + "）</h3>" +
+      '<div class="table-wrap"><table><colgroup><col style="width:40%"><col></colgroup>' +
+      "<thead><tr><th>姓名</th><th>学号</th></tr></thead><tbody>" + absentBody + "</tbody></table></div>" +
+      "</div>";
+  }
 
   document.getElementById("view-dashboard").innerHTML =
     (can("docs:create") ? '<div class="dash-actions"><button class="btn primary" id="dashNew">提交新材料</button></div>' : "") +
     '<div class="cards dash-cards">' + cardsHtml + "</div>" +
-    '<div class="card panel" style="margin-bottom:14px"><h3>待审核 · 需处理（' + pending.length + "）</h3>" +
+    '<div class="card panel" style="margin-bottom:14px"><h3>' + queueTitle + "</h3>" +
       '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
       "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
     "</div>" +
     '<div class="grid-2">' +
       '<div class="card panel"><h3>类别分布</h3>' + catHtml + "</div>" +
-      '<div class="card panel"><h3>近期动态</h3>' +
-        '<div class="table-wrap"><table><colgroup><col style="width:26%"><col style="width:24%"><col style="width:18%"><col></colgroup>' +
-        "<thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th></tr></thead><tbody>" + recentBody + "</tbody></table></div>" +
-      "</div>" +
+      rightPanel +
     "</div>";
 
   var dashNew = document.getElementById("dashNew");
@@ -893,6 +934,9 @@ function renderDashboard() {
   });
   document.querySelectorAll("#view-dashboard tbody tr.clickable").forEach(function(tr){
     tr.onclick = function(){ openDoc(Number(tr.dataset.id), "docs"); };
+  });
+  document.querySelectorAll("#view-dashboard tbody tr.clickable-roster").forEach(function(tr){
+    tr.onclick = function(){ switchView("roster"); };
   });
 }
 
@@ -1998,6 +2042,7 @@ function bindRole() {
     r.onchange = function(){
       state.role = r.value;
       state.operatorName = ROLES[state.role].operator;
+      applyRoleDefaults();
       buildNav();
       syncLabel();
       closeDrawer();
@@ -2038,6 +2083,7 @@ buildNav();
 buildDocs();
 buildSubmit();
 bindRole();
+applyRoleDefaults();
 switchView("dashboard");
 </script>
 </body>
