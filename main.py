@@ -46,11 +46,11 @@ def setup_style(root):
     style.configure("Sub.TLabel", font=(FONT, 10), foreground=C["muted"])
 
     # 按钮：默认 / 主要 / 危险
-    style.configure("TButton", padding=(14, 8), relief="flat", background=C["card"],
-                    foreground=C["text"], bordercolor=C["line_strong"], borderwidth=1,
+    style.configure("TButton", padding=(14, 8), relief="flat", background=C["bg_soft"],
+                    foreground=C["text"], bordercolor=C["bg_soft"], borderwidth=0,
                     font=(FONT, 11))
     style.map("TButton",
-              background=[("active", "#F2F5F9"), ("disabled", "#F1F5F9")],
+              background=[("active", "#E8ECF1"), ("disabled", "#F1F5F9")],
               foreground=[("disabled", C["sub"])],
               bordercolor=[("disabled", C["line"])])
     style.configure("Accent.TButton", background=C["primary"], foreground="#FFFFFF",
@@ -58,9 +58,9 @@ def setup_style(root):
     style.map("Accent.TButton",
               background=[("active", C["primary_hover"]), ("disabled", "#B9C2F5")],
               foreground=[("disabled", "#FFFFFF")])
-    style.configure("Danger.TButton", background="#FFFFFF", foreground=C["red"],
-                    bordercolor="#FBD5D5", padding=(14, 8), relief="flat")
-    style.map("Danger.TButton", background=[("active", "#FEF2F2")])
+    style.configure("Danger.TButton", background="#FEECEC", foreground=C["red"],
+                    borderwidth=0, padding=(14, 8), relief="flat")
+    style.map("Danger.TButton", background=[("active", "#FADBDB")])
 
     # 输入控件：聚焦时边框变强调色
     style.configure("TEntry", padding=(9, 7), bordercolor=C["line"], borderwidth=1)
@@ -76,7 +76,7 @@ def setup_style(root):
 
     # 表格
     style.configure("Treeview", rowheight=30, background=C["card"], fieldbackground=C["card"],
-                    bordercolor=C["line"], borderwidth=1, font=(FONT, 11))
+                    bordercolor=C["line"], borderwidth=0, font=(FONT, 11))
     style.configure("Treeview.Heading", font=(FONT, 10, "bold"), foreground=C["sub"],
                     background=C["card"], padding=(10, 7))
     style.map("Treeview",
