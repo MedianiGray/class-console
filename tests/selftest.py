@@ -178,6 +178,23 @@ def main():
     assert [x for x in r.list_docs() if x["id"] == rid][0]["reason"] == "证明缺失"
     print("18. 备注留存 OK")
 
+    # 19. 编号按类别递增、手动编号保留、路径随备份往返
+    r.restore([], [])
+    r.add_doc({"name": "甲", "cat": "团务材料", "who": "x"})
+    r.add_doc({"name": "乙", "cat": "团务材料", "who": "x"})
+    codes = sorted(d["code"] for d in r.list_docs())
+    assert codes == ["团务-001", "团务-002"], codes
+    r.add_doc({"name": "丙", "cat": "奖助材料", "who": "x",
+               "code": "奖助-099", "path": "D:/a.pdf"})
+    row = [d for d in r.list_docs() if d["name"] == "丙"][0]
+    assert row["code"] == "奖助-099" and row["path"] == "D:/a.pdf"
+    bak = r.backup()
+    r.restore([], [])
+    r.restore(bak["docs"], bak["logs"])
+    row2 = [d for d in r.list_docs() if d["name"] == "丙"][0]
+    assert row2["code"] == "奖助-099" and row2["path"] == "D:/a.pdf"
+    print("19. 编号生成/手动保留/路径往返 OK")
+
     print("SELFTEST OK")
 
 
