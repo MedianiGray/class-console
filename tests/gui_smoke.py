@@ -54,20 +54,20 @@ def main():
 
     sv = app.views["submit"]
 
-    # 同学视角提交：留痕角色跟随当前视角
-    app.role_var.set("同学"); app._toggle_role(); root.update()
-    sv.var_title.set("同学视角提交"); sv.var_name.set("王五"); sv.var_sid.set("250203")
+    # 申请人视角提交：留痕角色跟随当前视角
+    app.role_var.set("applicant"); app._toggle_role(); root.update()
+    sv.var_title.set("申请人视角提交"); sv.var_name.set("王五"); sv.var_sid.set("250203")
     sv.var_cat.set("学分材料"); sv.submit(); root.update()
     last = repo.list_logs()[0]
-    assert last["role"] == "同学" and last["who"] == app.operator_name
-    print("同学视角留痕 OK")
+    assert last["role"] == "申请人" and last["who"] == app.operator_name
+    print("申请人视角留痕 OK")
 
-    # 管理员视角提交：留痕角色切换为管理员
-    app.role_var.set("管理员"); app._toggle_role(); root.update()
+    # 审核者视角提交：留痕角色切换为审核者
+    app.role_var.set("reviewer"); app._toggle_role(); root.update()
     sv.var_title.set("复测材料"); sv.var_name.set("李四"); sv.var_sid.set("250202")
     sv.var_cat.set("奖助材料"); sv.submit(); root.update()
     last = repo.list_logs()[0]
-    assert last["role"] == "管理员" and last["who"] == app.operator_name
+    assert last["role"] == "审核者" and last["who"] == app.operator_name
     print("提交/角色跟随 OK")
 
     sv.var_title.set("拦截"); sv.var_name.set(""); sv.var_sid.set("abc"); sv.var_cat.set("")
