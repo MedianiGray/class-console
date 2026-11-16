@@ -98,31 +98,6 @@ class MainWindow(ttk.Frame):
             ttk.Radiobutton(role_row, text=meta["label"], variable=self.role_var,
                             value=role_key, command=self._toggle_role).pack(side="left", padx=4)
 
-    def _nav_visible(self, key):
-        for k, _label, perm in self.NAV:
-            if k == key:
-                return not perm or self.can(perm)
-        return False
-
-    def _build_nav(self):
-        for (_btn, _bar, row) in getattr(self, "nav_items", {}).values():
-            row.destroy()
-        self.nav_items = {}
-        for key, label, perm in self.NAV:
-            if perm and not self.can(perm):
-                continue
-            row = tk.Frame(self.nav_box, bg=C["sidebar"])
-            row.pack(fill="x", pady=2)
-            bar = tk.Frame(row, bg=C["sidebar"], width=3)
-            bar.pack(side="left", fill="y")
-            btn = tk.Button(row, text=label, bg=C["sidebar"], fg=C["muted"],
-                            activebackground=C["sidebar_active"], activeforeground=C["primary"],
-                            relief="flat", font=(FONT, 12), anchor="w",
-                            padx=14, pady=11, cursor="hand2", bd=0,
-                            command=lambda k=key: self.switch(k))
-            btn.pack(side="left", fill="x", expand=True)
-            self.nav_items[key] = (btn, bar, row)
-
         # 内容区
         content = tk.Frame(self, bg=C["content"])
         content.pack(side="left", fill="both", expand=True)
@@ -163,6 +138,31 @@ class MainWindow(ttk.Frame):
         self.status_right.pack(side="right", padx=14)
 
         self.switch("dashboard")
+
+    def _nav_visible(self, key):
+        for k, _label, perm in self.NAV:
+            if k == key:
+                return not perm or self.can(perm)
+        return False
+
+    def _build_nav(self):
+        for (_btn, _bar, row) in getattr(self, "nav_items", {}).values():
+            row.destroy()
+        self.nav_items = {}
+        for key, label, perm in self.NAV:
+            if perm and not self.can(perm):
+                continue
+            row = tk.Frame(self.nav_box, bg=C["sidebar"])
+            row.pack(fill="x", pady=2)
+            bar = tk.Frame(row, bg=C["sidebar"], width=3)
+            bar.pack(side="left", fill="y")
+            btn = tk.Button(row, text=label, bg=C["sidebar"], fg=C["muted"],
+                            activebackground=C["sidebar_active"], activeforeground=C["primary"],
+                            relief="flat", font=(FONT, 12), anchor="w",
+                            padx=14, pady=11, cursor="hand2", bd=0,
+                            command=lambda k=key: self.switch(k))
+            btn.pack(side="left", fill="x", expand=True)
+            self.nav_items[key] = (btn, bar, row)
 
     # ---------- 反馈与确认 ----------
     def show_status(self, text, temp=False):
