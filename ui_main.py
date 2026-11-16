@@ -117,12 +117,12 @@ class MainWindow(ttk.Frame):
         }
 
         # 状态栏
-        status = tk.Frame(self, bg="#E4EAE9", height=28)
+        status = tk.Frame(self, bg="#F0F3F7", height=28)
         status.pack(side="bottom", fill="x")
-        self.status_left = tk.Label(status, text=self._status_default, bg="#E4EAE9",
-                                    fg="#5B716E", font=(FONT, 10), anchor="w")
+        self.status_left = tk.Label(status, text=self._status_default, bg="#F0F3F7",
+                                    fg=C["sub"], font=(FONT, 10), anchor="w")
         self.status_left.pack(side="left", padx=14, pady=5)
-        self.status_right = tk.Label(status, text="", bg="#E4EAE9", fg="#5B716E",
+        self.status_right = tk.Label(status, text="", bg="#F0F3F7", fg=C["sub"],
                                      font=(FONT, 10), anchor="e")
         self.status_right.pack(side="right", padx=14)
 
