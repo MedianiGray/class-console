@@ -89,18 +89,18 @@ class TasksView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
-        # 任务增删改仅管理员；完成 / 还原各视角可用
-        is_admin = self.window.role == "admin"
+        # 任务增删改按 task:manage；完成 / 还原各视角可用
+        can_manage = self.window.can("task:manage")
         for b in (self.btn_add, self.btn_edit, self.btn_del):
             b.pack_forget()
         self.btn_toggle.pack(side="left")
-        if is_admin:
+        if can_manage:
             self.btn_add.pack(side="left")
             self.btn_edit.pack(side="left", padx=8)
             self.btn_del.pack(side="left", padx=8)
 
     def edit_dialog(self, task):
-        if self.window.role != "admin":
+        if not self.window.can("task:manage"):
             self.window.toast("当前视角无权执行该操作")
             return
         dlg = tk.Toplevel(self)
@@ -153,7 +153,7 @@ class TasksView(ttk.Frame):
         ttk.Button(btns, text="保存", style="Accent.TButton", command=submit).pack(side="right")
 
     def edit_selected(self):
-        if self.window.role != "admin":
+        if not self.window.can("task:manage"):
             self.window.toast("当前视角无权执行该操作")
             return
         tid = self._selected()
@@ -173,7 +173,7 @@ class TasksView(ttk.Frame):
         self.window.refresh_all()
 
     def remove_selected(self):
-        if self.window.role != "admin":
+        if not self.window.can("task:manage"):
             self.window.toast("当前视角无权执行该操作")
             return
         tid = self._selected()
