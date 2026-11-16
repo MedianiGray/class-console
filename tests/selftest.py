@@ -195,6 +195,33 @@ def main():
     assert row2["code"] == "奖助-099" and row2["path"] == "D:/a.pdf"
     print("19. 编号生成/手动保留/路径往返 OK")
 
+    # 20. 模板材料：扩展内容与多附件往返
+    r.add_doc({"name": "第一次班会", "cat": "团务材料", "who": "主持人",
+               "form_type": "meeting",
+               "extra": {"topic": "学风建设", "place": "301", "attended": "42"},
+               "attachments": [{"name": "合影.jpg", "path": "D:/img/1.jpg", "kind": "照片"},
+                               {"name": "记录.docx", "path": "D:/doc/1.docx"}]})
+    row = [d for d in r.list_docs() if d["name"] == "第一次班会"][0]
+    assert row["form_type"] == "meeting"
+    assert row["extra"]["topic"] == "学风建设"
+    assert len(row["attachments"]) == 2
+    assert row["attachments"][0]["name"] == "合影.jpg"
+    print("20. 模板扩展内容/多附件 OK")
+
+    # 21. 模板编号前缀优先于类别前缀
+    assert row["code"].startswith("班会-"), row["code"]
+    print("21. 模板编号前缀 OK")
+
+    # 22. 备份恢复：附件随记录映射往返
+    bak = r.backup()
+    assert len(bak["attachments"]) == 2
+    r.restore([], [])
+    r.restore(bak["docs"], bak["logs"], bak["roster"], bak["tasks"], bak["attachments"])
+    row2 = [d for d in r.list_docs() if d["name"] == "第一次班会"][0]
+    assert len(row2["attachments"]) == 2
+    assert row2["attachments"][0]["path"] == "D:/img/1.jpg"
+    print("22. 附件备份恢复往返 OK")
+
     print("SELFTEST OK")
 
 
