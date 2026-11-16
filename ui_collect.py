@@ -139,7 +139,7 @@ class CollectView(ttk.Frame):
 
     # ---------- 入账 ----------
     def import_selected(self):
-        if self.window.role != "admin":
+        if not self.window.can("docs:create"):
             self.window.toast("当前视角无权执行该操作")
             return
         chosen = [x for x in self.items if x["checked"] and not x["registered"]]
