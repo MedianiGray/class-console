@@ -46,13 +46,13 @@ def setup_style(root):
     style.configure("Sub.TLabel", font=(FONT, 10), foreground=C["muted"])
 
     # 按钮：默认 / 主要 / 危险
-    style.configure("TButton", padding=(14, 8), relief="flat", background="#F1F4F8",
-                    foreground=C["text"], bordercolor=C["line"], borderwidth=1,
+    style.configure("TButton", padding=(14, 8), relief="flat", background=C["card"],
+                    foreground=C["text"], bordercolor=C["line_strong"], borderwidth=1,
                     font=(FONT, 11))
     style.map("TButton",
-              background=[("active", "#E9EEF4"), ("disabled", "#F1F5F9")],
-              foreground=[("disabled", "#9AA5B1")],
-              bordercolor=[("disabled", "#EDF0F4")])
+              background=[("active", "#F2F5F9"), ("disabled", "#F1F5F9")],
+              foreground=[("disabled", C["sub"])],
+              bordercolor=[("disabled", C["line"])])
     style.configure("Accent.TButton", background=C["primary"], foreground="#FFFFFF",
                     padding=(14, 8), relief="flat", borderwidth=0, font=(FONT, 11, "bold"))
     style.map("Accent.TButton",
@@ -77,8 +77,8 @@ def setup_style(root):
     # 表格
     style.configure("Treeview", rowheight=30, background=C["card"], fieldbackground=C["card"],
                     bordercolor=C["line"], borderwidth=1, font=(FONT, 11))
-    style.configure("Treeview.Heading", font=(FONT, 10, "bold"), foreground=C["muted"],
-                    background="#F7F9FC", padding=(10, 7))
+    style.configure("Treeview.Heading", font=(FONT, 10, "bold"), foreground=C["sub"],
+                    background=C["card"], padding=(10, 7))
     style.map("Treeview",
               background=[("selected", C["select"])],
               foreground=[("selected", C["text"])])
