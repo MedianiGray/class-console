@@ -729,8 +729,8 @@ var ROLES = {
   applicant: { label:"申请人", operator:"同学" }
 };
 var PERMISSIONS = {
-  handler:   ["docs:create","docs:edit","docs:reject","docs:export","roster:manage","task:manage","logs:view"],
-  reviewer:  ["docs:create","docs:edit","docs:archive","docs:reject","docs:export","roster:manage","task:manage","backup:restore","logs:view"],
+  handler:   ["docs:create","docs:edit","docs:import","docs:reject","docs:export","roster:manage","task:manage","logs:view"],
+  reviewer:  ["docs:create","docs:edit","docs:import","docs:archive","docs:reject","docs:export","roster:manage","task:manage","backup:restore","logs:view"],
   manager:   ["docs:archive","docs:reject","docs:export","roster:manage","task:manage","template:config","backup:restore","logs:view","config:manage"],
   applicant: ["docs:create","docs:edit"]
 };
@@ -1092,6 +1092,7 @@ function renderDocs() {
   syncFilterControls();
   var rows = filteredDocs();
   var canCreate = can("docs:create"), canExport = can("docs:export");
+  var canImport = can("docs:import");
   var canArchive = can("docs:archive"), canReject = can("docs:reject");
 
   var total = rows.length;
@@ -1168,7 +1169,7 @@ function renderDocs() {
   /* 操作条 */
   var actions = '<button class="btn" id="btnView">查看详情</button>' +
     (canExport ? '<button class="btn" id="btnCsv">导出 CSV</button>' : "") +
-    (canCreate ? '<button class="btn" id="btnCsvImport">导入 CSV</button>' : "") +
+    (canImport ? '<button class="btn" id="btnCsvImport">导入 CSV</button>' : "") +
     (canArchive ? '<button class="btn primary" id="btnArchive">归档</button>' : "") +
     (canReject ? '<button class="btn danger" id="btnReject">驳回</button>' : "") +
     '<span class="hint">已选 ' + (state.selectedId != null && findDoc(state.selectedId) ? "1 条" : "0 条") + "</span>";
@@ -1928,6 +1929,7 @@ function mapCsvHeader(header) {
 }
 
 function importCsv(e) {
+  if (!can("docs:import")) { toast("当前视角无权批量导入材料"); e.target.value = ""; return; }
   var file = e.target.files && e.target.files[0];
   if (!file) return;
   var reader = new FileReader();
