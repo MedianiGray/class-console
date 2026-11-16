@@ -71,9 +71,9 @@ class LogsView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
-        # 导入备份仅管理员可见
+        # 导入备份按 backup:restore 权限点显隐
         self.btn_import.pack_forget()
-        if self.window.role == "admin":
+        if self.window.can("backup:restore"):
             self.btn_import.pack(side="left", padx=8)
 
     def export_backup(self):
@@ -90,7 +90,7 @@ class LogsView(ttk.Frame):
             messagebox.showerror("导出失败", str(e))
 
     def import_backup(self):
-        if self.window.role != "admin":
+        if not self.window.can("backup:restore"):
             self.window.toast("当前视角无权执行该操作")
             return
         path = filedialog.askopenfilename(title="选择备份文件",
