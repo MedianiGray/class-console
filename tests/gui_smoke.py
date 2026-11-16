@@ -85,6 +85,22 @@ def main():
     assert str(dv.btn_view.cget("state")) == "disabled"
     print("归档驳回/禁用 OK")
 
+    # 看板岗位显隐：申请人隐藏名单/任务 chip 与近期动态，审核者恢复
+    dash = app.views["dashboard"]
+    app.role_var.set("applicant"); app._toggle_role(); root.update()
+    app.switch("dashboard"); root.update_idletasks()
+    assert not dash.roster_chip.winfo_ismapped(), "申请人不应显示名单 chip"
+    assert not dash.task_chip.winfo_ismapped(), "申请人不应显示任务 chip"
+    assert not dash.right_frame.winfo_ismapped(), "申请人不应显示近期动态"
+    assert "关注" in dash.bottom_frame.cget("text")
+    app.role_var.set("reviewer"); app._toggle_role(); root.update()
+    app.switch("dashboard"); root.update_idletasks()
+    assert dash.roster_chip.winfo_ismapped(), "审核者应显示名单 chip"
+    assert dash.task_chip.winfo_ismapped(), "审核者应显示任务 chip"
+    assert dash.right_frame.winfo_ismapped(), "审核者应显示近期动态"
+    assert "需处理" in dash.bottom_frame.cget("text")
+    print("看板岗位显隐 OK")
+
     root.destroy()
     print("GUI SMOKE OK")
 
