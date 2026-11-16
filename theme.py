@@ -5,14 +5,15 @@ FONT = "Microsoft YaHei"
 
 C = {
     # 背景与卡片
-    "bg": "#F6F7F9",
+    "bg": "#F4F6F8",
     "card": "#FFFFFF",
-    "line": "#EBEEF3",
-    "line_strong": "#D9E1EC",
+    "line": "#EDF0F4",
+    "line_strong": "#D5DDE7",
+    "bg_soft": "#F2F4F7",
     # 文字
-    "text": "#161D29",
-    "muted": "#66727F",
-    "sub": "#9AA4B2",
+    "text": "#1C2530",
+    "muted": "#68737F",
+    "sub": "#A3ADB9",
     # 强调色（沉稳蓝）
     "primary": "#3D5BDD",
     "primary_hover": "#2F4BC7",
@@ -25,7 +26,7 @@ C = {
     "zebra": "#F8FAFC",
     "select": "#EEF2FE",
     # 兼容旧键名
-    "content": "#F6F7F9",
+    "content": "#F4F6F8",
     "sidebar": "#FFFFFF",
     "sidebar_active": "#EEF2FE",
     "accent": "#3D5BDD",
