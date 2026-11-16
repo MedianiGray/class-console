@@ -23,9 +23,9 @@ ROLES = {
     "applicant": {"label": "申请人", "operator": "同学"},
 }
 PERMISSIONS = {
-    "handler":   ["docs:create", "docs:edit", "docs:reject", "docs:export",
+    "handler":   ["docs:create", "docs:edit", "docs:import", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "logs:view"],
-    "reviewer":  ["docs:create", "docs:edit", "docs:archive", "docs:reject", "docs:export",
+    "reviewer":  ["docs:create", "docs:edit", "docs:import", "docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "backup:restore", "logs:view"],
     "manager":   ["docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "template:config",
