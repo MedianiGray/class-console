@@ -292,8 +292,10 @@
     <div class="side-bottom">
       <div class="lbl">当前视角</div>
       <div class="role-row" id="roleRow">
-        <label id="roleAdmin"><input type="radio" name="role" value="admin"> 管理员</label>
-        <label id="roleStudent"><input type="radio" name="role" value="student"> 同学</label>
+        <label id="roleHandler"><input type="radio" name="role" value="handler"> 经办人</label>
+        <label id="roleReviewer"><input type="radio" name="role" value="reviewer"> 审核者</label>
+        <label id="roleManager"><input type="radio" name="role" value="manager"> 汇总者</label>
+        <label id="roleApplicant"><input type="radio" name="role" value="applicant"> 申请人</label>
       </div>
     </div>
   </aside>
@@ -428,9 +430,9 @@ var TYPES = {
       {key:"status", label:"状态", options:STATUS_ALL}
     ],
     actions: [
-      {key:"archive", label:"归档", to:"已归档", role:"admin", cls:"primary",
+      {key:"archive", label:"归档", to:"已归档", perm:"docs:archive", cls:"primary",
        confirm:function(r){ return "确定将「" + r.name + "」归档吗？归档后进入已归档列表。"; }},
-      {key:"reject",  label:"驳回", to:"已驳回", role:"admin", cls:"danger",
+      {key:"reject",  label:"驳回", to:"已驳回", perm:"docs:reject", cls:"danger",
        confirm:function(r){ return "确定驳回「" + r.name + "」吗？驳回后该材料将标记为已驳回。"; }}
     ]
   }
@@ -451,12 +453,12 @@ var SEED_DOCS = [
   {name:"体测成绩统计表", cat:"班级事务", who:"刘一帆", sid:"250222", note:"本学期体测汇总", file:"", time:"11-14 11:07", status:"待审核", scope:"全员"}
 ];
 var SEED_LOGS = [
-  {time:"11-14 11:20", who:"覃祖悦", role:"管理员", act:"查看", obj:"反诈舞台剧剧照素材包", src:"本机"},
-  {time:"11-14 11:07", who:"刘一帆", role:"同学", act:"提交", obj:"体测成绩统计表", src:"本机"},
-  {time:"11-14 10:30", who:"覃祖悦", role:"管理员", act:"归档", obj:"反诈舞台剧剧照素材包", src:"本机"},
-  {time:"11-14 08:52", who:"陈思颖", role:"同学", act:"提交", obj:"班会签到表", src:"本机"},
-  {time:"11-13 16:18", who:"覃祖悦", role:"管理员", act:"修改", obj:"实践学分认定表", src:"本机"},
-  {time:"11-13 14:40", who:"王浩宇", role:"同学", act:"提交", obj:"社团招新活动新闻稿", src:"本机"}
+  {time:"11-14 11:20", who:"覃祖悦", role:"经办人", act:"查看", obj:"反诈舞台剧剧照素材包", src:"本机"},
+  {time:"11-14 11:07", who:"刘一帆", role:"申请人", act:"提交", obj:"体测成绩统计表", src:"本机"},
+  {time:"11-14 10:30", who:"覃祖悦", role:"经办人", act:"归档", obj:"反诈舞台剧剧照素材包", src:"本机"},
+  {time:"11-14 08:52", who:"陈思颖", role:"申请人", act:"提交", obj:"班会签到表", src:"本机"},
+  {time:"11-13 16:18", who:"覃祖悦", role:"经办人", act:"修改", obj:"实践学分认定表", src:"本机"},
+  {time:"11-13 14:40", who:"王浩宇", role:"申请人", act:"提交", obj:"社团招新活动新闻稿", src:"本机"}
 ];
 var SEED_ROSTER = [
   {sid:"250201", who:"覃祖悦"},
@@ -698,7 +700,7 @@ function restore(docs, logs, roster, tasks) {
 
 /* ============ 界面状态与通用反馈 ============ */
 var state = {
-  role: "admin", current: "dashboard", operatorName: "学委",
+  role: "handler", current: "dashboard", operatorName: "学委",
   selectedId: null, persist: true, drawerId: null, selected: {}
 };
 var docsFilter = { q: "", cat: "全部", type: "全部", status: "全部", sortKey: "id", sortDir: "desc",
@@ -710,16 +712,35 @@ var TYPE_LABEL = {}; TYPE_OPTIONS.forEach(function(o){ TYPE_LABEL[o[0]] = o[1]; 
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"◫"},
   {key:"docs",      title:"材料台账",   ico:"▤"},
-  {key:"roster",    title:"名单核对",   ico:"☺"},
-  {key:"tasks",     title:"任务跟踪",   ico:"◷"},
-  {key:"submit",    title:"提交材料",   ico:"✎"},
-  {key:"logs",      title:"操作日志",   ico:"☰"}
+  {key:"roster",    title:"名单核对",   ico:"☺", perm:"roster:manage"},
+  {key:"tasks",     title:"任务跟踪",   ico:"◷", perm:"task:manage"},
+  {key:"submit",    title:"提交材料",   ico:"✎", perm:"docs:create"},
+  {key:"logs",      title:"操作日志",   ico:"☰", perm:"logs:view"}
 ];
+
+/* ---- 岗位与权限点模型 ----
+ * handler 经办人 / reviewer 审核者 / manager 汇总者 / applicant 申请人
+ * 本地单机先做界面层裁剪；身份认证与强制权限留后端阶段。
+ */
+var ROLES = {
+  handler:   { label:"经办人", operator:"学委" },
+  reviewer:  { label:"审核者", operator:"辅导员" },
+  manager:   { label:"汇总者", operator:"负责人" },
+  applicant: { label:"申请人", operator:"同学" }
+};
+var PERMISSIONS = {
+  handler:   ["docs:create","docs:edit","docs:reject","docs:export","roster:manage","task:manage","logs:view"],
+  reviewer:  ["docs:create","docs:edit","docs:archive","docs:reject","docs:export","roster:manage","task:manage","backup:restore","logs:view"],
+  manager:   ["docs:archive","docs:reject","docs:export","roster:manage","task:manage","template:config","backup:restore","logs:view","config:manage"],
+  applicant: ["docs:create","docs:edit"]
+};
+function can(perm){ var set = PERMISSIONS[state.role] || []; return set.indexOf(perm) >= 0; }
+function navVisible(n){ return !n.perm || can(n.perm); }
 
 function esc(s){ return clean(s).replace(/[&<>"']/g, function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; });
 }
-function roleLabel(){ return state.role === "admin" ? "管理员" : "同学"; }
+function roleLabel(){ var r = ROLES[state.role]; return r ? r.label : "经办人"; }
 
 var toastTimer = null;
 function toast(msg) {
@@ -755,7 +776,7 @@ function confirmModal(title, message, onOk) {
 function buildNav() {
   var nav = document.getElementById("nav");
   nav.innerHTML = "";
-  NAV.forEach(function(n){
+  NAV.filter(navVisible).forEach(function(n){
     var b = document.createElement("button");
     b.dataset.key = n.key;
     b.innerHTML = '<span class="ico">' + n.ico + "</span><span>" + esc(n.title) + "</span>";
@@ -764,14 +785,18 @@ function buildNav() {
   });
 }
 function switchView(key) {
+  var target = NAV.find(function(n){ return n.key === key; });
+  if (!target || !navVisible(target)) {
+    if (state.current !== "dashboard") { toast("当前视角无权访问该模块"); switchView("dashboard"); }
+    return;
+  }
   state.current = key;
   NAV.forEach(function(n){
     document.getElementById("view-" + n.key).classList.toggle("active", n.key === key);
     var btn = document.querySelector('.nav button[data-key="' + n.key + '"]');
     if (btn) btn.classList.toggle("active", n.key === key);
   });
-  var cur = NAV.find(function(n){ return n.key === key; });
-  document.getElementById("viewTitle").textContent = cur.title;
+  document.getElementById("viewTitle").textContent = target.title;
   refreshAll();
 }
 function refreshAll() {
@@ -782,7 +807,7 @@ function refreshAll() {
   var persistTip = state.persist === false ? " · 存储不可用(仅本次会话)" : "";
   document.getElementById("statusLeft").textContent = "本地缓存 · " + roleLabel() + persistTip;
   var badge = document.getElementById("roleBadge");
-  badge.className = "role-badge " + (state.role === "admin" ? "is-admin" : "is-student");
+  badge.className = "role-badge " + (state.role === "applicant" ? "is-student" : "is-admin");
   badge.innerHTML = '<span class="dot"></span>' + roleLabel();
   if (state.current === "dashboard") renderDashboard();
   else if (state.current === "docs") renderDocs();
@@ -840,7 +865,7 @@ function renderDashboard() {
     '<div class="empty-sub">新材料提交后会先出现在这里等待处理</div></td></tr>';
 
   document.getElementById("view-dashboard").innerHTML =
-    '<div class="dash-actions"><button class="btn primary" id="dashNew">提交新材料</button></div>' +
+    (can("docs:create") ? '<div class="dash-actions"><button class="btn primary" id="dashNew">提交新材料</button></div>' : "") +
     '<div class="cards dash-cards">' + cardsHtml + "</div>" +
     '<div class="card panel" style="margin-bottom:14px"><h3>待审核 · 需处理（' + pending.length + "）</h3>" +
       '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
@@ -854,7 +879,8 @@ function renderDashboard() {
       "</div>" +
     "</div>";
 
-  document.getElementById("dashNew").onclick = function(){ switchView("submit"); };
+  var dashNew = document.getElementById("dashNew");
+  if (dashNew) dashNew.onclick = function(){ switchView("submit"); };
 
   document.querySelectorAll("#view-dashboard .stat-card").forEach(function(card){
     var go = function(){
@@ -1065,7 +1091,8 @@ function renderDocs() {
   renderChips();
   syncFilterControls();
   var rows = filteredDocs();
-  var isAdmin = state.role === "admin";
+  var canCreate = can("docs:create"), canExport = can("docs:export");
+  var canArchive = can("docs:archive"), canReject = can("docs:reject");
 
   var total = rows.length;
   var mc = document.getElementById("matchCount");
@@ -1140,16 +1167,17 @@ function renderDocs() {
 
   /* 操作条 */
   var actions = '<button class="btn" id="btnView">查看详情</button>' +
-    '<button class="btn" id="btnCsv">导出 CSV</button>' +
-    (isAdmin ? '<button class="btn" id="btnCsvImport">导入 CSV</button>' +
-               '<button class="btn primary" id="btnArchive">归档</button>' +
-               '<button class="btn danger" id="btnReject">驳回</button>' : "") +
+    (canExport ? '<button class="btn" id="btnCsv">导出 CSV</button>' : "") +
+    (canCreate ? '<button class="btn" id="btnCsvImport">导入 CSV</button>' : "") +
+    (canArchive ? '<button class="btn primary" id="btnArchive">归档</button>' : "") +
+    (canReject ? '<button class="btn danger" id="btnReject">驳回</button>' : "") +
     '<span class="hint">已选 ' + (state.selectedId != null && findDoc(state.selectedId) ? "1 条" : "0 条") + "</span>";
   document.getElementById("docsActions").innerHTML = actions;
 
   var has = state.selectedId != null && findDoc(state.selectedId);
   document.getElementById("btnView").disabled = !has;
-  document.getElementById("btnCsv").onclick = exportCsv;
+  var btnCsv = document.getElementById("btnCsv");
+  if (btnCsv) btnCsv.onclick = exportCsv;
   var btnImp = document.getElementById("btnCsvImport");
   if (btnImp) btnImp.onclick = function(){ document.getElementById("csvImportFile").click(); };
   document.getElementById("csvImportFile").onchange = importCsv;
@@ -1166,8 +1194,8 @@ function renderDocs() {
   if (selIds.length) {
     bulk.classList.add("show");
     bulk.innerHTML = '<span class="bulk-count">已选 ' + selIds.length + " 条</span>" +
-      (isAdmin ? '<button class="btn primary mini" id="bulkArchive">批量归档</button>' +
-                 '<button class="btn danger mini" id="bulkReject">批量驳回</button>' : "") +
+      (canArchive ? '<button class="btn primary mini" id="bulkArchive">批量归档</button>' : "") +
+      (canReject ? '<button class="btn danger mini" id="bulkReject">批量驳回</button>' : "") +
       '<span class="spacer"></span><button class="btn mini" id="bulkClear">清除选择</button>';
     document.getElementById("bulkClear").onclick = function(){ state.selected = {}; renderDocs(); };
     var bA = document.getElementById("bulkArchive"), bR = document.getElementById("bulkReject");
@@ -1251,12 +1279,10 @@ function renderDrawer(d) {
     "</div></div>" +
     '<div class="drawer-section"><h4>留痕记录</h4>' + traceHtml + "</div>";
 
-  var isAdmin = state.role === "admin";
+  var canArchive = can("docs:archive"), canReject = can("docs:reject");
   var footer = "";
-  if (isAdmin) {
-    if (d.status !== "已归档") footer += '<button class="btn primary" id="drArchive">归档</button>';
-    if (d.status !== "已驳回") footer += '<button class="btn danger" id="drReject">驳回</button>';
-  }
+  if (canArchive && d.status !== "已归档") footer += '<button class="btn primary" id="drArchive">归档</button>';
+  if (canReject && d.status !== "已驳回") footer += '<button class="btn danger" id="drReject">驳回</button>';
   footer += '<span class="spacer"></span><button class="btn" id="drClose">关闭</button>';
   document.getElementById("drawerFooter").innerHTML = footer;
   document.getElementById("drClose").onclick = closeDrawer;
@@ -1272,7 +1298,7 @@ function runAction(typeKey, id, actionKey) {
   var d = findDoc(id);
   if (!act) { toast("未知操作"); return; }
   if (!d) { toast("请先选择一条" + def.label); return; }
-  if (state.role !== act.role) { toast("当前视角无权执行该操作"); return; }
+  if (!can(act.perm)) { toast("当前视角无权执行该操作"); return; }
   if (d.status === act.to) { toast("该" + def.label + "已是" + act.to + "状态"); return; }
   showModal(act.label + "确认",
     "<div>" + act.confirm(d) + "</div>" +
@@ -1584,7 +1610,7 @@ function copyText(text, msg) {
 }
 
 function renderRoster() {
-  var isAdmin = state.role === "admin";
+  var canManage = can("roster:manage");
   var chk = rosterCheck();
   var rows = listRoster();
   var submitted = {};
@@ -1602,7 +1628,7 @@ function renderRoster() {
   var trs = rows.map(function(r){
     var ok = submitted[r.sid];
     var tag = ok ? '<span class="tag green">已交</span>' : '<span class="tag orange">未交</span>';
-    var delCell = isAdmin ? '<button class="btn mini rb-del" data-id="' + r.id + '">移除</button>' : '<span class="muted">—</span>';
+    var delCell = canManage ? '<button class="btn mini rb-del" data-id="' + r.id + '">移除</button>' : '<span class="muted">—</span>';
     return "<tr><td class='num-col'>" + esc(r.sid) + "</td><td>" + esc(r.who) + "</td><td>" + tag + "</td>" +
       "<td>" + delCell + "</td></tr>";
   }).join("");
@@ -1623,7 +1649,7 @@ function renderRoster() {
 
   document.getElementById("view-roster").innerHTML =
     '<div class="toolbar">' +
-      (isAdmin ? '<button class="btn primary" id="rbAdd">添加一人</button>' +
+      (canManage ? '<button class="btn primary" id="rbAdd">添加一人</button>' +
                 '<button class="btn" id="rbImport">导入名单</button>' +
                 '<button class="btn danger" id="rbClear">清空名单</button>' : "") +
       '<span class="hint" style="margin-left:auto">名单仅存本浏览器，随备份导出</span></div>' +
@@ -1709,7 +1735,7 @@ function rosterClear() {
 
 /* ============ 任务 / 截止跟踪视图 ============ */
 function renderTasks() {
-  var isAdmin = state.role === "admin";
+  var canManage = can("task:manage");
   var st = taskStats();
   var rows = listTasks();
   var cards = [
@@ -1734,7 +1760,7 @@ function renderTasks() {
     return "<tr><td>" + esc(t.title) + "</td><td>" + esc(t.cat || "—") + "</td><td class='num-col'>" +
       esc(t.deadline) + "</td><td>" + mark + "</td>" +
       '<td><button class="btn mini tg-toggle" data-id="' + t.id + '">' + (t.done ? "还原" : "完成") + "</button>" +
-      (isAdmin ? ' <button class="btn mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
+      (canManage ? ' <button class="btn mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
       '<button class="btn mini danger tg-del" data-id="' + t.id + '">删除</button>' : "") + "</td></tr>";
   }).join("");
   var body = trs || '<tr><td colspan="5" class="empty"><div class="empty-title">暂无任务</div>' +
@@ -1742,7 +1768,7 @@ function renderTasks() {
 
   document.getElementById("view-tasks").innerHTML =
     '<div class="toolbar">' +
-    (isAdmin ? '<button class="btn primary" id="taskAdd">添加任务</button>' : "") +
+    (canManage ? '<button class="btn primary" id="taskAdd">添加任务</button>' : "") +
     '<span class="hint" style="margin-left:auto">任务与截止提醒仅存本浏览器，随备份导出</span></div>' +
     '<div class="cards" style="grid-template-columns:repeat(4,1fr)">' + cards + "</div>" +
     '<div class="card panel"><div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:18%"><col></colgroup>' +
@@ -1805,7 +1831,7 @@ function taskModal(editId) {
 var ACT_TAG = { "提交":"green", "归档":"green", "驳回":"red", "查看":"muted", "修改":"orange" };
 
 function renderLogs() {
-  var isAdmin = state.role === "admin";
+  var canBackup = can("backup:restore");
   var rows = listLogs();
   var trs = rows.map(function(l){
     var tag = ACT_TAG[l.act] || "orange";
@@ -1821,7 +1847,7 @@ function renderLogs() {
     '<div class="table-wrap"><table><colgroup><col style="width:18%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col><col style="width:12%"></colgroup>' +
     "<thead><tr><th>时间</th><th>操作人</th><th>角色</th><th>动作</th><th>对象</th><th>来源</th></tr></thead><tbody>" + body + "</tbody></table></div>" +
     '<div class="actions"><button class="btn" id="btnExport">导出备份</button>' +
-    (isAdmin ? '<button class="btn" id="btnImport">导入备份</button>' : "") +
+    (canBackup ? '<button class="btn" id="btnImport">导入备份</button>' : "") +
     '<input type="file" id="importFile" accept="application/json,.json" style="display:none"></div>';
 
   document.getElementById("btnExport").onclick = exportBackup;
@@ -1960,12 +1986,21 @@ function importBackup(e) {
 function bindRole() {
   var radios = document.querySelectorAll('input[name="role"]');
   function syncLabel() {
-    document.getElementById("roleAdmin").classList.toggle("on", state.role === "admin");
-    document.getElementById("roleStudent").classList.toggle("on", state.role === "student");
-    radios.forEach(function(r){ r.checked = (r.value === state.role); });
+    radios.forEach(function(r){
+      var lab = r.closest("label");
+      if (lab) lab.classList.toggle("on", r.value === state.role);
+      r.checked = (r.value === state.role);
+    });
   }
   radios.forEach(function(r){
-    r.onchange = function(){ state.role = r.value; syncLabel(); closeDrawer(); refreshAll(); };
+    r.onchange = function(){
+      state.role = r.value;
+      state.operatorName = ROLES[state.role].operator;
+      buildNav();
+      syncLabel();
+      closeDrawer();
+      switchView(state.current);
+    };
   });
   syncLabel();
 }
