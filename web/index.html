@@ -331,6 +331,7 @@
 "use strict";
 /* ============ 常量与种子数据（对齐桌面版 seed.py） ============ */
 var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班级事务"];
+var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
 
@@ -341,6 +342,7 @@ var TYPES = {
     label: "材料",
     searchKeys: ["name", "who", "sid"],
     columns: [
+      {key:"code",  label:"编号",     sortable:false},
       {key:"name",  label:"材料名称", sortable:true, frozen:"l1"},
       {key:"cat",   label:"类别",     sortable:false},
       {key:"who",   label:"提交人",   sortable:true},
@@ -354,6 +356,7 @@ var TYPES = {
       {key:"who",  label:"姓名",     type:"text",     required:true},
       {key:"sid",  label:"学号",     type:"sid",      required:true},
       {key:"cat",  label:"材料类别", type:"select",   options:CATS, required:true},
+      {key:"code", label:"材料编号", type:"text"},
       {key:"note", label:"材料说明", type:"textarea"},
       {key:"file", label:"附件",     type:"file"}
     ],
@@ -429,6 +432,8 @@ function loadStore() {
         store.roster = Array.isArray(data.roster) ? data.roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
         store.tasks = Array.isArray(data.tasks) ? data.tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
         store.seq = data.seq || { doc: store.docs.length, log: store.logs.length };
+        backfillCodes();
+        saveStore();
         return;
       }
     }
@@ -443,6 +448,7 @@ function loadStore() {
     return { id: i+1, title:t.title, cat:t.cat, scope:t.scope, note:t.note, done:t.done, deadline:ds };
   });
   store.seq = { doc: store.docs.length, log: store.logs.length };
+  backfillCodes();
   saveStore();
 }
 function saveStore() {
@@ -473,13 +479,43 @@ function normalizeDoc(raw, i) {
   row.status = clean(raw.status) || "待审核";
   row.scope = clean(raw.scope) || "全员";
   row.reason = clean(raw.reason);
+  row.path = clean(raw.path);
   return row;
+}
+function codePrefix(cat){ return CAT_PREFIX[clean(cat)] || "材料"; }
+function nextCode(cat) {
+  var prefix = codePrefix(cat), maxn = 0;
+  store.docs.forEach(function(d){
+    var c = clean(d.code);
+    if (c.indexOf(prefix + "-") === 0) {
+      var tail = c.split("-")[1];
+      if (/^\d+$/.test(tail)) maxn = Math.max(maxn, parseInt(tail, 10));
+    }
+  });
+  return prefix + "-" + String(maxn + 1).padStart(3, "0");
+}
+function backfillCodes() {
+  var used = {};
+  store.docs.forEach(function(d){
+    var prefix = codePrefix(d.cat), code = clean(d.code);
+    used[prefix] = used[prefix] || {};
+    if (code) { used[prefix][code] = true; return; }
+    var maxn = 0;
+    Object.keys(used[prefix]).forEach(function(c){
+      if (c.indexOf(prefix + "-") === 0 && /^\d+$/.test(c.split("-")[1]))
+        maxn = Math.max(maxn, parseInt(c.split("-")[1], 10));
+    });
+    maxn += 1;
+    d.code = prefix + "-" + String(maxn).padStart(3, "0");
+    used[prefix][d.code] = true;
+  });
 }
 function addDoc(data) {
   var row = normalizeDoc(data, store.seq.doc);
   row.time = nowStr();
   row.status = "待审核";
   if (!row.name || !row.cat || !row.who) throw new Error("材料名称、类别、姓名不能为空");
+  if (!row.code) row.code = nextCode(row.cat);
   store.seq.doc += 1; row.id = store.seq.doc;
   store.docs.push(row); saveStore();
   return row;
@@ -586,6 +622,7 @@ function restore(docs, logs, roster, tasks) {
   store.roster = Array.isArray(roster) ? roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
   store.tasks = Array.isArray(tasks) ? tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
   store.seq = { doc: store.docs.length, log: store.logs.length };
+  backfillCodes();
   saveStore();
 }
 
@@ -1166,6 +1203,17 @@ function rejectSelected() {
 
 /* ============ 提交材料 ============ */
 var submitFile = "";
+var lastCodeSuggest = "";
+function suggestCode(){
+  var cat = clean(document.getElementById("sCat").value);
+  var codeEl = document.getElementById("sCode");
+  if (!cat || !codeEl) return;
+  var suggest = nextCode(cat);
+  var cur = clean(codeEl.value);
+  if (!cur || cur === lastCodeSuggest) {
+    codeEl.value = suggest; lastCodeSuggest = suggest; saveDraft();
+  }
+}
 var DRAFT_KEY = "classconsole_web_draft";
 function loadDraft(){ try { return JSON.parse(localStorage.getItem(DRAFT_KEY)) || {}; } catch(e){ return {}; } }
 function saveDraft(){
@@ -1174,6 +1222,7 @@ function saveDraft(){
     who: document.getElementById("sWho").value,
     sid: document.getElementById("sSid").value,
     cat: document.getElementById("sCat").value,
+    code: document.getElementById("sCode") ? document.getElementById("sCode").value : "",
     note: document.getElementById("sNote").value,
     file: submitFile
   };
@@ -1207,6 +1256,7 @@ function buildSubmit() {
       '<div class="field"><label>姓名 <span class="req">*</span></label><input id="sWho" type="text" autocomplete="off"><div class="ferr" id="eWho"></div><div class="hint" id="sWhoWarn" style="color:var(--orange);min-height:16px"></div></div>' +
       '<div class="field"><label>学号 <span class="req">*</span></label><input id="sSid" type="text" inputmode="numeric" autocomplete="off"><div class="ferr" id="eSid"></div></div>' +
       '<div class="field"><label>材料类别 <span class="req">*</span></label><select id="sCat"><option value="">请选择类别</option>' + catOptions + "</select><div class=\"ferr\" id=\"eCat\"></div></div>" +
+      '<div class="field"><label>材料编号</label><input id="sCode" type="text" autocomplete="off" placeholder="留空按类别自动生成，可手动修改"></div>' +
       '<div class="field"><label>材料说明</label><textarea id="sNote"></textarea></div>' +
       '<div class="field"><label>附件</label><div class="file-line">' +
         '<input type="file" id="sFile" style="display:none">' +
@@ -1224,14 +1274,17 @@ function buildSubmit() {
   $("sWho").value = dr.who || "";
   $("sSid").value = dr.sid || "";
   $("sCat").value = dr.cat || "";
+  $("sCode").value = dr.code || "";
+  lastCodeSuggest = dr.code || "";
   $("sNote").value = dr.note || "";
   if (dr.file) { submitFile = dr.file; $("fileName").textContent = dr.file; $("btnRemoveFile").style.display = ""; }
 
-  ["sName","sWho","sSid","sCat","sNote"].forEach(function(id){
+  ["sName","sWho","sSid","sCat","sCode","sNote"].forEach(function(id){
     var el = $(id);
     el.addEventListener("input", saveDraft);
     el.addEventListener("change", saveDraft);
   });
+  $("sCat").addEventListener("change", suggestCode);
   $("sSid").addEventListener("input", linkRoster);
   $("sWho").addEventListener("input", linkRoster);
   linkRoster();
@@ -1255,10 +1308,11 @@ function buildSubmit() {
 }
 
 function clearSubmit() {
-  var filled = ["sName","sWho","sSid","sCat","sNote"].some(function(id){ return document.getElementById(id).value; }) || submitFile;
+  var filled = ["sName","sWho","sSid","sCat","sCode","sNote"].some(function(id){ return document.getElementById(id).value; }) || submitFile;
   var doClear = function(){
-    ["sName","sWho","sSid","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
+    ["sName","sWho","sSid","sCode","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("sCat").value = "";
+    lastCodeSuggest = "";
     ["eName","eWho","eSid","eCat"].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = ""; });
     var warn = document.getElementById("sWhoWarn"); if (warn) warn.textContent = "";
     document.getElementById("sErr").textContent = "";
@@ -1292,6 +1346,7 @@ function submitDoc() {
   var who = clean(document.getElementById("sWho").value);
   var sid = clean(document.getElementById("sSid").value);
   var cat = clean(document.getElementById("sCat").value);
+  var code = clean(document.getElementById("sCode").value);
   var note = clean(document.getElementById("sNote").value);
 
   var errs = validateRecord("doc", {name:name, who:who, sid:sid, cat:cat, note:note});
@@ -1306,11 +1361,12 @@ function submitDoc() {
   var doAdd = function(){
     var row;
     try {
-      row = addDoc({name:name, cat:cat, who:who, sid:sid, note:note, file:submitFile, scope:"全员"});
+      row = addDoc({name:name, cat:cat, who:who, sid:sid, note:note, code:code, file:submitFile, scope:"全员"});
       addLog("提交", name, state.operatorName, roleLabel());
     } catch (e) { errEl.textContent = "提交失败：" + e.message; return; }
-    ["sName","sWho","sSid","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
+    ["sName","sWho","sSid","sCode","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("sCat").value = "";
+    lastCodeSuggest = "";
     typeDef("doc").fields.forEach(function(f){ if (f.type !== "file") setFieldErr(errId(f.key), ""); });
     clearDraft();
     document.getElementById("btnRemoveFile").click();
@@ -1614,10 +1670,10 @@ function csvCell(v) {
 function exportCsv() {
   var rows = filteredDocs();
   if (!rows.length) { toast("当前没有可导出的材料"); return; }
-  var head = ["材料名称","类别","提交人","学号","提交时间","状态","附件","说明"];
+  var head = ["材料编号","材料名称","类别","提交人","学号","提交时间","状态","附件","说明"];
   var lines = [head.map(csvCell).join(",")];
   rows.forEach(function(d){
-    lines.push([d.name, d.cat, d.who, d.sid, d.time, d.status, d.file || "", d.note || ""].map(csvCell).join(","));
+    lines.push([d.code || "", d.name, d.cat, d.who, d.sid, d.time, d.status, d.file || "", d.note || ""].map(csvCell).join(","));
   });
   var blob = new Blob(["\uFEFF" + lines.join("\r\n")], {type:"text/csv;charset=utf-8"});
   var a = document.createElement("a");
@@ -1652,7 +1708,7 @@ function parseCsv(text) {
   return rows.filter(function(r){ return r.some(function(x){ return clean(x); }); });
 }
 
-var CSV_HEAD = { name:"材料名称", cat:"类别", who:"提交人", sid:"学号", note:"说明", file:"附件" };
+var CSV_HEAD = { code:"材料编号", name:"材料名称", cat:"类别", who:"提交人", sid:"学号", note:"说明", file:"附件" };
 function mapCsvHeader(header) {
   var idx = {};
   Object.keys(CSV_HEAD).forEach(function(key){
@@ -1676,6 +1732,7 @@ function importCsv(e) {
     var added = 0, skipped = 0, dup = 0;
     body.forEach(function(r){
       var vals = {
+        code: idx.code != null ? clean(r[idx.code]) : "",
         name: clean(r[idx.name]), cat: clean(r[idx.cat]), who: clean(r[idx.who]),
         sid: clean(r[idx.sid]), note: clean(r[idx.note]), file: clean(r[idx.file])
       };
