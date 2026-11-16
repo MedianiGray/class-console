@@ -69,17 +69,17 @@ class RosterView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
-        # 名单维护仅管理员可见
-        is_admin = self.window.role == "admin"
+        # 名单维护按 roster:manage 权限点显隐
+        can_manage = self.window.can("roster:manage")
         for b in (self.btn_add, self.btn_remove, self.btn_clear):
             b.pack_forget()
-        if is_admin:
+        if can_manage:
             self.btn_add.pack(side="left")
             self.btn_remove.pack(side="left", padx=8)
             self.btn_clear.pack(side="left")
 
     def add_dialog(self):
-        if self.window.role != "admin":
+        if not self.window.can("roster:manage"):
             self.window.toast("当前视角无权执行该操作")
             return
         dlg = tk.Toplevel(self)
@@ -112,7 +112,7 @@ class RosterView(ttk.Frame):
         dlg.bind("<Return>", lambda e: submit())
 
     def remove_selected(self):
-        if self.window.role != "admin":
+        if not self.window.can("roster:manage"):
             self.window.toast("当前视角无权执行该操作")
             return
         rid = self._selected()
@@ -126,7 +126,7 @@ class RosterView(ttk.Frame):
         self.window.toast("成员已移除")
 
     def clear_all(self):
-        if self.window.role != "admin":
+        if not self.window.can("roster:manage"):
             self.window.toast("当前视角无权执行该操作")
             return
         rows = self.repo.list_roster()
