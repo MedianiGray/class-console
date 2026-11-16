@@ -62,12 +62,6 @@ class MainWindow(ttk.Frame):
     def role_label(self):
         return ROLES.get(self.role, ROLES["handler"])["label"]
 
-    def _refresh_role_badge(self):
-        if self.role == "applicant":
-            self.role_badge.config(text=self.role_label(), bg=C["bg"], fg=C["muted"])
-        else:
-            self.role_badge.config(text=self.role_label(), bg=C["primary"], fg="#FFFFFF")
-
     # ---------- 界面搭建 ----------
     def _build(self):
         self.pack(fill="both", expand=True)
@@ -107,12 +101,6 @@ class MainWindow(ttk.Frame):
         self.title_label = tk.Label(header, text="材料台账", bg=C["content"],
                                     fg=C["text"], font=(FONT, 16, "bold"))
         self.title_label.pack(side="left")
-        self.role_badge = tk.Label(header, text="", bg=C["primary"], fg="#FFFFFF",
-                                   font=(FONT, 11, "bold"), padx=12, pady=3)
-        self.role_badge.pack(side="right", padx=(0, 12))
-        self.stats_label = tk.Label(header, text="", bg=C["content"], fg=C["muted"],
-                                    font=(FONT, 11))
-        self.stats_label.pack(side="right")
 
         body = tk.Frame(content, bg=C["content"])
         body.pack(fill="both", expand=True, padx=24, pady=(4, 10))
@@ -187,7 +175,6 @@ class MainWindow(ttk.Frame):
         self.role = self.role_var.get()
         self.operator_name = ROLES[self.role]["operator"]
         self._build_nav()
-        self._refresh_role_badge()
         target = self.current if self._nav_visible(self.current) else "dashboard"
         self.switch(target)
 
@@ -218,12 +205,8 @@ class MainWindow(ttk.Frame):
     def refresh_all(self):
         try:
             s = self.repo.stats()
-            self.stats_label.config(text="总数 %d · 待审核 %d · 已归档 %d · 已驳回 %d" %
-                                    (s["total"], s["pending"], s["archived"],
-                                     s.get("rejected", 0)))
             self.status_right.config(text="材料 %d 条 · 日志 %d 条" %
                                     (s["total"], len(self.repo.list_logs())))
-            self._refresh_role_badge()
             self._restore_status()
             for v in self.views.values():
                 if hasattr(v, "refresh"):
