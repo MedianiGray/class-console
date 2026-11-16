@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 from theme import FONT, C
+from database import form_template
 
 
 class DocsView(ttk.Frame):
@@ -15,6 +16,10 @@ class DocsView(ttk.Frame):
     WIDTHS = {"code": 90, "name": 240, "cat": 100, "who": 90, "sid": 90,
               "time": 130, "status": 90, "file": 150}
     CATS = ["全部", "团务材料", "奖助材料", "学分材料", "宣传材料", "班级事务"]
+    TYPE_OPTIONS = [("全部", "全部"), ("general", "个人材料"), ("meeting", "主题班会记录"),
+                    ("dorm", "宿舍走访记录"), ("pledg", "班级承诺书"),
+                    ("talk", "违纪约谈记录"), ("custom", "自定义材料")]
+    TYPE_LABEL = dict(TYPE_OPTIONS)
     STATUS_TAG = {"已归档": "green", "已驳回": "red",
                   "待审核": "orange", "待补材料": "orange"}
 
@@ -41,6 +46,14 @@ class DocsView(ttk.Frame):
                           width=12, state="readonly")
         cb.pack(side="left", padx=8)
         cb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+
+        ttk.Label(top, text="类型").pack(side="left", padx=(16, 0))
+        self.type = tk.StringVar(value="全部")
+        tb = ttk.Combobox(top, textvariable=self.type,
+                          values=[label for _, label in self.TYPE_OPTIONS],
+                          width=14, state="readonly")
+        tb.pack(side="left", padx=8)
+        tb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
 
         ttk.Label(top, text="状态").pack(side="left", padx=(16, 0))
         self.status = tk.StringVar(value="全部")
@@ -114,6 +127,10 @@ class DocsView(ttk.Frame):
         st = self.status.get()
         if st and st != "全部":
             rows = [x for x in rows if x.get("status") == st]
+        tlabel = self.type.get()
+        if tlabel and tlabel != "全部":
+            tkey = next((k for k, v in self.TYPE_OPTIONS if v == tlabel), "")
+            rows = [x for x in rows if (x.get("form_type") or "general") == tkey]
         return rows
 
     def refresh(self):
@@ -123,9 +140,11 @@ class DocsView(ttk.Frame):
             row_tag = "zebra" if i % 2 else ""
             status = d.get("status", "") or ""
             status_tag = self.STATUS_TAG.get(status, "orange")
+            atts = d.get("attachments") or []
+            file_disp = ("%d 个附件" % len(atts)) if atts else (d.get("file") or "无附件")
             self.tree.insert("", "end", tags=(d.get("id"), row_tag, status_tag), values=(
                 d.get("code", ""), d.get("name", ""), d.get("cat", ""), d.get("who", ""),
-                d.get("sid", ""), d.get("time", ""), status, d.get("file") or "无附件"))
+                d.get("sid", ""), d.get("time", ""), status, file_disp))
         self.hint.config(text="共 %d 条" % len(rows))
 
         if rows:
@@ -187,11 +206,35 @@ class DocsView(ttk.Frame):
         except Exception:
             pass
 
-        detail = ("编号：%s\n名称：%s\n类别：%s\n提交人：%s（%s）\n提交时间：%s\n状态：%s\n附件：%s\n说明：%s"
-                  % (doc.get("code") or "—", name, doc.get("cat", ""),
+        ftype = doc.get("form_type") or "general"
+        tpl = form_template(ftype)
+        extra = doc.get("extra") or {}
+        detail = ("编号：%s\n类型：%s\n名称：%s\n类别：%s\n提交人：%s（%s）\n提交时间：%s\n状态：%s\n说明：%s"
+                  % (doc.get("code") or "—", tpl["label"], name, doc.get("cat", ""),
                      doc.get("who", ""), doc.get("sid", ""),
                      doc.get("time", ""), doc.get("status", ""),
-                     doc.get("file") or "无", doc.get("note") or "无"))
+                     doc.get("note") or "无"))
+
+        for f in tpl["fields"]:
+            val = ""
+            if isinstance(extra, dict):
+                val = (extra.get(f["key"]) or "").strip()
+            if val:
+                detail += "\n%s：%s" % (f["label"], val)
+
+        atts = doc.get("attachments") or []
+        if atts:
+            detail += "\n附件（%d）：" % len(atts)
+            for a in atts:
+                line = "\n  · %s" % (a.get("name") or "未命名")
+                if a.get("path"):
+                    line += "（%s）" % a["path"]
+                detail += line
+        elif doc.get("file"):
+            detail += "\n附件：%s" % doc.get("file")
+        else:
+            detail += "\n附件：无"
+
         doc_path = doc.get("path") or ""
         if doc_path:
             detail += "\n本机路径：%s" % doc_path
@@ -275,16 +318,19 @@ class DocsView(ttk.Frame):
             filetypes=[("CSV 文件", "*.csv")])
         if not path:
             return
-        headers = ["材料编号", "材料名称", "类别", "提交人", "学号", "提交时间",
-                   "状态", "附件", "备注", "审核备注"]
+        headers = ["材料编号", "材料类型", "材料名称", "类别", "提交人", "学号",
+                   "提交时间", "状态", "附件", "备注", "审核备注"]
         try:
             with open(path, "w", encoding="utf-8-sig", newline="") as f:
                 w = csv.writer(f)
                 w.writerow(headers)
                 for d in rows:
-                    w.writerow([d.get("code", ""), d.get("name", ""), d.get("cat", ""),
-                                d.get("who", ""), d.get("sid", ""), d.get("time", ""),
-                                d.get("status", ""), d.get("file") or "",
+                    atts = d.get("attachments") or []
+                    att_names = "; ".join(a.get("name", "") for a in atts) or d.get("file") or ""
+                    tpl = form_template(d.get("form_type") or "general")
+                    w.writerow([d.get("code", ""), tpl["label"], d.get("name", ""),
+                                d.get("cat", ""), d.get("who", ""), d.get("sid", ""),
+                                d.get("time", ""), d.get("status", ""), att_names,
                                 d.get("note", ""), d.get("reason") or ""])
             self.window.toast("已导出 %d 条记录" % len(rows))
         except OSError as e:
