@@ -9,11 +9,11 @@ from theme import FONT, C
 
 
 class DocsView(ttk.Frame):
-    COLS = ("name", "cat", "who", "sid", "time", "status", "file")
-    HEADS = {"name": "材料名称", "cat": "类别", "who": "提交人", "sid": "学号",
-             "time": "提交时间", "status": "状态", "file": "附件"}
-    WIDTHS = {"name": 260, "cat": 100, "who": 90, "sid": 90, "time": 130,
-              "status": 90, "file": 150}
+    COLS = ("code", "name", "cat", "who", "sid", "time", "status", "file")
+    HEADS = {"code": "编号", "name": "材料名称", "cat": "类别", "who": "提交人",
+             "sid": "学号", "time": "提交时间", "status": "状态", "file": "附件"}
+    WIDTHS = {"code": 90, "name": 240, "cat": 100, "who": 90, "sid": 90,
+              "time": 130, "status": 90, "file": 150}
     CATS = ["全部", "团务材料", "奖助材料", "学分材料", "宣传材料", "班级事务"]
     STATUS_TAG = {"已归档": "green", "已驳回": "red",
                   "待审核": "orange", "待补材料": "orange"}
@@ -124,8 +124,8 @@ class DocsView(ttk.Frame):
             status = d.get("status", "") or ""
             status_tag = self.STATUS_TAG.get(status, "orange")
             self.tree.insert("", "end", tags=(d.get("id"), row_tag, status_tag), values=(
-                d.get("name", ""), d.get("cat", ""), d.get("who", ""), d.get("sid", ""),
-                d.get("time", ""), status, d.get("file") or "无附件"))
+                d.get("code", ""), d.get("name", ""), d.get("cat", ""), d.get("who", ""),
+                d.get("sid", ""), d.get("time", ""), status, d.get("file") or "无附件"))
         self.hint.config(text="共 %d 条" % len(rows))
 
         if rows:
@@ -187,10 +187,14 @@ class DocsView(ttk.Frame):
         except Exception:
             pass
 
-        detail = ("名称：%s\n类别：%s\n提交人：%s（%s）\n提交时间：%s\n状态：%s\n附件：%s\n说明：%s"
-                  % (name, doc.get("cat", ""), doc.get("who", ""), doc.get("sid", ""),
+        detail = ("编号：%s\n名称：%s\n类别：%s\n提交人：%s（%s）\n提交时间：%s\n状态：%s\n附件：%s\n说明：%s"
+                  % (doc.get("code") or "—", name, doc.get("cat", ""),
+                     doc.get("who", ""), doc.get("sid", ""),
                      doc.get("time", ""), doc.get("status", ""),
                      doc.get("file") or "无", doc.get("note") or "无"))
+        doc_path = doc.get("path") or ""
+        if doc_path:
+            detail += "\n本机路径：%s" % doc_path
         reason = doc.get("reason") or ""
         if reason:
             detail += "\n审核备注：%s" % reason
@@ -271,16 +275,17 @@ class DocsView(ttk.Frame):
             filetypes=[("CSV 文件", "*.csv")])
         if not path:
             return
-        headers = ["材料名称", "类别", "提交人", "学号", "提交时间", "状态",
-                   "附件", "备注", "审核备注"]
+        headers = ["材料编号", "材料名称", "类别", "提交人", "学号", "提交时间",
+                   "状态", "附件", "备注", "审核备注"]
         try:
             with open(path, "w", encoding="utf-8-sig", newline="") as f:
                 w = csv.writer(f)
                 w.writerow(headers)
                 for d in rows:
-                    w.writerow([d.get("name", ""), d.get("cat", ""), d.get("who", ""),
-                                d.get("sid", ""), d.get("time", ""), d.get("status", ""),
-                                d.get("file") or "", d.get("note", ""), d.get("reason") or ""])
+                    w.writerow([d.get("code", ""), d.get("name", ""), d.get("cat", ""),
+                                d.get("who", ""), d.get("sid", ""), d.get("time", ""),
+                                d.get("status", ""), d.get("file") or "",
+                                d.get("note", ""), d.get("reason") or ""])
             self.window.toast("已导出 %d 条记录" % len(rows))
         except OSError as e:
             messagebox.showerror("导出失败", str(e))
