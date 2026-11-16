@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox
 
 from ui_dashboard import DashboardView
 from ui_docs import DocsView
+from ui_collect import CollectView
 from ui_submit import SubmitView
 from ui_logs import LogsView
 from ui_roster import RosterView
@@ -17,6 +18,7 @@ class MainWindow(ttk.Frame):
     NAV = [
         ("dashboard", "◫ 工作台概览"),
         ("docs", "▤ 材料台账"),
+        ("collect", "▣ 文件夹收集"),
         ("roster", "☺ 名单核对"),
         ("tasks", "◷ 任务跟踪"),
         ("submit", "✎ 提交材料"),
@@ -107,6 +109,7 @@ class MainWindow(ttk.Frame):
         self.views = {
             "dashboard": DashboardView(body, self.repo, self),
             "docs": DocsView(body, self.repo, self),
+            "collect": CollectView(body, self.repo, self),
             "roster": RosterView(body, self.repo, self),
             "tasks": TasksView(body, self.repo, self),
             "submit": SubmitView(body, self.repo, self),
