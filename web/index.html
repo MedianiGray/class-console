@@ -335,6 +335,51 @@ var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材�
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
 
+/* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
+var FORM_TEMPLATES = {
+  general: {label:"个人材料", prefix:"事务", fields:[]},
+  meeting: {label:"主题班会记录", prefix:"班会", fields:[
+    {key:"topic", label:"班会主题", type:"text", required:true},
+    {key:"meeting_date", label:"日期", type:"date"},
+    {key:"place", label:"地点", type:"text"},
+    {key:"host", label:"主持人", type:"text"},
+    {key:"recorder", label:"记录人", type:"text"},
+    {key:"expected", label:"应到人数", type:"text"},
+    {key:"attended", label:"实到人数", type:"text"},
+    {key:"process", label:"班会过程", type:"textarea"},
+    {key:"summary", label:"活动小结", type:"textarea"}
+  ]},
+  dorm: {label:"宿舍走访记录", prefix:"走访", fields:[
+    {key:"visit_date", label:"走访日期", type:"date"},
+    {key:"building", label:"楼栋", type:"text"},
+    {key:"dorm_no", label:"宿舍号", type:"text"},
+    {key:"visitor", label:"走访人", type:"text"},
+    {key:"situation", label:"走访情况", type:"textarea"},
+    {key:"rectify", label:"需整改事项", type:"textarea"}
+  ]},
+  pledg: {label:"班级承诺书", prefix:"承诺", fields:[
+    {key:"pledge_items", label:"承诺事项", type:"textarea", required:true},
+    {key:"class_name", label:"班级", type:"text"},
+    {key:"sign_date", label:"签署日期", type:"date"}
+  ]},
+  talk: {label:"违纪约谈记录", prefix:"约谈", fields:[
+    {key:"talk_who", label:"学生姓名", type:"text", required:true},
+    {key:"talk_sid", label:"学号", type:"sid"},
+    {key:"violation", label:"违纪事项", type:"textarea"},
+    {key:"talk_time", label:"约谈时间", type:"text"},
+    {key:"talk_place", label:"地点", type:"text"},
+    {key:"counselor", label:"约谈人", type:"text"},
+    {key:"content", label:"谈话内容", type:"textarea"},
+    {key:"opinion", label:"处理意见", type:"textarea"},
+    {key:"statement", label:"学生表态", type:"textarea"},
+    {key:"focus", label:"是否重点关注", type:"select", options:["否","是"]}
+  ]},
+  custom: {label:"自定义材料", prefix:"事务", fields:[]}
+};
+var FORM_PREFIX = {};
+Object.keys(FORM_TEMPLATES).forEach(function(k){ FORM_PREFIX[k] = FORM_TEMPLATES[k].prefix; });
+function formTemplate(t){ return FORM_TEMPLATES[clean(t)] || FORM_TEMPLATES.custom; }
+
 /* ============ 类型配置（schema 驱动：列 / 字段 / 校验 / 动作 / 导出共用一份定义） ============ */
 /* 新增一类业务时，在此追加一段类型配置即可；列表、表单、校验、动作管线按配置渲染。 */
 var TYPES = {
@@ -480,11 +525,16 @@ function normalizeDoc(raw, i) {
   row.scope = clean(raw.scope) || "全员";
   row.reason = clean(raw.reason);
   row.path = clean(raw.path);
+  row.form_type = clean(raw.form_type) || "general";
+  row.extra = (raw.extra && typeof raw.extra === "object") ? raw.extra : {};
+  row.attachments = Array.isArray(raw.attachments)
+    ? raw.attachments.filter(function(a){ return a && typeof a === "object"; }) : [];
   return row;
 }
 function codePrefix(cat){ return CAT_PREFIX[clean(cat)] || "材料"; }
-function nextCode(cat) {
-  var prefix = codePrefix(cat), maxn = 0;
+function nextCode(cat, formType) {
+  var ft = clean(formType);
+  var prefix = (ft && ft !== "general" && FORM_PREFIX[ft]) || codePrefix(cat), maxn = 0;
   store.docs.forEach(function(d){
     var c = clean(d.code);
     if (c.indexOf(prefix + "-") === 0) {
@@ -514,8 +564,11 @@ function addDoc(data) {
   var row = normalizeDoc(data, store.seq.doc);
   row.time = nowStr();
   row.status = "待审核";
-  if (!row.name || !row.cat || !row.who) throw new Error("材料名称、类别、姓名不能为空");
-  if (!row.code) row.code = nextCode(row.cat);
+  if (!row.name || !row.cat) throw new Error("材料名称、类别不能为空");
+  var atts = Array.isArray(data.attachments) ? data.attachments.filter(function(a){ return a && typeof a === "object"; }) : [];
+  if (!atts.length && row.file) atts = [{name: row.file, path: row.path || "", kind: ""}];
+  row.attachments = atts;
+  if (!row.code) row.code = nextCode(row.cat, row.form_type);
   store.seq.doc += 1; row.id = store.seq.doc;
   store.docs.push(row); saveStore();
   return row;
@@ -631,8 +684,11 @@ var state = {
   role: "admin", current: "dashboard", operatorName: "学委",
   selectedId: null, persist: true, drawerId: null, selected: {}
 };
-var docsFilter = { q: "", cat: "全部", status: "全部", sortKey: "id", sortDir: "desc",
+var docsFilter = { q: "", cat: "全部", type: "全部", status: "全部", sortKey: "id", sortDir: "desc",
   page: 1, pageSize: 10, density: "comfortable" };
+var TYPE_OPTIONS = [["全部","全部"],["general","个人材料"],["meeting","主题班会记录"],
+  ["dorm","宿舍走访记录"],["pledg","班级承诺书"],["talk","违纪约谈记录"],["custom","自定义材料"]];
+var TYPE_LABEL = {}; TYPE_OPTIONS.forEach(function(o){ TYPE_LABEL[o[0]] = o[1]; });
 
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"◫"},
@@ -815,7 +871,7 @@ var FILTER_KEY = "classconsole_web_prefs";
 var SIZE_OPTS = [10, 25, 50], DENS_OPTS = ["compact", "comfortable", "spacious"];
 function loadPrefs(){ try { return JSON.parse(localStorage.getItem(FILTER_KEY)) || {}; } catch(e){ return {}; } }
 function savePrefs(){
-  var p = { q:docsFilter.q, cat:docsFilter.cat, status:docsFilter.status,
+  var p = { q:docsFilter.q, cat:docsFilter.cat, type:docsFilter.type, status:docsFilter.status,
     sortKey:docsFilter.sortKey, sortDir:docsFilter.sortDir,
     pageSize:docsFilter.pageSize, density:docsFilter.density };
   try { localStorage.setItem(FILTER_KEY, JSON.stringify(p)); } catch(e){}
@@ -824,6 +880,7 @@ function applyPrefs(){
   var p = loadPrefs();
   if (typeof p.q === "string") docsFilter.q = p.q;
   if (p.cat) docsFilter.cat = p.cat;
+  if (p.type) docsFilter.type = p.type;
   if (p.status) docsFilter.status = p.status;
   if (p.sortKey) docsFilter.sortKey = p.sortKey;
   if (p.sortDir) docsFilter.sortDir = p.sortDir;
@@ -835,6 +892,7 @@ function filteredDocs() {
   var q = clean(docsFilter.q).toLowerCase();
   var rows = store.docs.filter(function(d){
     if (docsFilter.cat !== "全部" && d.cat !== docsFilter.cat) return false;
+    if (docsFilter.type !== "全部" && (d.form_type || "general") !== docsFilter.type) return false;
     if (docsFilter.status !== "全部" && d.status !== docsFilter.status) return false;
     if (!q) return true;
     return [d.name, d.who, d.sid].some(function(f){ return clean(f).toLowerCase().indexOf(q) >= 0; });
@@ -854,6 +912,8 @@ function buildDocs() {
     return '<option' + (docsFilter.cat===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
   var stOpts = STATUS_ALL.map(function(c){
     return '<option' + (docsFilter.status===c?" selected":"") + ">" + esc(c) + "</option>"; }).join("");
+  var typeOpts = TYPE_OPTIONS.map(function(o){
+    return '<option value="' + o[0] + '"' + (docsFilter.type===o[0]?" selected":"") + ">" + esc(o[1]) + "</option>"; }).join("");
   var sizeOpts = [10,25,50].map(function(n){
     return '<option value="' + n + '"' + (docsFilter.pageSize===n?" selected":"") + ">" + n + " 条/页</option>"; }).join("");
   var densOpts = [["compact","紧凑"],["comfortable","舒适"],["spacious","宽松"]].map(function(o){
@@ -869,6 +929,7 @@ function buildDocs() {
     '<div class="toolbar">' +
       "<label>搜索</label><input type='search' id='fQ' placeholder='名称 / 姓名 / 学号' value='" + esc(docsFilter.q) + "'>" +
       "<label>类别</label><select id='fCat'>" + catOpts + "</select>" +
+      "<label>类型</label><select id='fType'>" + typeOpts + "</select>" +
       "<label>状态</label><select id='fStatus'>" + stOpts + "</select>" +
       '<div class="toolbar-right">' +
         '<span class="match-count" id="matchCount"></span>' +
@@ -895,6 +956,7 @@ function buildDocs() {
     }, 300);
   };
   document.getElementById("fCat").onchange = function(e){ docsFilter.cat = e.target.value; docsFilter.page = 1; renderDocs(); };
+  document.getElementById("fType").onchange = function(e){ docsFilter.type = e.target.value; docsFilter.page = 1; renderDocs(); };
   document.getElementById("fStatus").onchange = function(e){ docsFilter.status = e.target.value; docsFilter.page = 1; renderDocs(); };
   document.getElementById("fSize").onchange = function(e){ docsFilter.pageSize = Number(e.target.value); docsFilter.page = 1; renderDocs(); };
   document.getElementById("fDensity").onchange = function(e){ docsFilter.density = e.target.value; renderDocs(); };
@@ -910,7 +972,10 @@ function buildDocs() {
 
 function cellValue(d, key) {
   if (key === "id") return d.time || "";
-  if (key === "file") return d.file || "无附件";
+  if (key === "file") {
+    var atts = d.attachments || [];
+    return atts.length ? atts.length + " 个附件" : (d.file || "无附件");
+  }
   return d[key] == null ? "" : d[key];
 }
 function renderCell(d, key) {
@@ -954,6 +1019,7 @@ function renderChips() {
   var chips = [];
   if (docsFilter.q) chips.push({label:"关键词", value:docsFilter.q, clear:function(){ docsFilter.q = ""; var i = document.getElementById("fQ"); if (i) i.value = ""; }});
   if (docsFilter.cat !== "全部") chips.push({label:"类别", value:docsFilter.cat, clear:function(){ docsFilter.cat = "全部"; }});
+  if (docsFilter.type !== "全部") chips.push({label:"类型", value:TYPE_LABEL[docsFilter.type] || docsFilter.type, clear:function(){ docsFilter.type = "全部"; }});
   if (docsFilter.status !== "全部") chips.push({label:"状态", value:docsFilter.status, clear:function(){ docsFilter.status = "全部"; }});
   var box = document.getElementById("docChips");
   if (!chips.length) { box.innerHTML = ""; return; }
@@ -965,7 +1031,7 @@ function renderChips() {
     b.onclick = function(){ chips[Number(b.dataset.i)].clear(); docsFilter.page = 1; syncFilterControls(); renderDocs(); };
   });
   document.getElementById("chipClear").onclick = function(){
-    docsFilter.q = ""; docsFilter.cat = "全部"; docsFilter.status = "全部"; docsFilter.page = 1;
+    docsFilter.q = ""; docsFilter.cat = "全部"; docsFilter.type = "全部"; docsFilter.status = "全部"; docsFilter.page = 1;
     syncFilterControls(); renderDocs();
   };
 }
@@ -973,6 +1039,7 @@ function renderChips() {
 function syncFilterControls() {
   var q = document.getElementById("fQ"); if (q) q.value = docsFilter.q;
   var c = document.getElementById("fCat"); if (c) c.value = docsFilter.cat;
+  var t = document.getElementById("fType"); if (t) t.value = docsFilter.type;
   var s = document.getElementById("fStatus"); if (s) s.value = docsFilter.status;
 }
 
@@ -1142,13 +1209,26 @@ function renderDrawer(d) {
       esc(l.who) + "（" + esc(l.role) + "）· " + esc(l.act) + "</li>"; }).join("") +
     "</ul></div>" : '<div class="empty" style="padding:14px 0">暂无该材料的操作记录</div>';
 
+  var tpl = formTemplate(d.form_type);
+  var extra = d.extra || {};
+  var extraRows = tpl.fields.map(function(f){
+    var v = clean(extra[f.key]);
+    return v ? '<span class="k">' + esc(f.label) + "</span><span class=\"v\">" + esc(v) + "</span>" : "";
+  }).join("");
+  var atts = d.attachments || [];
+  var attHtml = atts.length
+    ? atts.map(function(a){ return esc(a.name || "未命名"); }).join("、")
+    : (d.file || "无附件");
+
   document.getElementById("drawerBody").innerHTML =
     '<div class="drawer-section"><h4>基本信息</h4><div class="kv">' +
+      '<span class="k">类型</span><span class="v">' + esc(tpl.label) + "</span>" +
       '<span class="k">类别</span><span class="v">' + esc(d.cat) + "</span>" +
       '<span class="k">提交人</span><span class="v">' + esc(d.who) + "（" + esc(d.sid) + "）</span>" +
       '<span class="k">提交时间</span><span class="v">' + esc(d.time) + "</span>" +
       '<span class="k">可见范围</span><span class="v">' + esc(d.scope || "全员") + "</span>" +
-      '<span class="k">附件</span><span class="v">' + esc(d.file || "无附件") + "</span>" +
+      extraRows +
+      '<span class="k">附件</span><span class="v">' + attHtml + "</span>" +
       '<span class="k">说明</span><span class="v">' + esc(d.note || "无") + "</span>" +
       (d.reason ? '<span class="k">审核备注</span><span class="v">' + esc(d.reason) + "</span>" : "") +
     "</div></div>" +
@@ -1204,11 +1284,61 @@ function rejectSelected() {
 /* ============ 提交材料 ============ */
 var submitFile = "";
 var lastCodeSuggest = "";
+function currentSubmitType(){ return clean(document.getElementById("sType").value) || "general"; }
+
+function renderExtraFields(ftype, preset) {
+  var box = document.getElementById("sExtra");
+  if (!box) return;
+  var tpl = formTemplate(ftype);
+  preset = preset || {};
+  box.innerHTML = tpl.fields.map(function(f){
+    var req = f.required ? ' <span class="req">*</span>' : "";
+    var ctrl;
+    if (f.type === "textarea") ctrl = '<textarea id="ex_' + f.key + '" rows="3"></textarea>';
+    else if (f.type === "select") {
+      var opts = (f.options || []).map(function(o){
+        return "<option" + (o === f.options[0] ? " selected" : "") + ">" + esc(o) + "</option>";
+      }).join("");
+      ctrl = '<select id="ex_' + f.key + '">' + opts + "</select>";
+    } else if (f.type === "date") {
+      ctrl = '<input id="ex_' + f.key + '" type="date" autocomplete="off">';
+    } else {
+      ctrl = '<input id="ex_' + f.key + '" type="text" autocomplete="off">';
+    }
+    return '<div class="field"><label>' + esc(f.label) + req + "</label>" + ctrl +
+      '<div class="ferr" id="eEx_' + f.key + '"></div></div>';
+  }).join("");
+  tpl.fields.forEach(function(f){
+    var el = document.getElementById("ex_" + f.key);
+    if (!el) return;
+    if (preset[f.key] != null) el.value = preset[f.key];
+    el.addEventListener("input", saveDraft);
+    el.addEventListener("change", saveDraft);
+  });
+}
+function collectExtra() {
+  var out = {};
+  formTemplate(currentSubmitType()).fields.forEach(function(f){
+    var el = document.getElementById("ex_" + f.key);
+    if (el) out[f.key] = clean(el.value);
+  });
+  return out;
+}
+function validateExtra(extra) {
+  var errs = {};
+  formTemplate(currentSubmitType()).fields.forEach(function(f){
+    var v = clean(extra[f.key]);
+    if (f.required && !v) errs[f.key] = "请填写" + f.label;
+    if (f.type === "sid" && v && !/^\d+$/.test(v)) errs[f.key] = "学号需为纯数字";
+  });
+  return errs;
+}
+
 function suggestCode(){
   var cat = clean(document.getElementById("sCat").value);
   var codeEl = document.getElementById("sCode");
   if (!cat || !codeEl) return;
-  var suggest = nextCode(cat);
+  var suggest = nextCode(cat, currentSubmitType());
   var cur = clean(codeEl.value);
   if (!cur || cur === lastCodeSuggest) {
     codeEl.value = suggest; lastCodeSuggest = suggest; saveDraft();
@@ -1224,7 +1354,9 @@ function saveDraft(){
     cat: document.getElementById("sCat").value,
     code: document.getElementById("sCode") ? document.getElementById("sCode").value : "",
     note: document.getElementById("sNote").value,
-    file: submitFile
+    file: submitFile,
+    type: currentSubmitType(),
+    extra: collectExtra()
   };
   try { localStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch(e){}
 }
@@ -1248,15 +1380,19 @@ function linkRoster() {
 
 function buildSubmit() {
   var catOptions = CATS.map(function(c){ return "<option>" + esc(c) + "</option>"; }).join("");
+  var typeOptions = TYPE_OPTIONS.filter(function(o){ return o[0] !== "全部"; }).map(function(o){
+    return '<option value="' + o[0] + '">' + esc(o[1]) + "</option>"; }).join("");
   document.getElementById("view-submit").innerHTML =
     '<div class="card form-card">' +
       "<h3>提交班级材料</h3>" +
       '<p class="sub">带 * 为必填项，提交后进入待审核列表并生成操作记录</p>' +
+      '<div class="field"><label>材料类型</label><select id="sType">' + typeOptions + "</select></div>" +
       '<div class="field"><label>材料名称 <span class="req">*</span></label><input id="sName" type="text" autocomplete="off"><div class="ferr" id="eName"></div></div>' +
-      '<div class="field"><label>姓名 <span class="req">*</span></label><input id="sWho" type="text" autocomplete="off"><div class="ferr" id="eWho"></div><div class="hint" id="sWhoWarn" style="color:var(--orange);min-height:16px"></div></div>' +
-      '<div class="field"><label>学号 <span class="req">*</span></label><input id="sSid" type="text" inputmode="numeric" autocomplete="off"><div class="ferr" id="eSid"></div></div>' +
+      '<div class="field"><label>姓名 / 记录人</label><input id="sWho" type="text" autocomplete="off"><div class="ferr" id="eWho"></div><div class="hint" id="sWhoWarn" style="color:var(--orange);min-height:16px"></div></div>' +
+      '<div class="field"><label>学号</label><input id="sSid" type="text" inputmode="numeric" autocomplete="off"><div class="ferr" id="eSid"></div></div>' +
       '<div class="field"><label>材料类别 <span class="req">*</span></label><select id="sCat"><option value="">请选择类别</option>' + catOptions + "</select><div class=\"ferr\" id=\"eCat\"></div></div>" +
-      '<div class="field"><label>材料编号</label><input id="sCode" type="text" autocomplete="off" placeholder="留空按类别自动生成，可手动修改"></div>' +
+      '<div class="field"><label>材料编号</label><input id="sCode" type="text" autocomplete="off" placeholder="留空按模板/类别自动生成，可手动修改"></div>' +
+      '<div id="sExtra"></div>' +
       '<div class="field"><label>材料说明</label><textarea id="sNote"></textarea></div>' +
       '<div class="field"><label>附件</label><div class="file-line">' +
         '<input type="file" id="sFile" style="display:none">' +
@@ -1270,6 +1406,7 @@ function buildSubmit() {
 
   var $ = function(id){ return document.getElementById(id); };
   var dr = loadDraft();
+  $("sType").value = dr.type || "general";
   $("sName").value = dr.name || "";
   $("sWho").value = dr.who || "";
   $("sSid").value = dr.sid || "";
@@ -1277,6 +1414,7 @@ function buildSubmit() {
   $("sCode").value = dr.code || "";
   lastCodeSuggest = dr.code || "";
   $("sNote").value = dr.note || "";
+  renderExtraFields(dr.type || "general", dr.extra || {});
   if (dr.file) { submitFile = dr.file; $("fileName").textContent = dr.file; $("btnRemoveFile").style.display = ""; }
 
   ["sName","sWho","sSid","sCat","sCode","sNote"].forEach(function(id){
@@ -1284,6 +1422,7 @@ function buildSubmit() {
     el.addEventListener("input", saveDraft);
     el.addEventListener("change", saveDraft);
   });
+  $("sType").addEventListener("change", function(){ renderExtraFields(currentSubmitType()); suggestCode(); saveDraft(); });
   $("sCat").addEventListener("change", suggestCode);
   $("sSid").addEventListener("input", linkRoster);
   $("sWho").addEventListener("input", linkRoster);
@@ -1308,12 +1447,16 @@ function buildSubmit() {
 }
 
 function clearSubmit() {
-  var filled = ["sName","sWho","sSid","sCat","sCode","sNote"].some(function(id){ return document.getElementById(id).value; }) || submitFile;
+  var extraFilled = collectExtra && Object.keys(collectExtra()).some(function(k){ return collectExtra()[k]; });
+  var filled = ["sName","sWho","sSid","sCat","sCode","sNote"].some(function(id){ return document.getElementById(id).value; }) || submitFile || extraFilled;
   var doClear = function(){
     ["sName","sWho","sSid","sCode","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("sCat").value = "";
+    document.getElementById("sType").value = "general";
+    renderExtraFields("general");
     lastCodeSuggest = "";
     ["eName","eWho","eSid","eCat"].forEach(function(id){ var el = document.getElementById(id); if (el) el.textContent = ""; });
+    document.querySelectorAll(".ferr").forEach(function(el){ el.textContent = ""; });
     var warn = document.getElementById("sWhoWarn"); if (warn) warn.textContent = "";
     document.getElementById("sErr").textContent = "";
     clearDraft();
@@ -1348,26 +1491,46 @@ function submitDoc() {
   var cat = clean(document.getElementById("sCat").value);
   var code = clean(document.getElementById("sCode").value);
   var note = clean(document.getElementById("sNote").value);
+  var ftype = currentSubmitType();
+  var extra = collectExtra();
 
-  var errs = validateRecord("doc", {name:name, who:who, sid:sid, cat:cat, note:note});
-  typeDef("doc").fields.forEach(function(f){
-    if (f.type === "file") return;
-    setFieldErr(errId(f.key), errs[f.key]);
-  });
+  var errs = {};
+  if (!name) errs.name = "请填写材料名称";
+  if (!cat) errs.cat = "请选择材料类别";
+  if (ftype === "general") {
+    if (!who) errs.who = "请填写姓名";
+    if (!sid) errs.sid = "请填写学号";
+    else if (!/^\d+$/.test(sid)) errs.sid = "学号需为纯数字";
+    else if (!(sid.length >= 4 && sid.length <= 12)) errs.sid = "学号长度应为 4-12 位";
+  } else if (sid && (!/^\d+$/.test(sid) || !(sid.length >= 4 && sid.length <= 12))) {
+    errs.sid = "学号格式不正确";
+  }
+  var extraErrs = validateExtra(extra);
+
+  setFieldErr("eName", errs.name);
+  setFieldErr("eWho", errs.who);
+  setFieldErr("eSid", errs.sid);
+  setFieldErr("eCat", errs.cat);
+  Object.keys(extraErrs).forEach(function(k){ setFieldErr("eEx_" + k, extraErrs[k]); });
   var errEl = document.getElementById("sErr");
-  if (Object.keys(errs).length) { errEl.textContent = ""; return; }
+  if (Object.keys(errs).length || Object.keys(extraErrs).length) { errEl.textContent = ""; return; }
 
   var dup = store.docs.some(function(d){ return d.sid === sid && d.name === name && d.cat === cat; });
+  var attachments = submitFile ? [{name: submitFile, path: "", kind: ""}] : [];
   var doAdd = function(){
     var row;
     try {
-      row = addDoc({name:name, cat:cat, who:who, sid:sid, note:note, code:code, file:submitFile, scope:"全员"});
+      row = addDoc({name:name, cat:cat, who:who, sid:sid, note:note, code:code,
+        file:submitFile, scope:"全员", form_type:ftype, extra:extra, attachments:attachments});
       addLog("提交", name, state.operatorName, roleLabel());
     } catch (e) { errEl.textContent = "提交失败：" + e.message; return; }
     ["sName","sWho","sSid","sCode","sNote"].forEach(function(id){ document.getElementById(id).value = ""; });
     document.getElementById("sCat").value = "";
+    document.getElementById("sType").value = "general";
+    renderExtraFields("general");
     lastCodeSuggest = "";
-    typeDef("doc").fields.forEach(function(f){ if (f.type !== "file") setFieldErr(errId(f.key), ""); });
+    ["eName","eWho","eSid","eCat"].forEach(function(id){ setFieldErr(id, ""); });
+    document.querySelectorAll(".ferr").forEach(function(el){ el.textContent = ""; });
     clearDraft();
     document.getElementById("btnRemoveFile").click();
     errEl.textContent = "";
@@ -1670,10 +1833,13 @@ function csvCell(v) {
 function exportCsv() {
   var rows = filteredDocs();
   if (!rows.length) { toast("当前没有可导出的材料"); return; }
-  var head = ["材料编号","材料名称","类别","提交人","学号","提交时间","状态","附件","说明"];
+  var head = ["材料编号","材料类型","材料名称","类别","提交人","学号","提交时间","状态","附件","说明"];
   var lines = [head.map(csvCell).join(",")];
   rows.forEach(function(d){
-    lines.push([d.code || "", d.name, d.cat, d.who, d.sid, d.time, d.status, d.file || "", d.note || ""].map(csvCell).join(","));
+    var tpl = formTemplate(d.form_type);
+    var atts = d.attachments || [];
+    var attNames = atts.map(function(a){ return a.name || ""; }).join("; ") || d.file || "";
+    lines.push([d.code || "", tpl.label, d.name, d.cat, d.who, d.sid, d.time, d.status, attNames, d.note || ""].map(csvCell).join(","));
   });
   var blob = new Blob(["\uFEFF" + lines.join("\r\n")], {type:"text/csv;charset=utf-8"});
   var a = document.createElement("a");
