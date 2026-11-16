@@ -83,8 +83,8 @@ class-console/
 
 ### 下载现成程序（Windows）
 
-前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.7.1)
-下载附件 `class-console-v0.7.1.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.8.0)
+下载附件 `class-console-v0.8.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
 
 ### 浏览器本地缓存版
 
