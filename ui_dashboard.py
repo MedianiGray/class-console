@@ -31,15 +31,19 @@ class DashboardView(ttk.Frame):
             ("rejected", "已驳回", C["red"]),
         ]
         for i, (key, label, color) in enumerate(card_defs):
-            card = tk.Frame(cards, bg=C["card"], highlightthickness=0)
+            card = tk.Frame(cards, bg=C["card"], highlightthickness=1,
+                            highlightbackground=C["line"], highlightcolor=C["line"])
             card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 10, 0))
             cards.columnconfigure(i, weight=1)
             row = tk.Frame(card, bg=C["card"])
             row.pack(fill="x", padx=14, pady=12)
-            num = tk.Label(row, text="0", font=(FONT, 20, "bold"), fg=color, bg=C["card"])
+            num = tk.Label(row, text="0", font=(FONT, 20, "bold"), fg=C["text"], bg=C["card"])
             num.pack(side="left", padx=(0, 10))
-            tk.Label(row, text=label, font=(FONT, 10), fg=C["muted"],
-                     bg=C["card"]).pack(side="left", anchor="s")
+            right = tk.Frame(row, bg=C["card"])
+            right.pack(side="left", anchor="s")
+            tk.Label(right, text="", bg=color, width=1, height=1).pack(side="left", padx=(0, 5))
+            tk.Label(right, text=label, font=(FONT, 10), fg=C["muted"],
+                     bg=C["card"]).pack(side="left")
             self.card_values[key] = num
 
         # 名单 / 任务摘要入口（无底色小字）
