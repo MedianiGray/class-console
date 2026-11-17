@@ -47,9 +47,9 @@
   .nav button:hover:not(.active){background:var(--bg-soft)}
   .side-bottom{margin-top:auto;padding:16px 16px}
   .side-bottom .lbl{font-size:var(--fs-xs);color:var(--sub);margin-bottom:10px}
-  .role-row{display:flex;gap:2px;background:var(--bg);border-radius:10px;padding:3px}
-  .role-row label{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-    border:0;border-radius:8px;padding:7px 6px;cursor:pointer;min-height:32px;font-size:13px;color:var(--muted);
+  .role-row{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--bg);border-radius:10px;padding:4px}
+  .role-row label{display:flex;align-items:center;justify-content:center;gap:6px;
+    border:0;border-radius:8px;padding:7px 6px;cursor:pointer;min-height:32px;font-size:12.5px;color:var(--muted);
     transition:background .15s,color .15s}
   .role-row input{position:absolute;width:1px;height:1px;opacity:0}
   .role-row label.on{background:var(--card);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
@@ -116,6 +116,21 @@
   .stat-card:hover{box-shadow:var(--shadow-lg)}
   .stat-card .num{font-size:22px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.1}
   .stat-card .lbl{font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
+
+  /* 首屏 KPI：整排一条，内部分隔，不铺多个白盒 */
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);margin:4px 0 18px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden}
+  .kpi{padding:18px 20px;cursor:pointer;display:flex;flex-direction:column;gap:5px;
+    border-right:1px solid var(--line);transition:background .15s}
+  .kpi:last-child{border-right:0}
+  .kpi:hover{background:var(--bg-soft)}
+  .kpi .num{font-size:24px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.1}
+  .kpi .lbl{font-size:12.5px;color:var(--muted)}
+  .aux-line{display:flex;flex-wrap:wrap;align-items:center;gap:18px;font-size:12.5px;color:var(--muted);margin:-4px 0 16px}
+  .aux-line a{color:var(--primary);cursor:pointer;text-decoration:none}
+  .aux-line a:hover{text-decoration:underline}
+
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .panel{padding:18px 20px}
   .panel h3{font-size:14px;font-weight:600;margin-bottom:14px}
@@ -251,6 +266,7 @@
     .brand{padding:20px 14px 14px}
     .nav button{padding:8px 10px;font-size:13px}
     .dash-cards{grid-template-columns:repeat(3,1fr)}
+    .kpi-row{grid-template-columns:repeat(3,1fr)}
   }
   @media (max-width:768px){
     .app{flex-direction:column}
@@ -261,9 +277,12 @@
     .nav button{flex:0 0 auto;justify-content:center;min-height:38px}
     .side-bottom{margin-top:0;padding:8px 16px 12px}
     .side-bottom .lbl{display:none}
-    .role-row label{min-height:32px;padding:6px 8px}
+    .role-row{display:flex}
+    .role-row label{flex:1;min-height:32px;padding:6px 8px}
     .cards{grid-template-columns:repeat(2,1fr)}
     .dash-cards{grid-template-columns:repeat(2,1fr)}
+    .kpi-row{grid-template-columns:repeat(2,1fr)}
+    .kpi:nth-child(2n){border-right:0}
     .grid-2{grid-template-columns:1fr}
     .topbar{padding:16px 16px 8px}
     .content{padding:4px 16px 16px}
@@ -824,21 +843,23 @@ function renderDashboard() {
 
   var chk = rosterCheck();
   var tsk = taskStats();
-  var cardDefs = [
+  var kpiDefs = [
     {key:"total",    label:"材料总数", color:"var(--text)",   filter:"全部"},
     {key:"pending",  label:"待审核",   color:"var(--orange)", filter:"待审核"},
     {key:"archived", label:"已归档",   color:"var(--green)",  filter:"已归档"},
-    {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"},
-    {key:"absent",   label:"未交材料", color:"var(--red)",    filter:"__roster", perm:"roster:manage"},
-    {key:"due",      label:"临期任务", color:"var(--orange)", filter:"__tasks",  perm:"task:manage"},
-    {key:"overdue",  label:"逾期任务", color:"var(--red)",    filter:"__tasks",  perm:"task:manage"}
-  ].filter(function(c){ return !c.perm || can(c.perm); });
-  var cardsHtml = cardDefs.map(function(c){
-    var val = c.key === "absent" ? chk.absent.length : (c.key === "due" || c.key === "overdue") ? tsk[c.key] : s[c.key];
-    return '<div class="card stat-card" data-filter="' + esc(c.filter) + '" role="button" tabindex="0" title="查看' + c.label + '">' +
-      '<span class="num" style="color:' + c.color + '">' + val + "</span>" +
+    {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"}
+  ];
+  var kpiHtml = kpiDefs.map(function(c){
+    return '<div class="kpi" data-filter="' + esc(c.filter) + '" role="button" tabindex="0" title="查看' + c.label + '">' +
+      '<span class="num" style="color:' + c.color + '">' + s[c.key] + "</span>" +
       '<span class="lbl">' + c.label + "</span></div>";
   }).join("");
+
+  /* 衍生提醒：不占首屏卡片，收成一行可点摘要 */
+  var auxItems = [];
+  if (canRoster) auxItems.push('<a data-go="roster">未交 ' + chk.absent.length + " 人</a>");
+  if (canTask) auxItems.push('<a data-go="tasks">临期 ' + tsk.due + " · 逾期 " + tsk.overdue + "</a>");
+  var auxHtml = auxItems.length ? '<div class="aux-line">' + auxItems.join("") + "</div>" : "";
 
   var total = docs.length || 1;
   var catHtml = CATS.map(function(cat){
@@ -899,7 +920,8 @@ function renderDashboard() {
   }
 
   document.getElementById("view-dashboard").innerHTML =
-    '<div class="cards dash-cards">' + cardsHtml + "</div>" +
+    '<div class="kpi-row">' + kpiHtml + "</div>" +
+    auxHtml +
     '<div class="card panel" style="margin-bottom:14px"><h3>' + queueTitle + "</h3>" +
       '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
       "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
@@ -909,14 +931,13 @@ function renderDashboard() {
       rightPanel +
     "</div>";
 
-  document.querySelectorAll("#view-dashboard .stat-card").forEach(function(card){
-    var go = function(){
-      if (card.dataset.filter === "__roster") { switchView("roster"); return; }
-      if (card.dataset.filter === "__tasks") { switchView("tasks"); return; }
-      drillByStatus(card.dataset.filter);
-    };
+  document.querySelectorAll("#view-dashboard .kpi").forEach(function(card){
+    var go = function(){ drillByStatus(card.dataset.filter); };
     card.onclick = go;
     card.onkeydown = function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+  });
+  document.querySelectorAll("#view-dashboard .aux-line a[data-go]").forEach(function(a){
+    a.onclick = function(){ switchView(a.dataset.go); };
   });
   document.querySelectorAll("#view-dashboard tbody tr.clickable").forEach(function(tr){
     tr.onclick = function(){ openDoc(Number(tr.dataset.id), "docs"); };
