@@ -6,21 +6,22 @@
 <title>班级材料操作台 · 浏览器本地版</title>
 <style>
   :root{
-    --bg:#F4F6F8; --card:#FFFFFF; --line:#EDF0F4; --line-strong:#D5DDE7;
-    --text:#1C2530; --muted:#68737F; --sub:#A3ADB9; --bg-soft:#F2F4F7;
+    --bg:#F5F7FA; --card:#FFFFFF; --line:#EEF1F5; --line-strong:#DDE3EC;
+    --text:#1A222E; --muted:#66707D; --sub:#9AA5B1; --bg-soft:#F2F4F8;
     --primary:#3D5BDD; --primary-hover:#2F4BC7; --primary-soft:#EEF2FE;
-    --green:#179E57; --orange:#E0860B; --red:#E0393B; --zebra:#F8FAFC;
-    --radius:12px; --radius-sm:8px;
-    --shadow:0 1px 2px rgba(16,24,40,.04), 0 2px 8px rgba(16,24,40,.05);
-    --shadow-lg:0 8px 24px rgba(16,24,40,.12);
+    --green:#169A55; --orange:#D9830A; --red:#DC3A3D; --zebra:#F8FAFC;
+    --radius:10px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(16,24,40,.05);
+    --shadow-lg:0 6px 20px rgba(16,24,40,.10);
     --fs-xs:12px; --fs-sm:12.5px; --fs-base:13.5px; --fs-md:14px; --fs-lg:16px; --fs-xl:20px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{
-    font-family:"Microsoft YaHei",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg); color:var(--text); font-size:var(--fs-md); line-height:1.55;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg); color:var(--text); font-size:var(--fs-base); line-height:1.55;
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    font-variant-numeric:tabular-nums;
   }
   button{font-family:inherit;font-size:14px;cursor:pointer}
   input,select,textarea{font-family:inherit;font-size:14px}
@@ -32,25 +33,34 @@
   .app{display:flex;min-height:100vh}
 
   /* 侧边栏 */
-  .sidebar{width:228px;background:var(--card);
+  .sidebar{width:232px;background:var(--card);border-right:1px solid var(--line);
     display:flex;flex-direction:column;flex-shrink:0}
-  .brand{padding:24px 20px 16px}
-  .brand h1{font-size:16.5px;font-weight:700;letter-spacing:.01em}
-  .brand p{font-size:var(--fs-xs);color:var(--sub);margin-top:4px}
-  .nav{display:flex;flex-direction:column;padding:4px 12px;gap:4px}
-  .nav button{position:relative;display:flex;align-items:center;gap:10px;border:0;background:transparent;
-    color:var(--muted);padding:9px 12px;border-radius:var(--radius-sm);text-align:left;min-height:40px;font-size:13.5px;
+  .brand{display:flex;align-items:center;gap:11px;padding:20px 20px 16px}
+  .brand .logo{width:32px;height:32px;border-radius:9px;background:var(--primary-soft);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--primary)}
+  .brand .logo svg{width:18px;height:18px}
+  .brand .bt{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .brand h1{font-size:15px;font-weight:600;letter-spacing:.01em;line-height:1.2}
+  .brand p{font-size:var(--fs-xs);color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav{display:flex;flex-direction:column;padding:4px 12px;gap:2px}
+  .nav button{position:relative;display:flex;align-items:center;gap:11px;border:0;background:transparent;
+    color:var(--muted);padding:9px 12px;border-radius:var(--radius-sm);text-align:left;min-height:40px;font-size:14px;
     transition:background .15s,color .15s}
-  .nav button .ico{width:18px;text-align:center;flex-shrink:0}
+  .nav button .ico{width:16px;height:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .nav button .ico svg{width:16px;height:16px}
   .nav button.active{background:var(--primary-soft);color:var(--primary);font-weight:600}
-  .nav button.active::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--primary)}
-  .nav button:hover:not(.active){background:var(--bg-soft)}
-  .side-bottom{margin-top:auto;padding:16px 16px}
-  .side-bottom .lbl{font-size:var(--fs-xs);color:var(--sub);margin-bottom:10px}
-  .role-row{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--bg);border-radius:10px;padding:4px}
-  .role-row label{display:flex;align-items:center;justify-content:center;gap:6px;
-    border:0;border-radius:8px;padding:7px 6px;cursor:pointer;min-height:32px;font-size:12.5px;color:var(--muted);
-    transition:background .15s,color .15s}
+  .nav button:hover:not(.active){background:var(--bg-soft);color:var(--text)}
+  .side-bottom{margin-top:auto;padding:14px 16px;border-top:1px solid var(--line)}
+  .identity{display:flex;align-items:center;gap:10px;padding:2px 2px 12px}
+  .identity .avatar{width:32px;height:32px;border-radius:50%;background:var(--primary-soft);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0}
+  .identity .id-t{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .identity .id-name{font-size:13px;font-weight:600;line-height:1.2}
+  .identity .id-role{font-size:var(--fs-xs);color:var(--sub)}
+  .role-row{display:flex;gap:2px;background:var(--bg-soft);border-radius:8px;padding:3px}
+  .role-row label{flex:1;display:flex;align-items:center;justify-content:center;
+    border:0;border-radius:6px;padding:6px 2px;cursor:pointer;min-height:30px;font-size:12.5px;color:var(--muted);
+    transition:background .15s,color .15s;white-space:nowrap}
   .role-row input{position:absolute;width:1px;height:1px;opacity:0}
   .role-row label.on{background:var(--card);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
   .role-row label:hover:not(.on){color:var(--text)}
@@ -59,14 +69,14 @@
   /* 主区 */
   .main{flex:1;display:flex;flex-direction:column;min-width:0}
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
-    padding:22px 32px 12px}
-  .topbar h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+    padding:0 32px;height:56px;background:var(--card);border-bottom:1px solid var(--line)}
+  .topbar h2{font-size:16px;font-weight:600;letter-spacing:-.005em}
   .topbar .summary{font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
-  .content{flex:1;padding:8px 32px 24px;min-width:0}
+  .content{flex:1;padding:20px 32px 24px;min-width:0}
   .view{display:none}
   .view.active{display:block}
   .statusbar{display:flex;justify-content:space-between;gap:16px;padding:9px 32px;
-    background:var(--bg-soft);color:var(--sub);font-size:var(--fs-xs)}
+    background:var(--card);border-top:1px solid var(--line);color:var(--sub);font-size:var(--fs-xs)}
 
   /* 卡片与通用 */
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
@@ -75,12 +85,12 @@
   .empty{color:var(--muted);text-align:center;padding:40px 16px}
   .empty .empty-title{font-size:15px;color:var(--text);margin-bottom:4px;font-weight:600}
   .empty .empty-sub{font-size:13px;margin-bottom:12px}
-  .btn{border:1px solid transparent;background:var(--bg-soft);border-radius:var(--radius-sm);
+  .btn{border:1px solid var(--line-strong);background:var(--card);border-radius:var(--radius-sm);
     padding:0 15px;min-height:36px;font-size:13.5px;font-weight:500;color:var(--text);
     transition:background .15s,border-color .15s,box-shadow .15s}
-  .btn:hover{background:#E8ECF1}
+  .btn:hover{background:var(--bg-soft);border-color:var(--sub)}
   .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
-  .btn.primary:hover{background:var(--primary-hover)}
+  .btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
   .btn.danger{background:var(--card);border-color:#F3C2C2;color:var(--red)}
   .btn.danger:hover{background:#FEECEC}
   .btn.mini{min-height:30px;padding:4px 11px;font-size:12.5px;border-radius:7px}
@@ -110,43 +120,43 @@
   /* 看板 */
   .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:8px 0 18px}
   .dash-cards{grid-template-columns:repeat(4,1fr)}
-  .stat-card{display:flex;align-items:baseline;gap:10px;padding:16px 18px;cursor:pointer;
+  .stat-card{display:flex;align-items:baseline;gap:10px;padding:16px 18px;cursor:default;
     background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    box-shadow:var(--shadow);transition:box-shadow .15s, transform .15s}
-  .stat-card:hover{box-shadow:var(--shadow-lg)}
-  .stat-card .num{font-size:22px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.1}
-  .stat-card .lbl{font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
+    box-shadow:var(--shadow)}
+  .stat-card .num{font-size:22px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--text)}
+  .stat-card .lbl{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
+  .stat-card .lbl .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
 
   /* 首屏 KPI：整排一条，内部分隔，不铺多个白盒 */
-  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);margin:4px 0 18px;
-    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    box-shadow:var(--shadow);overflow:hidden}
-  .kpi{padding:18px 20px;cursor:pointer;display:flex;flex-direction:column;gap:5px;
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);margin:0 0 16px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .kpi{padding:18px 20px;cursor:pointer;display:flex;flex-direction:column;gap:7px;
     border-right:1px solid var(--line);transition:background .15s}
   .kpi:last-child{border-right:0}
   .kpi:hover{background:var(--bg-soft)}
-  .kpi .num{font-size:24px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.1}
-  .kpi .lbl{font-size:12.5px;color:var(--muted)}
-  .aux-line{display:flex;flex-wrap:wrap;align-items:center;gap:18px;font-size:12.5px;color:var(--muted);margin:-4px 0 16px}
+  .kpi .lbl{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+  .kpi .lbl .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+  .kpi .num{font-size:26px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--text)}
+  .aux-line{display:flex;flex-wrap:wrap;align-items:center;gap:18px;font-size:12.5px;color:var(--muted);margin:0 0 16px}
   .aux-line a{color:var(--primary);cursor:pointer;text-decoration:none}
   .aux-line a:hover{text-decoration:underline}
 
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  .panel{padding:18px 20px}
-  .panel h3{font-size:14px;font-weight:600;margin-bottom:14px}
+  .panel{padding:20px}
+  .panel h3{font-size:14px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
   .cat-row{display:flex;align-items:center;gap:10px;padding:6px 0}
   .cat-row .name{width:78px;font-size:13px;flex-shrink:0}
-  .cat-row .track{flex:1;height:8px;background:var(--line);border-radius:6px;overflow:hidden}
-  .cat-row .fill{height:100%;background:var(--primary);border-radius:6px}
+  .cat-row .track{flex:1;min-width:0;height:8px;background:var(--line);border-radius:6px;overflow:hidden;position:relative}
+  .cat-row .fill{position:absolute;left:0;top:0;bottom:0;background:var(--primary);border-radius:6px}
   .cat-row .cnt{width:26px;text-align:right;font-size:13px;color:var(--muted)}
   .panel + .panel{margin-top:14px}
 
   /* 表格 */
-  .table-wrap{overflow:auto;border:0;border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow)}
+  .table-wrap{overflow:auto;border:0;border-radius:var(--radius);background:var(--card)}
   table{width:100%;border-collapse:collapse;table-layout:fixed}
-  th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);font-size:var(--fs-base);
+  th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);font-size:var(--fs-base);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  th{color:var(--sub);font-weight:600;font-size:var(--fs-sm);background:transparent;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:500;font-size:var(--fs-xs);background:#FAFBFC;border-bottom:1px solid var(--line)}
   tbody tr:hover{background:#F7F9FC}
   tbody tr.sel{background:var(--primary-soft)}
   tbody tr.clickable{cursor:pointer}
@@ -276,7 +286,7 @@
     .nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:6px 12px}
     .nav button{flex:0 0 auto;justify-content:center;min-height:38px}
     .side-bottom{margin-top:0;padding:8px 16px 12px}
-    .side-bottom .lbl{display:none}
+    .identity{display:none}
     .role-row{display:flex}
     .role-row label{flex:1;min-height:32px;padding:6px 8px}
     .cards{grid-template-columns:repeat(2,1fr)}
@@ -284,8 +294,8 @@
     .kpi-row{grid-template-columns:repeat(2,1fr)}
     .kpi:nth-child(2n){border-right:0}
     .grid-2{grid-template-columns:1fr}
-    .topbar{padding:16px 16px 8px}
-    .content{padding:4px 16px 16px}
+    .topbar{height:48px;padding:0 16px}
+    .content{padding:16px 16px 16px}
     .statusbar{padding:8px 16px}
     .field{grid-template-columns:1fr;gap:6px}
     .field .ferr{grid-column:1}
@@ -297,12 +307,25 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <h1>班级操作台</h1>
-      <p>数据仅存本浏览器 · 不上云、不同步</p>
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/>
+        </svg>
+      </div>
+      <div class="bt">
+        <h1>班级操作台</h1>
+        <p>数据仅存本浏览器 · 不上云</p>
+      </div>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="side-bottom">
-      <div class="lbl">当前视角</div>
+      <div class="identity">
+        <div class="avatar" id="idAvatar">学</div>
+        <div class="id-t">
+          <div class="id-name" id="idName">经办人</div>
+          <div class="id-role" id="idRole">学委</div>
+        </div>
+      </div>
       <div class="role-row" id="roleRow">
         <label id="roleHandler"><input type="radio" name="role" value="handler"> 经办人</label>
         <label id="roleReviewer"><input type="radio" name="role" value="reviewer"> 审核者</label>
@@ -718,13 +741,22 @@ var TYPE_OPTIONS = [["全部","全部"],["general","个人材料"],["meeting","�
   ["dorm","宿舍走访记录"],["pledg","班级承诺书"],["talk","违纪约谈记录"],["custom","自定义材料"]];
 var TYPE_LABEL = {}; TYPE_OPTIONS.forEach(function(o){ TYPE_LABEL[o[0]] = o[1]; });
 
+var ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">';
+var ICONS = {
+  dashboard: ICON_SVG + '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+  docs:      ICON_SVG + '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h4"/></svg>',
+  roster:    ICON_SVG + '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.7-3 2.8-4.5 5.5-4.5s4.8 1.5 5.5 4.5"/><path d="M16 5.4a3 3 0 0 1 0 5.4M17.6 14.8c1.1.7 1.8 1.8 2.1 3.6"/></svg>',
+  tasks:     ICON_SVG + '<path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 6 1 1 2-2m-3 7 1 1 2-2m-3 7 1 1 2-2"/></svg>',
+  submit:    ICON_SVG + '<path d="M12 16V4m0 0L8 8m4-4 4 4"/><path d="M4 20h16"/></svg>',
+  logs:      ICON_SVG + '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>'
+};
 var NAV = [
-  {key:"dashboard", title:"工作台概览", ico:"◫"},
-  {key:"docs",      title:"材料台账",   ico:"▤"},
-  {key:"roster",    title:"名单核对",   ico:"☺", perm:"roster:manage"},
-  {key:"tasks",     title:"任务跟踪",   ico:"◷", perm:"task:manage"},
-  {key:"submit",    title:"提交材料",   ico:"✎", perm:"docs:create"},
-  {key:"logs",      title:"操作日志",   ico:"☰", perm:"logs:view"}
+  {key:"dashboard", title:"工作台概览", ico:"dashboard"},
+  {key:"docs",      title:"材料台账",   ico:"docs"},
+  {key:"roster",    title:"名单核对",   ico:"roster", perm:"roster:manage"},
+  {key:"tasks",     title:"任务跟踪",   ico:"tasks", perm:"task:manage"},
+  {key:"submit",    title:"提交材料",   ico:"submit", perm:"docs:create"},
+  {key:"logs",      title:"操作日志",   ico:"logs", perm:"logs:view"}
 ];
 
 /* ---- 岗位与权限点模型 ----
@@ -791,7 +823,7 @@ function buildNav() {
   NAV.filter(navVisible).forEach(function(n){
     var b = document.createElement("button");
     b.dataset.key = n.key;
-    b.innerHTML = '<span class="ico">' + n.ico + "</span><span>" + esc(n.title) + "</span>";
+    b.innerHTML = '<span class="ico">' + (ICONS[n.ico] || "") + "</span><span>" + esc(n.title) + "</span>";
     b.onclick = function(){ switchView(n.key); };
     nav.appendChild(b);
   });
@@ -844,15 +876,15 @@ function renderDashboard() {
   var chk = rosterCheck();
   var tsk = taskStats();
   var kpiDefs = [
-    {key:"total",    label:"材料总数", color:"var(--text)",   filter:"全部"},
+    {key:"total",    label:"材料总数", color:"var(--muted)",  filter:"全部"},
     {key:"pending",  label:"待审核",   color:"var(--orange)", filter:"待审核"},
     {key:"archived", label:"已归档",   color:"var(--green)",  filter:"已归档"},
     {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"}
   ];
   var kpiHtml = kpiDefs.map(function(c){
     return '<div class="kpi" data-filter="' + esc(c.filter) + '" role="button" tabindex="0" title="查看' + c.label + '">' +
-      '<span class="num" style="color:' + c.color + '">' + s[c.key] + "</span>" +
-      '<span class="lbl">' + c.label + "</span></div>";
+      '<span class="lbl" style="color:' + c.color + '"><span class="dot"></span>' + c.label + "</span>" +
+      '<span class="num">' + s[c.key] + "</span></div>";
   }).join("");
 
   /* 衍生提醒：不占首屏卡片，收成一行可点摘要 */
@@ -1669,12 +1701,12 @@ function renderRoster() {
   store.docs.forEach(function(d){ if (d.sid) submitted[d.sid] = true; });
 
   var cards = [
-    {label:"应交人数", num:chk.total, color:"var(--text)"},
+    {label:"应交人数", num:chk.total, color:"var(--muted)"},
     {label:"已交人数", num:chk.done,  color:"var(--green)"},
     {label:"未交人数", num:chk.absent.length, color:"var(--red)"}
   ].map(function(c){
-    return '<div class="card stat-card" style="cursor:default"><div class="num" style="color:' + c.color + '">' + c.num +
-      "</div><div class=\"lbl\">" + c.label + "</div></div>";
+    return '<div class="card stat-card" style="cursor:default"><div class="num">' + c.num +
+      '</div><div class="lbl" style="color:' + c.color + '"><span class="dot"></span>' + c.label + "</div></div>";
   }).join("");
 
   var trs = rows.map(function(r){
@@ -1791,13 +1823,13 @@ function renderTasks() {
   var st = taskStats();
   var rows = listTasks();
   var cards = [
-    {label:"进行中",    num:st.ongoing, color:"var(--text)"},
+    {label:"进行中",    num:st.ongoing, color:"var(--muted)"},
     {label:"临期(≤2天)", num:st.due,    color:"var(--orange)"},
     {label:"已逾期",    num:st.overdue, color:"var(--red)"},
     {label:"已完成",    num:st.done,    color:"var(--green)"}
   ].map(function(c){
-    return '<div class="card stat-card" style="cursor:default"><div class="num" style="color:' + c.color + '">' + c.num +
-      "</div><div class=\"lbl\">" + c.label + "</div></div>";
+    return '<div class="card stat-card" style="cursor:default"><div class="num">' + c.num +
+      '</div><div class="lbl" style="color:' + c.color + '"><span class="dot"></span>' + c.label + "</div></div>";
   }).join("");
 
   var trs = rows.map(function(t){
@@ -2044,6 +2076,13 @@ function bindRole() {
       if (lab) lab.classList.toggle("on", r.value === state.role);
       r.checked = (r.value === state.role);
     });
+    var role = ROLES[state.role] || ROLES.handler;
+    var nameEl = document.getElementById("idName");
+    var roleEl = document.getElementById("idRole");
+    var avatarEl = document.getElementById("idAvatar");
+    if (nameEl) nameEl.textContent = role.label;
+    if (roleEl) roleEl.textContent = role.operator;
+    if (avatarEl) avatarEl.textContent = role.operator.charAt(0);
   }
   radios.forEach(function(r){
     r.onchange = function(){
