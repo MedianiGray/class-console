@@ -279,27 +279,31 @@
     .kpi-row{grid-template-columns:repeat(3,1fr)}
   }
   @media (max-width:768px){
-    .app{flex-direction:column}
-    .sidebar{width:100%}
-    .brand{padding:16px 16px 8px}
-    .brand p{display:none}
-    .nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:6px 12px}
-    .nav button{flex:0 0 auto;justify-content:center;min-height:38px}
-    .side-bottom{margin-top:0;padding:8px 16px 12px}
-    .identity{display:none}
-    .role-row{display:flex}
-    .role-row label{flex:1;min-height:32px;padding:6px 8px}
+    .topbar{padding:0 16px}
     .cards{grid-template-columns:repeat(2,1fr)}
     .dash-cards{grid-template-columns:repeat(2,1fr)}
     .kpi-row{grid-template-columns:repeat(2,1fr)}
     .kpi:nth-child(2n){border-right:0}
     .grid-2{grid-template-columns:1fr}
-    .topbar{height:48px;padding:0 16px}
     .content{padding:16px 16px 16px}
     .statusbar{padding:8px 16px}
     .field{grid-template-columns:1fr;gap:6px}
     .field .ferr{grid-column:1}
     .drawer{width:100%;max-width:100%}
+  }
+  @media (max-width:600px){
+    .app{flex-direction:column}
+    .sidebar{width:100%}
+    .brand{padding:14px 16px 6px}
+    .brand p{display:none}
+    .nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:4px 12px}
+    .nav button{flex:0 0 auto;justify-content:center;min-height:38px}
+    .nav button .txt{display:none}
+    .side-bottom{margin-top:0;padding:6px 16px 10px}
+    .identity{display:none}
+    .role-row{display:flex}
+    .role-row label{flex:1;min-height:30px;padding:5px 6px;font-size:12px}
+    .topbar{height:48px;padding:0 16px}
   }
 </style>
 </head>
@@ -823,7 +827,7 @@ function buildNav() {
   NAV.filter(navVisible).forEach(function(n){
     var b = document.createElement("button");
     b.dataset.key = n.key;
-    b.innerHTML = '<span class="ico">' + (ICONS[n.ico] || "") + "</span><span>" + esc(n.title) + "</span>";
+    b.innerHTML = '<span class="ico">' + (ICONS[n.ico] || "") + '</span><span class="txt">' + esc(n.title) + "</span>";
     b.onclick = function(){ switchView(n.key); };
     nav.appendChild(b);
   });
