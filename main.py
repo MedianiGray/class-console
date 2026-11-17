@@ -46,11 +46,11 @@ def setup_style(root):
     style.configure("Sub.TLabel", font=(FONT, 10), foreground=C["muted"])
 
     # 按钮：默认 / 主要 / 危险
-    style.configure("TButton", padding=(14, 8), relief="flat", background=C["bg_soft"],
-                    foreground=C["text"], bordercolor=C["bg_soft"], borderwidth=0,
+    style.configure("TButton", padding=(14, 8), relief="flat", background=C["card"],
+                    foreground=C["text"], bordercolor=C["line_strong"], borderwidth=1,
                     font=(FONT, 11))
     style.map("TButton",
-              background=[("active", "#E8ECF1"), ("disabled", "#F1F5F9")],
+              background=[("active", C["bg_soft"]), ("disabled", C["bg"])],
               foreground=[("disabled", C["sub"])],
               bordercolor=[("disabled", C["line"])])
     style.configure("Accent.TButton", background=C["primary"], foreground="#FFFFFF",
