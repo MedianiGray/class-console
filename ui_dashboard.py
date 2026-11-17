@@ -42,13 +42,13 @@ class DashboardView(ttk.Frame):
                      bg=C["card"]).pack(side="left", anchor="s")
             self.card_values[key] = num
 
-        # 名单 / 任务摘要入口（浅底 chip）
+        # 名单 / 任务摘要入口（无底色小字）
         notice = ttk.Frame(self)
-        notice.pack(fill="x", padx=18, pady=(10, 0))
+        notice.pack(fill="x", padx=18, pady=(6, 0))
         self.roster_chip, self.roster_hint = self._make_chip(notice)
         self.roster_chip.pack(side="left")
         self.task_chip, self.task_hint = self._make_chip(notice)
-        self.task_chip.pack(side="left", padx=10)
+        self.task_chip.pack(side="left", padx=16)
         self.roster_hint.bind("<Button-1>", lambda e: self.window.switch("roster"))
         self.task_hint.bind("<Button-1>", lambda e: self.window.switch("tasks"))
 
@@ -93,10 +93,10 @@ class DashboardView(ttk.Frame):
         self.log_tree.pack(fill="both", expand=True, padx=12, pady=10)
 
     def _make_chip(self, parent):
-        chip = tk.Frame(parent, bg=C["primary_soft"])
-        lbl = tk.Label(chip, text="", fg=C["primary"], bg=C["primary_soft"],
+        chip = tk.Frame(parent, bg=C["content"])
+        lbl = tk.Label(chip, text="", fg=C["muted"], bg=C["content"],
                        cursor="hand2", font=(FONT, 10))
-        lbl.pack(padx=12, pady=6)
+        lbl.pack(padx=0, pady=4)
         return chip, lbl
 
     def refresh(self):
