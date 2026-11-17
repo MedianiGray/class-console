@@ -37,13 +37,13 @@ PERMISSIONS = {
 class MainWindow(ttk.Frame):
     # (key, 标题, 所需权限点；None 表示所有岗位可见)
     NAV = [
-        ("dashboard", "◫ 工作台概览", None),
-        ("docs", "▤ 材料台账", None),
-        ("collect", "▣ 文件夹收集", "docs:create"),
-        ("roster", "☺ 名单核对", "roster:manage"),
-        ("tasks", "◷ 任务跟踪", "task:manage"),
-        ("submit", "✎ 提交材料", "docs:create"),
-        ("logs", "☰ 操作日志", "logs:view"),
+        ("dashboard", "工作台概览", None),
+        ("docs", "材料台账", None),
+        ("collect", "文件夹收集", "docs:create"),
+        ("roster", "名单核对", "roster:manage"),
+        ("tasks", "任务跟踪", "task:manage"),
+        ("submit", "提交材料", "docs:create"),
+        ("logs", "操作日志", "logs:view"),
     ]
 
     def __init__(self, master, repo):
@@ -71,10 +71,17 @@ class MainWindow(ttk.Frame):
         sidebar.pack_propagate(False)
 
         brand = tk.Frame(sidebar, bg=C["sidebar"])
-        brand.pack(fill="x", padx=18, pady=(24, 20))
-        tk.Label(brand, text="班级操作台", bg=C["sidebar"], fg=C["text"],
+        brand.pack(fill="x", padx=16, pady=(20, 16))
+        logo = tk.Frame(brand, bg=C["primary_soft"], width=32, height=32)
+        logo.pack(side="left", padx=(0, 11))
+        logo.pack_propagate(False)
+        tk.Label(logo, text="文", bg=C["primary_soft"], fg=C["primary"],
+                 font=(FONT, 14, "bold")).pack(expand=True)
+        bt = tk.Frame(brand, bg=C["sidebar"])
+        bt.pack(side="left", fill="x")
+        tk.Label(bt, text="班级操作台", bg=C["sidebar"], fg=C["text"],
                  font=(FONT, 15, "bold")).pack(anchor="w")
-        tk.Label(brand, text="本地桌面版", bg=C["sidebar"], fg=C["muted"],
+        tk.Label(bt, text="本地桌面版", bg=C["sidebar"], fg=C["muted"],
                  font=(FONT, 10)).pack(anchor="w", pady=(3, 0))
 
         self.nav_box = tk.Frame(sidebar, bg=C["sidebar"])
@@ -116,12 +123,12 @@ class MainWindow(ttk.Frame):
         }
 
         # 状态栏
-        status = tk.Frame(self, bg="#F0F3F7", height=28)
+        status = tk.Frame(self, bg=C["card"], height=28)
         status.pack(side="bottom", fill="x")
-        self.status_left = tk.Label(status, text=self._status_default, bg="#F0F3F7",
+        self.status_left = tk.Label(status, text=self._status_default, bg=C["card"],
                                     fg=C["sub"], font=(FONT, 10), anchor="w")
         self.status_left.pack(side="left", padx=14, pady=5)
-        self.status_right = tk.Label(status, text="", bg="#F0F3F7", fg=C["sub"],
+        self.status_right = tk.Label(status, text="", bg=C["card"], fg=C["sub"],
                                      font=(FONT, 10), anchor="e")
         self.status_right.pack(side="right", padx=14)
 
@@ -134,7 +141,7 @@ class MainWindow(ttk.Frame):
         return False
 
     def _build_nav(self):
-        for (_btn, _bar, row) in getattr(self, "nav_items", {}).values():
+        for (_btn, row) in getattr(self, "nav_items", {}).values():
             row.destroy()
         self.nav_items = {}
         for key, label, perm in self.NAV:
@@ -142,15 +149,13 @@ class MainWindow(ttk.Frame):
                 continue
             row = tk.Frame(self.nav_box, bg=C["sidebar"])
             row.pack(fill="x", pady=2)
-            bar = tk.Frame(row, bg=C["sidebar"], width=3)
-            bar.pack(side="left", fill="y")
             btn = tk.Button(row, text=label, bg=C["sidebar"], fg=C["muted"],
                             activebackground=C["sidebar_active"], activeforeground=C["primary"],
                             relief="flat", font=(FONT, 12), anchor="w",
                             padx=14, pady=11, cursor="hand2", bd=0,
                             command=lambda k=key: self.switch(k))
             btn.pack(side="left", fill="x", expand=True)
-            self.nav_items[key] = (btn, bar, row)
+            self.nav_items[key] = (btn, row)
 
     # ---------- 反馈与确认 ----------
     def show_status(self, text, temp=False):
@@ -194,11 +199,10 @@ class MainWindow(ttk.Frame):
                 v.tkraise()
             else:
                 v.pack_forget()
-        for k, (btn, bar, row) in self.nav_items.items():
+        for k, (btn, row) in self.nav_items.items():
             active = k == key
             btn.config(bg=C["sidebar_active"] if active else C["sidebar"],
                        fg=C["primary"] if active else C["muted"])
-            bar.config(bg=C["accent"] if active else C["sidebar"])
         self.title_label.config(text=self._nav_title(key))
         self.refresh_all()
 
