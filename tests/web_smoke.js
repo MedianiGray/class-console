@@ -197,6 +197,38 @@ assert("移除任务", sandbox.findTask(nt.id) === null);
 const normT = sandbox.normalizeTask({ title:"x", cat:"c" }, 2);
 assert("任务兜底范围与完成态", normT.scope === "全员" && normT.done === false && normT.id === 3);
 
+// 文件夹监听：快照比对口径
+const wEntries = [
+  { rel:"a.pdf", name:"a.pdf", size:1024, mtime:1700000000000 },
+  { rel:"b.jpg", name:"b.jpg", size:2048, mtime:1700000001000 },
+  { rel:"c.docx", name:"c.docx", size:512, mtime:1700000002000 }
+];
+const first = sandbox.compareWatch(wEntries, {}, {});
+assert("首次扫描全部记为新增", first.counts.new === 3 && first.items.length === 3);
+
+const snap = sandbox.watchSnapshotOf(wEntries);
+const secondEntries = [
+  { rel:"a.pdf", name:"a.pdf", size:1024, mtime:1700000000000 },
+  { rel:"b.jpg", name:"b.jpg", size:4096, mtime:1700000099000 },
+  { rel:"d.png", name:"d.png", size:300, mtime:1700000003000 }
+];
+const second = sandbox.compareWatch(secondEntries, snap, {});
+assert("二次扫描识别新增", second.counts.new === 1);
+assert("二次扫描识别修改", second.counts.changed === 1);
+assert("二次扫描识别不变", second.counts.kept === 1);
+assert("二次扫描识别删除", second.counts.removed === 1 && second.removed[0].name === "c.docx");
+
+const regHit = sandbox.compareWatch([{ rel:"e.x", name:"e.x", size:1, mtime:1 }], {}, { "e.x": true });
+assert("已登记文件名不记为新增", regHit.items[0].state === "registered");
+assert("去扩展名取材料名", sandbox.watchBaseName("班会签到表.pdf") === "班会签到表");
+assert("大小换算 KB", sandbox.watchHumanSize(2048) === "2 KB");
+
+sandbox.saveWatch("团日材料", snap, "11-18 10:00");
+const wl = sandbox.loadWatch();
+assert("监听目录名持久化", wl.dirName === "团日材料");
+assert("监听基线持久化", Object.keys(wl.baseline).length === 3);
+assert("已登记集合非空", Object.keys(sandbox.watchRegisteredSet()).length > 0);
+
 // 备份/恢复结构
 const bk = sandbox.backup();
 assert("备份含 docs/logs/roster/tasks", Array.isArray(bk.docs) && Array.isArray(bk.logs) && Array.isArray(bk.roster) && Array.isArray(bk.tasks));
