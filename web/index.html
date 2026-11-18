@@ -106,6 +106,20 @@
   .actions{display:flex;gap:10px;align-items:center;padding:12px 0}
   .hint{font-size:var(--fs-sm);color:var(--muted)}
 
+  /* 文件夹收集 */
+  .collect-head{margin-bottom:14px}
+  .collect-head.panel{padding:18px 20px}
+  .collect-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+  .collect-toolbar label{font-size:var(--fs-sm);color:var(--muted)}
+  .collect-toolbar select{border:1px solid var(--line);border-radius:var(--radius-sm);padding:9px 12px;background:var(--card);min-height:36px;font-size:13.5px;color:var(--text)}
+  .watch-toggle{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .watch-toggle input{accent-color:var(--primary)}
+  .collect-status{font-size:13px;color:var(--text);margin-top:12px}
+  .collect-note{margin-top:6px;line-height:1.6}
+  .file-cell{font-weight:500}
+  .row-removed .file-cell{color:var(--sub)}
+  .row-removed{background:#FBFCFD}
+
   /* 筛选条件标签 */
   .chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 0 12px;min-height:8px}
   .chip{display:inline-flex;align-items:center;gap:6px;border:0;
@@ -178,6 +192,7 @@
   .tag.green{color:var(--green);background:#EAF7EF}
   .tag.orange{color:var(--orange);background:#FDF3E3}
   .tag.red{color:var(--red);background:#FEECEC}
+  .tag.blue{color:var(--primary);background:var(--primary-soft)}
   .tag.muted{color:var(--muted);background:#F1F3F6}
 
   /* 复选框与批量操作栏 */
@@ -350,6 +365,7 @@
       <section class="view" id="view-roster"></section>
       <section class="view" id="view-tasks"></section>
       <section class="view" id="view-submit"></section>
+      <section class="view" id="view-collect"></section>
       <section class="view" id="view-logs"></section>
     </div>
     <div class="statusbar">
@@ -711,6 +727,77 @@ function addLog(act, obj, who, role, src) {
     act: clean(act), obj: clean(obj), src: clean(src) || "本机"});
   saveStore();
 }
+
+/* ---- 文件夹监听：快照比对纯函数（不依赖 DOM / 句柄，便于回归） ---- */
+var WATCH_KEY = "classconsole_web_watch";
+var WATCH_SKIP_PREFIX = [".", "~$"];
+function watchBaseName(name){ var s = String(name || ""); var i = s.lastIndexOf("."); return i > 0 ? s.slice(0, i) : s; }
+function watchHumanSize(n){
+  n = Number(n) || 0;
+  var units = ["B", "KB", "MB", "GB"];
+  for (var u = 0; u < units.length; u++){
+    if (n < 1024 || u === units.length - 1) return u === 0 ? String(Math.round(n)) : (Math.round(n * 10) / 10) + " " + units[u];
+    n /= 1024;
+  }
+  return "0 B";
+}
+function watchFmtMtime(ts){
+  var d = new Date(Number(ts) || 0); if (isNaN(d.getTime())) return "";
+  function p(x){ return (x < 10 ? "0" : "") + x; }
+  return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function watchRegisteredSet(){
+  var set = {};
+  store.docs.forEach(function(d){
+    if (d.file) set[d.file] = true;
+    (d.attachments || []).forEach(function(a){ if (a && a.name) set[a.name] = true; });
+  });
+  return set;
+}
+/* entries: [{rel,name,size,mtime}]；baseline: {rel:{name,size,mtime}}；regSet: {name:true}
+   返回 {items, removed, counts:{new,changed,removed,registered,kept}} */
+function compareWatch(entries, baseline, regSet){
+  baseline = baseline || {}; regSet = regSet || {};
+  var items = [], removed = [], seen = {};
+  var counts = { new:0, changed:0, removed:0, registered:0, kept:0 };
+  (entries || []).forEach(function(e){
+    var prev = baseline[e.rel];
+    var state;
+    if (!prev) state = regSet[e.name] ? "registered" : "new";
+    else if (prev.size !== e.size || prev.mtime !== e.mtime) state = "changed";
+    else state = "kept";
+    counts[state] = (counts[state] || 0) + 1;
+    seen[e.rel] = true;
+    items.push({ rel:e.rel, name:e.name, size:e.size, mtime:e.mtime, state:state });
+  });
+  Object.keys(baseline).forEach(function(rel){
+    if (!seen[rel]){
+      removed.push({ rel:rel, name:baseline[rel].name, size:baseline[rel].size, mtime:baseline[rel].mtime });
+      counts.removed++;
+    }
+  });
+  return { items:items, removed:removed, counts:counts };
+}
+function watchSnapshotOf(entries){
+  var snap = {};
+  (entries || []).forEach(function(e){ snap[e.rel] = { name:e.name, size:e.size, mtime:e.mtime }; });
+  return snap;
+}
+function loadWatch(){
+  try {
+    var raw = localStorage.getItem(WATCH_KEY);
+    if (raw){
+      var d = JSON.parse(raw);
+      if (d && typeof d === "object") return { dirName:clean(d.dirName),
+        baseline:(d.baseline && typeof d.baseline === "object") ? d.baseline : {}, updatedAt:clean(d.updatedAt) };
+    }
+  } catch(e){}
+  return { dirName:"", baseline:{}, updatedAt:"" };
+}
+function saveWatch(dirName, baseline, updatedAt){
+  try { localStorage.setItem(WATCH_KEY, JSON.stringify({ dirName:clean(dirName), baseline:baseline, updatedAt:updatedAt || nowStr() })); } catch(e){}
+}
+
 function stats() {
   return {
     total: store.docs.length,
@@ -752,7 +839,8 @@ var ICONS = {
   roster:    ICON_SVG + '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.7-3 2.8-4.5 5.5-4.5s4.8 1.5 5.5 4.5"/><path d="M16 5.4a3 3 0 0 1 0 5.4M17.6 14.8c1.1.7 1.8 1.8 2.1 3.6"/></svg>',
   tasks:     ICON_SVG + '<path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 6 1 1 2-2m-3 7 1 1 2-2m-3 7 1 1 2-2"/></svg>',
   submit:    ICON_SVG + '<path d="M12 16V4m0 0L8 8m4-4 4 4"/><path d="M4 20h16"/></svg>',
-  logs:      ICON_SVG + '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>'
+  logs:      ICON_SVG + '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
+  folder:    ICON_SVG + '<path d="M3.5 7.5A2 2 0 0 1 5.5 5h4l2 2.5h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'
 };
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"dashboard"},
@@ -760,6 +848,7 @@ var NAV = [
   {key:"roster",    title:"名单核对",   ico:"roster", perm:"roster:manage"},
   {key:"tasks",     title:"任务跟踪",   ico:"tasks", perm:"task:manage"},
   {key:"submit",    title:"提交材料",   ico:"submit", perm:"docs:create"},
+  {key:"collect",   title:"文件夹收集", ico:"folder", perm:"docs:create"},
   {key:"logs",      title:"操作日志",   ico:"logs", perm:"logs:view"}
 ];
 
@@ -863,6 +952,7 @@ function refreshAll() {
   else if (state.current === "docs") renderDocs();
   else if (state.current === "roster") renderRoster();
   else if (state.current === "tasks") renderTasks();
+  else if (state.current === "collect") renderCollect();
   else if (state.current === "logs") renderLogs();
 }
 
@@ -1675,6 +1765,240 @@ function submitDoc() {
   else doAdd();
 }
 
+/* ============ 文件夹收集视图（目录扫描 + 变化记录） ============ */
+var watch = {
+  dirHandle: null, dirName: "", baseline: {}, timer: null, scanning: false,
+  items: [], removed: [], selected: {},
+  fsSupported: (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function")
+};
+var WATCH_TAG = {
+  new: ["orange", "未登记·新增"], changed: ["blue", "已修改"],
+  registered: ["muted", "已登记"], kept: ["muted", "无变化"]
+};
+
+function buildCollect() {
+  var catOpts = CATS.map(function(c){ return "<option>" + esc(c) + "</option>"; }).join("");
+  var pickBtn = watch.fsSupported
+    ? '<button class="btn primary" id="cPick">选择监视文件夹</button>'
+    : '<button class="btn" id="cPickLegacy">选择文件夹（一次性读取）</button>';
+  var watchCtl = watch.fsSupported
+    ? '<label class="watch-toggle"><input type="checkbox" id="cWatch"> 每 10 秒自动扫描</label>' : "";
+  document.getElementById("view-collect").innerHTML =
+    '<div class="card panel collect-head">' +
+      '<div class="collect-toolbar">' + pickBtn +
+        "<label>默认类别</label><select id=\"cCat\">" + catOpts + "</select>" + watchCtl +
+        '<button class="btn" id="cRescan" style="display:none">重新扫描</button>' +
+      "</div>" +
+      '<div class="collect-status" id="cStatus">尚未选择文件夹</div>' +
+      '<div class="collect-note hint" id="cNote"></div>' +
+    "</div>" +
+    '<div class="table-wrap"><table>' +
+      '<colgroup><col style="width:36px"><col><col style="width:110px"><col style="width:150px"><col style="width:120px"></colgroup>' +
+      "<thead><tr><th></th><th>文件</th><th>大小</th><th>修改时间</th><th>比对结果</th></tr></thead>" +
+      '<tbody id="cBody"></tbody></table></div>' +
+    '<div class="actions" id="cActions"></div>' +
+    '<input type="file" id="cLegacy" webkitdirectory="" style="display:none">';
+
+  var $ = function(id){ return document.getElementById(id); };
+  var saved = loadWatch();
+  watch.dirName = saved.dirName; watch.baseline = saved.baseline;
+
+  if (watch.fsSupported) {
+    $("cPick").onclick = pickDirectory;
+  } else {
+    $("cPickLegacy").onclick = function(){ $("cLegacy").click(); };
+    $("cLegacy").onchange = onLegacyPick;
+  }
+  $("cRescan").onclick = function(){ scanDirectory(); };
+  var wt = $("cWatch");
+  if (wt) wt.onchange = function(){ if (wt.checked) startWatch(); else stopWatch(); };
+}
+
+async function pickDirectory() {
+  if (typeof window.showDirectoryPicker !== "function") { toast("当前浏览器不支持目录访问"); return; }
+  try {
+    var handle = await window.showDirectoryPicker({ mode: "read" });
+    var perm = await handle.requestPermission({ mode: "read" });
+    if (perm !== "granted") { toast("未授予文件夹读取权限"); return; }
+    watch.dirHandle = handle; watch.dirName = handle.name; watch.selected = {};
+    await scanDirectory();
+  } catch (e) {
+    if (e && e.name === "AbortError") return; /* 用户取消选择 */
+    toast("选择文件夹失败：" + ((e && e.message) || e));
+  }
+}
+
+async function readDirEntries(handle) {
+  var out = [];
+  for await (var entry of handle.values()) {
+    var name = entry[0], h = entry[1];
+    if (h.kind !== "file") continue;
+    if (WATCH_SKIP_PREFIX.some(function(p){ return name.indexOf(p) === 0; })) continue;
+    try {
+      var f = await h.getFile();
+      out.push({ rel: name, name: name, size: f.size, mtime: f.lastModified });
+    } catch (e) { /* 单个文件读取失败则跳过 */ }
+  }
+  out.sort(function(a, b){ return a.name.localeCompare(b.name, "zh-CN"); });
+  return out;
+}
+
+async function scanDirectory() {
+  if (!watch.dirHandle) { renderCollect(); return; }
+  watch.scanning = true; renderCollect();
+  var entries;
+  try {
+    var perm = await watch.dirHandle.queryPermission({ mode: "read" });
+    if (perm !== "granted") perm = await watch.dirHandle.requestPermission({ mode: "read" });
+    if (perm !== "granted") {
+      toast("文件夹权限已失效，请重新选择"); stopWatch(); watch.scanning = false; renderCollect(); return;
+    }
+    entries = await readDirEntries(watch.dirHandle);
+  } catch (e) {
+    watch.scanning = false; toast("读取文件夹失败：" + ((e && e.message) || e)); renderCollect(); return;
+  }
+  applyScan(entries);
+  watch.scanning = false; renderCollect();
+}
+
+function applyScan(entries) {
+  var firstRun = Object.keys(watch.baseline).length === 0;
+  var reg = watchRegisteredSet();
+  var cmp = compareWatch(entries, watch.baseline, reg);
+  watch.items = cmp.items; watch.removed = cmp.removed;
+  var c = cmp.counts;
+  if (!firstRun && watch.dirName && (c.new || c.changed || c.removed)) {
+    var parts = [];
+    if (c.new) parts.push("新增 " + c.new);
+    if (c.changed) parts.push("修改 " + c.changed);
+    if (c.removed) parts.push("删除 " + c.removed);
+    try { addLog("目录监听", watch.dirName + "：" + parts.join(" · "), state.operatorName, roleLabel(), "网页目录"); } catch (e) {}
+  }
+  watch.baseline = watchSnapshotOf(entries);
+  saveWatch(watch.dirName, watch.baseline, nowStr());
+}
+
+function onLegacyPick(e) {
+  var files = e.target.files || [];
+  var entries = [];
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    if (WATCH_SKIP_PREFIX.some(function(p){ return f.name.indexOf(p) === 0; })) continue;
+    entries.push({ rel: f.webkitRelativePath || f.name, name: f.name, size: f.size, mtime: f.lastModified });
+  }
+  watch.dirName = entries.length ? String(entries[0].rel).split("/")[0] : "";
+  watch.baseline = loadWatch().baseline;
+  applyScan(entries);
+  toast("已一次性读取 " + entries.length + " 个文件（当前浏览器不支持后台监视）");
+  renderCollect();
+}
+
+function watchImportable(it){ return it.state === "new" || it.state === "changed"; }
+
+function renderCollect() {
+  var $ = function(id){ return document.getElementById(id); };
+  var statusEl = $("cStatus"), noteEl = $("cNote"), bodyEl = $("cBody"), actEl = $("cActions");
+  if (!bodyEl) return;
+
+  var last = loadWatch().updatedAt;
+  if (watch.dirName) {
+    statusEl.textContent = "监视目录：" + watch.dirName + (last ? " · 上次扫描 " + last : "") +
+      " · 现存 " + watch.items.length + " 个文件";
+    $("cRescan").style.display = "";
+  } else {
+    statusEl.textContent = "尚未选择文件夹";
+    $("cRescan").style.display = "none";
+  }
+  noteEl.textContent = watch.fsSupported
+    ? "页面打开期间按快照比对目录变化；页面关闭期间的变动，下次扫描时补录。仅登记文件名、大小与修改时间，不复制文件内容，也不读取磁盘绝对路径。"
+    : "当前浏览器不支持目录后台访问，仅可一次性选择目录读取比对；如需自动监视，请使用 Chrome / Edge。";
+
+  var rows = watch.items.map(function(it){
+    var tag = WATCH_TAG[it.state] || ["muted", it.state];
+    var canCheck = watchImportable(it);
+    var checked = watch.selected[it.rel] ? " checked" : "";
+    var cb = canCheck
+      ? '<input type="checkbox" class="cb" data-rel="' + esc(it.rel) + '"' + checked + " aria-label=\"选择文件\">"
+      : '<input type="checkbox" class="cb" disabled>';
+    return '<tr data-rel="' + esc(it.rel) + '"><td>' + cb + "</td>" +
+      '<td class="file-cell">' + esc(it.name) + "</td>" +
+      '<td class="num-col">' + watchHumanSize(it.size) + "</td>" +
+      "<td>" + esc(watchFmtMtime(it.mtime)) + "</td>" +
+      '<td><span class="tag ' + tag[0] + '">' + esc(tag[1]) + "</span></td></tr>";
+  });
+  watch.removed.forEach(function(it){
+    rows.push('<tr class="row-removed" data-rel="' + esc(it.rel) + '"><td><input type="checkbox" class="cb" disabled></td>' +
+      '<td class="file-cell">' + esc(it.name) + "</td>" +
+      '<td class="num-col">' + watchHumanSize(it.size) + "</td>" +
+      "<td>" + esc(watchFmtMtime(it.mtime)) + "</td>" +
+      '<td><span class="tag red">已删除</span></td></tr>');
+  });
+  bodyEl.innerHTML = rows.length ? rows.join("")
+    : '<tr><td colspan="5" class="empty"><div class="empty-title">暂无文件</div><div class="empty-sub">选择文件夹后，这里列出扫描到的文件与比对结果</div></td></tr>';
+
+  bodyEl.querySelectorAll("tr[data-rel]").forEach(function(tr){
+    var rel = tr.dataset.rel;
+    var it = watch.items.find(function(x){ return x.rel === rel; });
+    if (!it || !watchImportable(it)) return;
+    tr.onclick = function(){
+      watch.selected[rel] = !watch.selected[rel];
+      renderCollect();
+    };
+  });
+  bodyEl.querySelectorAll(".cb[data-rel]").forEach(function(cb){
+    cb.onchange = function(e){
+      e.stopPropagation();
+      var rel = cb.dataset.rel;
+      if (cb.checked) watch.selected[rel] = true; else delete watch.selected[rel];
+      renderCollect();
+    };
+  });
+
+  var chosen = watch.items.filter(function(it){ return watch.selected[it.rel] && watchImportable(it); });
+  var canCreate = can("docs:create");
+  actEl.innerHTML =
+    '<button class="btn primary" id="cImport" ' + (chosen.length && canCreate ? "" : "disabled") + ">将所选入账（自动编号）</button>" +
+    '<span class="hint">仅登记文件名与路径，不移动或复制原文件</span>' +
+    '<span class="hint" style="margin-left:auto">待入账 ' + chosen.length + " 个</span>";
+  var btn = $("cImport");
+  if (btn) btn.onclick = importSelected;
+}
+
+function importSelected() {
+  if (!can("docs:create")) { toast("当前视角无权执行该操作"); return; }
+  var chosen = watch.items.filter(function(it){ return watch.selected[it.rel] && watchImportable(it); });
+  if (!chosen.length) { toast("没有可入账的新文件"); return; }
+  var cat = clean(document.getElementById("cCat").value) || CATS[0];
+  confirmModal("批量入账确认", "将把 " + chosen.length + " 份文件按「" + cat + "」入账并自动编号；提交人先记为「待补」，可稍后在台账补全。", function(){
+    var ok = 0;
+    chosen.forEach(function(it){
+      try {
+        addDoc({ name: watchBaseName(it.name), cat: cat, who: "待补", sid: "",
+          note: "文件夹收集：" + watch.dirName, file: it.name, path: it.rel, scope: "全员",
+          attachments: [{ name: it.name, path: it.rel, kind: "" }] });
+        ok++;
+      } catch (e) {}
+    });
+    if (ok) { try { addLog("收集入账", ok + " 份文件", state.operatorName, roleLabel(), "网页目录"); } catch (e) {} }
+    watch.selected = {};
+    var reg = watchRegisteredSet();
+    watch.items.forEach(function(it){ if (reg[it.name]) it.state = "registered"; });
+    saveWatch(watch.dirName, watch.baseline, nowStr());
+    toast("已入账 " + ok + " 份材料并自动编号");
+    refreshAll();
+  });
+}
+
+function startWatch() {
+  if (watch.timer) return;
+  watch.timer = setInterval(function(){ if (!watch.scanning) scanDirectory(); }, 10000);
+  toast("已开启自动扫描，每 10 秒比对一次");
+}
+function stopWatch() {
+  if (watch.timer) { clearInterval(watch.timer); watch.timer = null; }
+  var wt = document.getElementById("cWatch"); if (wt) wt.checked = false;
+}
+
 /* ============ 名单核对视图 ============ */
 function parseRosterText(text) {
   var rows = [];
@@ -2132,6 +2456,7 @@ applyPrefs();
 buildNav();
 buildDocs();
 buildSubmit();
+buildCollect();
 bindRole();
 applyRoleDefaults();
 switchView("dashboard");
