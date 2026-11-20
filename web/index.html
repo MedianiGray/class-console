@@ -57,13 +57,6 @@
   .identity .id-t{display:flex;flex-direction:column;gap:1px;min-width:0}
   .identity .id-name{font-size:13px;font-weight:600;line-height:1.2}
   .identity .id-role{font-size:var(--fs-xs);color:var(--sub)}
-  .role-row{display:flex;gap:2px;background:var(--bg-soft);border-radius:8px;padding:3px}
-  .role-row label{flex:1;display:flex;align-items:center;justify-content:center;
-    border:0;border-radius:6px;padding:6px 2px;cursor:pointer;min-height:30px;font-size:12.5px;color:var(--muted);
-    transition:background .15s,color .15s;white-space:nowrap}
-  .role-row input{position:absolute;width:1px;height:1px;opacity:0}
-  .role-row label.on{background:var(--card);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
-  .role-row label:hover:not(.on){color:var(--text)}
   .topbar-right{display:flex;align-items:center;gap:10px}
 
   /* 主区 */
@@ -104,6 +97,7 @@
   .toolbar input[type=search]{width:210px}
   .toolbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
   .actions{display:flex;gap:10px;align-items:center;padding:12px 0}
+  .actions .spacer{margin-left:auto}
   .hint{font-size:var(--fs-sm);color:var(--muted)}
 
   /* 文件夹收集 */
@@ -154,6 +148,44 @@
   .aux-line{display:flex;flex-wrap:wrap;align-items:center;gap:18px;font-size:12.5px;color:var(--muted);margin:0 0 16px}
   .aux-line a{color:var(--primary);cursor:pointer;text-decoration:none}
   .aux-line a:hover{text-decoration:underline}
+
+  /* 首屏主张与卖点 */
+  .hero{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:22px 24px;margin:0 0 16px}
+  .hero h2{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.3;margin-bottom:6px}
+  .hero p{font-size:13.5px;color:var(--muted);max-width:640px;line-height:1.6}
+  .sell-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+  .sell{background:var(--bg-soft);border-radius:var(--radius-sm);padding:14px 15px}
+  .sell .sell-ico{width:30px;height:30px;border-radius:8px;background:var(--primary-soft);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;margin-bottom:9px}
+  .sell .sell-ico svg{width:16px;height:16px}
+  .sell .sell-t{font-size:13.5px;font-weight:600;margin-bottom:3px}
+  .sell .sell-d{font-size:12.5px;color:var(--muted);line-height:1.55}
+
+  /* 空态上手步骤 */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px;
+    display:flex;flex-direction:column;gap:8px}
+  .step .step-no{width:24px;height:24px;border-radius:50%;background:var(--primary-soft);color:var(--primary);
+    font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .step .step-t{font-size:14px;font-weight:600}
+  .step .step-d{font-size:12.5px;color:var(--muted);line-height:1.55;flex:1}
+  .step .step-go{border:0;background:transparent;color:var(--primary);font-size:13px;font-weight:500;
+    padding:0;cursor:pointer;text-align:left}
+  .step .step-go:hover{text-decoration:underline}
+
+  /* 导航分组 */
+  .nav-group-label{font-size:11px;color:var(--sub);letter-spacing:.05em;font-weight:600;
+    padding:14px 12px 5px}
+  .nav-group-label:first-child{padding-top:6px}
+
+  /* 岗位下拉 */
+  .role-select{width:100%;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-soft);
+    min-height:34px;padding:0 10px;font-size:13px;color:var(--text);margin-top:10px}
+
+  /* 次级弱按钮 */
+  .btn.subtle{background:var(--bg-soft);border-color:var(--line);color:var(--muted)}
+  .btn.subtle:hover{background:var(--line);color:var(--text);border-color:var(--line-strong)}
 
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .panel{padding:20px}
@@ -300,6 +332,7 @@
     .kpi-row{grid-template-columns:repeat(2,1fr)}
     .kpi:nth-child(2n){border-right:0}
     .grid-2{grid-template-columns:1fr}
+    .sell-row,.steps{grid-template-columns:1fr}
     .content{padding:16px 16px 16px}
     .statusbar{padding:8px 16px}
     .field{grid-template-columns:1fr;gap:6px}
@@ -314,10 +347,9 @@
     .nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:4px 12px}
     .nav button{flex:0 0 auto;justify-content:center;min-height:38px}
     .nav button .txt{display:none}
+    .nav-group-label{display:none}
     .side-bottom{margin-top:0;padding:6px 16px 10px}
     .identity{display:none}
-    .role-row{display:flex}
-    .role-row label{flex:1;min-height:30px;padding:5px 6px;font-size:12px}
     .topbar{height:48px;padding:0 16px}
   }
 </style>
@@ -333,7 +365,7 @@
       </div>
       <div class="bt">
         <h1>班级操作台</h1>
-        <p>数据仅存本浏览器 · 不上云</p>
+        <p>材料流转 · 本地闭环 · 不上云</p>
       </div>
     </div>
     <nav class="nav" id="nav"></nav>
@@ -345,12 +377,12 @@
           <div class="id-role" id="idRole">学委</div>
         </div>
       </div>
-      <div class="role-row" id="roleRow">
-        <label id="roleHandler"><input type="radio" name="role" value="handler"> 经办人</label>
-        <label id="roleReviewer"><input type="radio" name="role" value="reviewer"> 审核者</label>
-        <label id="roleManager"><input type="radio" name="role" value="manager"> 汇总者</label>
-        <label id="roleApplicant"><input type="radio" name="role" value="applicant"> 申请人</label>
-      </div>
+      <select class="role-select" id="roleSelect" aria-label="切换岗位视角">
+        <option value="handler">经办人 · 学委</option>
+        <option value="reviewer">审核者 · 辅导员</option>
+        <option value="manager">汇总者 · 负责人</option>
+        <option value="applicant">申请人 · 同学</option>
+      </select>
     </div>
   </aside>
 
@@ -840,16 +872,21 @@ var ICONS = {
   tasks:     ICON_SVG + '<path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 6 1 1 2-2m-3 7 1 1 2-2m-3 7 1 1 2-2"/></svg>',
   submit:    ICON_SVG + '<path d="M12 16V4m0 0L8 8m4-4 4 4"/><path d="M4 20h16"/></svg>',
   logs:      ICON_SVG + '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
-  folder:    ICON_SVG + '<path d="M3.5 7.5A2 2 0 0 1 5.5 5h4l2 2.5h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'
+  folder:    ICON_SVG + '<path d="M3.5 7.5A2 2 0 0 1 5.5 5h4l2 2.5h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
+  shield:    ICON_SVG + '<path d="M12 3.5 5.5 6v5c0 4 2.8 7 6.5 8.5 3.7-1.5 6.5-4.5 6.5-8.5V6z"/><path d="m9.2 11.8 2 2 3.6-3.8"/>'
 };
+var NAV_GROUPS = [
+  {key:"work", label:"工作台"},
+  {key:"coop", label:"协同管理"}
+];
 var NAV = [
-  {key:"dashboard", title:"工作台概览", ico:"dashboard"},
-  {key:"docs",      title:"材料台账",   ico:"docs"},
-  {key:"roster",    title:"名单核对",   ico:"roster", perm:"roster:manage"},
-  {key:"tasks",     title:"任务跟踪",   ico:"tasks", perm:"task:manage"},
-  {key:"submit",    title:"提交材料",   ico:"submit", perm:"docs:create"},
-  {key:"collect",   title:"文件夹收集", ico:"folder", perm:"docs:create"},
-  {key:"logs",      title:"操作日志",   ico:"logs", perm:"logs:view"}
+  {key:"dashboard", title:"工作台概览", ico:"dashboard", group:"work"},
+  {key:"docs",      title:"材料台账",   ico:"docs", group:"work"},
+  {key:"submit",    title:"提交材料",   ico:"submit", perm:"docs:create", group:"work"},
+  {key:"collect",   title:"文件夹收集", ico:"folder", perm:"docs:create", group:"work"},
+  {key:"roster",    title:"名单核对",   ico:"roster", perm:"roster:manage", group:"coop"},
+  {key:"tasks",     title:"任务跟踪",   ico:"tasks", perm:"task:manage", group:"coop"},
+  {key:"logs",      title:"操作日志",   ico:"logs", perm:"logs:view", group:"coop"}
 ];
 
 /* ---- 岗位与权限点模型 ----
@@ -913,12 +950,20 @@ function confirmModal(title, message, onOk) {
 function buildNav() {
   var nav = document.getElementById("nav");
   nav.innerHTML = "";
-  NAV.filter(navVisible).forEach(function(n){
-    var b = document.createElement("button");
-    b.dataset.key = n.key;
-    b.innerHTML = '<span class="ico">' + (ICONS[n.ico] || "") + '</span><span class="txt">' + esc(n.title) + "</span>";
-    b.onclick = function(){ switchView(n.key); };
-    nav.appendChild(b);
+  NAV_GROUPS.forEach(function(g){
+    var items = NAV.filter(function(n){ return n.group === g.key && navVisible(n); });
+    if (!items.length) return;
+    var label = document.createElement("div");
+    label.className = "nav-group-label";
+    label.textContent = g.label;
+    nav.appendChild(label);
+    items.forEach(function(n){
+      var b = document.createElement("button");
+      b.dataset.key = n.key;
+      b.innerHTML = '<span class="ico">' + (ICONS[n.ico] || "") + '</span><span class="txt">' + esc(n.title) + "</span>";
+      b.onclick = function(){ switchView(n.key); };
+      nav.appendChild(b);
+    });
   });
 }
 function switchView(key) {
@@ -1045,24 +1090,57 @@ function renderDashboard() {
       "</div>";
   }
 
-  document.getElementById("view-dashboard").innerHTML =
-    '<div class="kpi-row">' + kpiHtml + "</div>" +
-    auxHtml +
-    '<div class="card panel" style="margin-bottom:14px"><h3>' + queueTitle + "</h3>" +
+  var empty = docs.length === 0;
+  var canCreate = can("docs:create");
+
+  var sellHtml = empty
+    ? '<div class="sell-row">' +
+        '<div class="sell"><div class="sell-ico">' + ICONS.docs + '</div><div class="sell-t">流程闭环</div><div class="sell-d">提交、审核、归档全程留痕，状态可追</div></div>' +
+        '<div class="sell"><div class="sell-ico">' + ICONS.shield + '</div><div class="sell-t">本地离线</div><div class="sell-d">材料与日志只存本机浏览器，不依赖账号与网络</div></div>' +
+        '<div class="sell"><div class="sell-ico">' + ICONS.folder + '</div><div class="sell-t">文件夹收集</div><div class="sell-d">选定目录自动比对新增、修改、删除，勾选即可入账</div></div>' +
+      "</div>"
+    : "";
+
+  var heroHtml =
+    '<div class="hero"><h2>班级材料，从提交到归档留痕一站闭环</h2>' +
+    "<p>数据只存本机浏览器，不上云；选定文件夹可自动识别新增、修改与删除并登记留痕。</p>" +
+    sellHtml + "</div>";
+
+  var firstGo = canCreate ? "submit" : "docs";
+  var thirdGo = canRoster ? "roster" : (canTask ? "tasks" : "docs");
+  var stepsHtml = empty
+    ? '<div class="steps" style="margin-bottom:14px">' +
+        '<div class="step"><div class="step-no">1</div><div class="step-t">' + (canCreate ? "提交或收集材料" : "查看材料台账") + '</div>' +
+          '<div class="step-d">手动录入一份材料，或选定文件夹自动识别新增文件</div>' +
+          '<button class="step-go" data-go="' + firstGo + '">前往录入</button></div>' +
+        '<div class="step"><div class="step-no">2</div><div class="step-t">跟进审核与归档</div>' +
+          '<div class="step-d">新材料进入待审核队列，处理后归档并留下操作记录</div>' +
+          '<button class="step-go" data-go="docs">前往台账</button></div>' +
+        '<div class="step"><div class="step-no">3</div><div class="step-t">核对名单 · 跟进任务</div>' +
+          '<div class="step-d">对照名单查看未交人员，登记任务与截止时间</div>' +
+          '<button class="step-go" data-go="' + thirdGo + '">前往核对</button></div>' +
+      "</div>"
+    : "";
+
+  var queueHtml = '<div class="card panel" style="margin-bottom:14px"><h3>' + queueTitle + "</h3>" +
       '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
       "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
-    "</div>" +
-    '<div class="grid-2">' +
+    "</div>";
+  var gridHtml = '<div class="grid-2">' +
       '<div class="card panel"><h3>类别分布</h3>' + catHtml + "</div>" +
       rightPanel +
     "</div>";
+
+  document.getElementById("view-dashboard").innerHTML = empty
+    ? heroHtml + stepsHtml + (rightPanel ? '<div class="grid-2">' + rightPanel + "</div>" : "")
+    : heroHtml + '<div class="kpi-row">' + kpiHtml + "</div>" + auxHtml + queueHtml + gridHtml;
 
   document.querySelectorAll("#view-dashboard .kpi").forEach(function(card){
     var go = function(){ drillByStatus(card.dataset.filter); };
     card.onclick = go;
     card.onkeydown = function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
   });
-  document.querySelectorAll("#view-dashboard .aux-line a[data-go]").forEach(function(a){
+  document.querySelectorAll("#view-dashboard .aux-line a[data-go], #view-dashboard .step-go[data-go]").forEach(function(a){
     a.onclick = function(){ switchView(a.dataset.go); };
   });
   document.querySelectorAll("#view-dashboard tbody tr.clickable").forEach(function(tr){
@@ -1343,12 +1421,13 @@ function renderDocs() {
   document.getElementById("pgPrev").onclick = function(){ if (docsFilter.page > 1) { docsFilter.page -= 1; renderDocs(); } };
   document.getElementById("pgNext").onclick = function(){ if (docsFilter.page < pages) { docsFilter.page += 1; renderDocs(); } };
 
-  /* 操作条 */
+  /* 操作条：行级主操作居左，导入导出等次级操作居右弱化 */
   var actions = '<button class="btn" id="btnView">查看详情</button>' +
-    (canExport ? '<button class="btn" id="btnCsv">导出 CSV</button>' : "") +
-    (canImport ? '<button class="btn" id="btnCsvImport">导入 CSV</button>' : "") +
     (canArchive ? '<button class="btn primary" id="btnArchive">归档</button>' : "") +
     (canReject ? '<button class="btn danger" id="btnReject">驳回</button>' : "") +
+    '<span class="spacer"></span>' +
+    (canExport ? '<button class="btn subtle mini" id="btnCsv">导出 CSV</button>' : "") +
+    (canImport ? '<button class="btn subtle mini" id="btnCsvImport">导入 CSV</button>' : "") +
     '<span class="hint">已选 ' + (state.selectedId != null && findDoc(state.selectedId) ? "1 条" : "0 条") + "</span>";
   document.getElementById("docsActions").innerHTML = actions;
 
@@ -1374,7 +1453,7 @@ function renderDocs() {
     bulk.innerHTML = '<span class="bulk-count">已选 ' + selIds.length + " 条</span>" +
       (canArchive ? '<button class="btn primary mini" id="bulkArchive">批量归档</button>' : "") +
       (canReject ? '<button class="btn danger mini" id="bulkReject">批量驳回</button>' : "") +
-      '<span class="spacer"></span><button class="btn mini" id="bulkClear">清除选择</button>';
+      '<span class="spacer"></span><button class="btn subtle mini" id="bulkClear">清除选择</button>';
     document.getElementById("bulkClear").onclick = function(){ state.selected = {}; renderDocs(); };
     var bA = document.getElementById("bulkArchive"), bR = document.getElementById("bulkReject");
     if (bA) bA.onclick = function(){ bulkDoc("archive"); };
@@ -1617,11 +1696,11 @@ function buildSubmit() {
       '<div class="field"><label>材料说明</label><textarea id="sNote"></textarea></div>' +
       '<div class="field"><label>附件</label><div class="file-line">' +
         '<input type="file" id="sFile" style="display:none">' +
-        '<button class="btn" id="btnPick">选择文件</button>' +
+        '<button class="btn subtle" id="btnPick">选择文件</button>' +
         '<span class="fname" id="fileName">未选择文件</span>' +
-        '<button class="btn" id="btnRemoveFile" style="display:none">移除</button></div></div>' +
+        '<button class="btn subtle" id="btnRemoveFile" style="display:none">移除</button></div></div>' +
       '<div class="err" id="sErr"></div>' +
-      '<div class="form-actions"><button class="btn" id="btnClear">清空</button>' +
+      '<div class="form-actions"><button class="btn subtle" id="btnClear">清空</button>' +
       '<button class="btn primary" id="btnSubmit">提交材料</button></div>' +
     "</div>";
 
@@ -1787,7 +1866,7 @@ function buildCollect() {
     '<div class="card panel collect-head">' +
       '<div class="collect-toolbar">' + pickBtn +
         "<label>默认类别</label><select id=\"cCat\">" + catOpts + "</select>" + watchCtl +
-        '<button class="btn" id="cRescan" style="display:none">重新扫描</button>' +
+        '<button class="btn subtle mini" id="cRescan" style="display:none">重新扫描</button>' +
       "</div>" +
       '<div class="collect-status" id="cStatus">尚未选择文件夹</div>' +
       '<div class="collect-note hint" id="cNote"></div>' +
@@ -2040,7 +2119,7 @@ function renderRoster() {
   var trs = rows.map(function(r){
     var ok = submitted[r.sid];
     var tag = ok ? '<span class="tag green">已交</span>' : '<span class="tag orange">未交</span>';
-    var delCell = canManage ? '<button class="btn mini rb-del" data-id="' + r.id + '">移除</button>' : '<span class="muted">—</span>';
+    var delCell = canManage ? '<button class="btn subtle mini rb-del" data-id="' + r.id + '">移除</button>' : '<span class="muted">—</span>';
     return "<tr><td class='num-col'>" + esc(r.sid) + "</td><td>" + esc(r.who) + "</td><td>" + tag + "</td>" +
       "<td>" + delCell + "</td></tr>";
   }).join("");
@@ -2062,9 +2141,10 @@ function renderRoster() {
   document.getElementById("view-roster").innerHTML =
     '<div class="toolbar">' +
       (canManage ? '<button class="btn primary" id="rbAdd">添加一人</button>' +
-                '<button class="btn" id="rbImport">导入名单</button>' +
-                '<button class="btn danger" id="rbClear">清空名单</button>' : "") +
-      '<span class="hint" style="margin-left:auto">名单仅存本浏览器，随备份导出</span></div>' +
+                '<span class="spacer"></span>' +
+                '<button class="btn subtle mini" id="rbImport">导入名单</button>' +
+                '<button class="btn danger mini" id="rbClear">清空名单</button>' : "") +
+      '<span class="hint">名单仅存本浏览器，随备份导出</span></div>' +
     '<div class="cards" style="grid-template-columns:repeat(3,1fr)">' + cards + "</div>" +
     '<div class="grid-2">' +
       '<div class="card panel"><h3>班级名单（' + rows.length + "）</h3>" +
@@ -2073,7 +2153,7 @@ function renderRoster() {
       "</div>" +
       "<div>" +
         '<div class="card panel"><h3>未交清单（' + chk.absent.length + "）</h3><ul class=\"trace\">" + absentHtml + "</ul>" +
-          (chk.absent.length ? '<div class="actions"><button class="btn mini" id="rbCopy">复制催办文本</button></div>' : "") +
+          (chk.absent.length ? '<div class="actions"><button class="btn subtle mini" id="rbCopy">复制催办文本</button></div>' : "") +
         "</div>" +
         '<div class="card panel" style="margin-top:14px"><h3>名单外的材料提交人</h3><ul class="trace">' + extraHtml + "</ul></div>" +
       "</div>" +
@@ -2172,8 +2252,8 @@ function renderTasks() {
     return "<tr><td>" + esc(t.title) + "</td><td>" + esc(t.cat || "—") + "</td><td class='num-col'>" +
       esc(t.deadline) + "</td><td>" + mark + "</td>" +
       '<td><button class="btn mini tg-toggle" data-id="' + t.id + '">' + (t.done ? "还原" : "完成") + "</button>" +
-      (canManage ? ' <button class="btn mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
-      '<button class="btn mini danger tg-del" data-id="' + t.id + '">删除</button>' : "") + "</td></tr>";
+      (canManage ? ' <button class="btn subtle mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
+      '<button class="btn danger mini tg-del" data-id="' + t.id + '">删除</button>' : "") + "</td></tr>";
   }).join("");
   var body = trs || '<tr><td colspan="5" class="empty"><div class="empty-title">暂无任务</div>' +
     '<div class="empty-sub">点上方「添加任务」登记要收的材料事项与截止日期</div></td></tr>';
@@ -2397,13 +2477,9 @@ function importBackup(e) {
 
 /* ============ 初始化 ============ */
 function bindRole() {
-  var radios = document.querySelectorAll('input[name="role"]');
+  var sel = document.getElementById("roleSelect");
   function syncLabel() {
-    radios.forEach(function(r){
-      var lab = r.closest("label");
-      if (lab) lab.classList.toggle("on", r.value === state.role);
-      r.checked = (r.value === state.role);
-    });
+    sel.value = state.role;
     var role = ROLES[state.role] || ROLES.handler;
     var nameEl = document.getElementById("idName");
     var roleEl = document.getElementById("idRole");
@@ -2412,17 +2488,15 @@ function bindRole() {
     if (roleEl) roleEl.textContent = role.operator;
     if (avatarEl) avatarEl.textContent = role.operator.charAt(0);
   }
-  radios.forEach(function(r){
-    r.onchange = function(){
-      state.role = r.value;
-      state.operatorName = ROLES[state.role].operator;
-      applyRoleDefaults();
-      buildNav();
-      syncLabel();
-      closeDrawer();
-      switchView(state.current);
-    };
-  });
+  sel.onchange = function(){
+    state.role = sel.value;
+    state.operatorName = ROLES[state.role].operator;
+    applyRoleDefaults();
+    buildNav();
+    syncLabel();
+    closeDrawer();
+    switchView(state.current);
+  };
   syncLabel();
 }
 
