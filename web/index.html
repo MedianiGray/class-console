@@ -42,6 +42,23 @@
   .brand .bt{display:flex;flex-direction:column;gap:2px;min-width:0}
   .brand h1{font-size:15px;font-weight:600;letter-spacing:.01em;line-height:1.2}
   .brand p{font-size:var(--fs-xs);color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .collapse-btn{flex-shrink:0;width:28px;height:28px;border:0;background:transparent;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;margin-left:auto}
+  .collapse-btn:hover{background:var(--bg-soft);color:var(--text)}
+  .collapse-btn svg{width:16px;height:16px}
+  /* 折叠为纯图标栏 */
+  .sidebar.collapsed{width:64px}
+  .sidebar.collapsed .brand{padding:18px 10px 14px;flex-wrap:wrap;justify-content:center;gap:10px}
+  .sidebar.collapsed .brand .bt{display:none}
+  .sidebar.collapsed .brand .collapse-btn{margin-left:0}
+  .sidebar.collapsed .nav{padding:4px 10px}
+  .sidebar.collapsed .nav button{justify-content:center;gap:0;padding:9px 0}
+  .sidebar.collapsed .nav button .txt{display:none}
+  .sidebar.collapsed .nav-group-label{display:none}
+  .sidebar.collapsed .side-bottom{padding:14px 10px}
+  .sidebar.collapsed .identity{justify-content:center;padding:2px 0 10px}
+  .sidebar.collapsed .identity .id-t{display:none}
+  .sidebar.collapsed .role-select{display:none}
   .nav{display:flex;flex-direction:column;padding:4px 12px;gap:2px}
   .nav button{position:relative;display:flex;align-items:center;gap:11px;border:0;background:transparent;
     color:var(--muted);padding:9px 12px;border-radius:var(--radius-sm);text-align:left;min-height:40px;font-size:14px;
@@ -342,6 +359,8 @@
   @media (max-width:600px){
     .app{flex-direction:column}
     .sidebar{width:100%}
+    .sidebar.collapsed{width:100%}
+    .sidebar.collapsed .brand .bt{display:flex}
     .brand{padding:14px 16px 6px}
     .brand p{display:none}
     .nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:4px 12px}
@@ -367,6 +386,7 @@
         <h1>班级操作台</h1>
         <p>材料流转 · 本地闭环 · 不上云</p>
       </div>
+      <button class="collapse-btn" id="collapseBtn" aria-label="折叠侧栏" title="折叠侧栏"></button>
     </div>
     <nav class="nav" id="nav"></nav>
     <div class="side-bottom">
@@ -960,6 +980,7 @@ function buildNav() {
     items.forEach(function(n){
       var b = document.createElement("button");
       b.dataset.key = n.key;
+      b.title = n.title;
       b.innerHTML = '<span class="ico">' + (ICONS[n.ico] || "") + '</span><span class="txt">' + esc(n.title) + "</span>";
       b.onclick = function(){ switchView(n.key); };
       nav.appendChild(b);
@@ -2500,6 +2521,28 @@ function bindRole() {
   syncLabel();
 }
 
+/* ---- 侧栏折叠（图标栏 / 展开态），状态持久化 ---- */
+var SIDEBAR_KEY = "classconsole_web_sidebar";
+function renderCollapseBtn() {
+  var aside = document.querySelector(".sidebar");
+  var btn = document.getElementById("collapseBtn");
+  var collapsed = aside.classList.contains("collapsed");
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    (collapsed ? '<path d="m10 6 6 6-6 6"/>' : '<path d="m14 6-6 6 6 6"/>') + '</svg>';
+  btn.title = collapsed ? "展开侧栏" : "折叠侧栏";
+}
+function initSidebar() {
+  var aside = document.querySelector(".sidebar");
+  var btn = document.getElementById("collapseBtn");
+  try { if (localStorage.getItem(SIDEBAR_KEY) === "1") aside.classList.add("collapsed"); } catch(e){}
+  btn.onclick = function() {
+    var collapsed = aside.classList.toggle("collapsed");
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch(e){}
+    renderCollapseBtn();
+  };
+  renderCollapseBtn();
+}
+
 document.getElementById("drawerClose").onclick = closeDrawer;
 document.getElementById("drawerMask").onclick = closeDrawer;
 document.addEventListener("keydown", function(e){
@@ -2532,6 +2575,7 @@ buildDocs();
 buildSubmit();
 buildCollect();
 bindRole();
+initSidebar();
 applyRoleDefaults();
 switchView("dashboard");
 </script>
