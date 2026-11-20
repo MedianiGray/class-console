@@ -195,6 +195,22 @@
   .nav-group-label{font-size:11px;color:var(--sub);letter-spacing:.05em;font-weight:600;
     padding:14px 12px 5px}
   .nav-group-label:first-child{padding-top:6px}
+  .nav button.nav-aux{color:var(--sub);font-size:13px}
+  .nav button.nav-aux .ico{opacity:.65}
+  .nav button.nav-aux:hover:not(.active){color:var(--text)}
+
+  /* 首屏下一步行动条 */
+  .action-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 20px;margin:0 0 16px}
+  .action-bar .ab-t{font-size:14.5px;font-weight:600;color:var(--text)}
+  .action-bar .ab-d{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .action-bar .btn{flex-shrink:0}
+
+  /* 常驻卖点标签 */
+  .sell-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .sell-tags span{font-size:12px;color:var(--muted);background:var(--bg-soft);
+    border:1px solid var(--line);border-radius:999px;padding:4px 11px}
 
   /* 岗位下拉 */
   .role-select{width:100%;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-soft);
@@ -398,10 +414,10 @@
         </div>
       </div>
       <select class="role-select" id="roleSelect" aria-label="切换岗位视角">
-        <option value="handler">经办人 · 学委</option>
-        <option value="reviewer">审核者 · 辅导员</option>
-        <option value="manager">汇总者 · 负责人</option>
-        <option value="applicant">申请人 · 同学</option>
+        <option value="handler">经办人</option>
+        <option value="reviewer">审核者</option>
+        <option value="manager">汇总者</option>
+        <option value="applicant">申请人</option>
       </select>
     </div>
   </aside>
@@ -896,17 +912,18 @@ var ICONS = {
   shield:    ICON_SVG + '<path d="M12 3.5 5.5 6v5c0 4 2.8 7 6.5 8.5 3.7-1.5 6.5-4.5 6.5-8.5V6z"/><path d="m9.2 11.8 2 2 3.6-3.8"/>'
 };
 var NAV_GROUPS = [
-  {key:"work", label:"工作台"},
-  {key:"coop", label:"协同管理"}
+  {key:"main",   label:"办理材料"},
+  {key:"follow", label:"跟进核对"},
+  {key:"aux",    label:"辅助工具"}
 ];
 var NAV = [
-  {key:"dashboard", title:"工作台概览", ico:"dashboard", group:"work"},
-  {key:"docs",      title:"材料台账",   ico:"docs", group:"work"},
-  {key:"submit",    title:"提交材料",   ico:"submit", perm:"docs:create", group:"work"},
-  {key:"collect",   title:"文件夹收集", ico:"folder", perm:"docs:create", group:"work"},
-  {key:"roster",    title:"名单核对",   ico:"roster", perm:"roster:manage", group:"coop"},
-  {key:"tasks",     title:"任务跟踪",   ico:"tasks", perm:"task:manage", group:"coop"},
-  {key:"logs",      title:"操作日志",   ico:"logs", perm:"logs:view", group:"coop"}
+  {key:"dashboard", title:"工作台概览", ico:"dashboard", group:"main"},
+  {key:"docs",      title:"材料台账",   ico:"docs",      group:"main"},
+  {key:"submit",    title:"提交材料",   ico:"submit",    perm:"docs:create", group:"main"},
+  {key:"roster",    title:"名单核对",   ico:"roster",    perm:"roster:manage", group:"follow"},
+  {key:"tasks",     title:"任务跟踪",   ico:"tasks",      perm:"task:manage", group:"follow"},
+  {key:"collect",   title:"文件夹收集", ico:"folder",    perm:"docs:collect", group:"aux", tier:"aux"},
+  {key:"logs",      title:"操作日志",   ico:"logs",      perm:"logs:view",   group:"aux", tier:"aux"}
 ];
 
 /* ---- 岗位与权限点模型 ----
@@ -920,9 +937,9 @@ var ROLES = {
   applicant: { label:"申请人", operator:"同学" }
 };
 var PERMISSIONS = {
-  handler:   ["docs:create","docs:edit","docs:import","docs:reject","docs:export","roster:manage","task:manage","logs:view"],
-  reviewer:  ["docs:create","docs:edit","docs:import","docs:archive","docs:reject","docs:export","roster:manage","task:manage","backup:restore","logs:view"],
-  manager:   ["docs:archive","docs:reject","docs:export","roster:manage","task:manage","template:config","backup:restore","logs:view","config:manage"],
+  handler:   ["docs:create","docs:edit","docs:import","docs:collect","docs:reject","docs:export","roster:manage","task:manage","logs:view"],
+  reviewer:  ["docs:create","docs:edit","docs:import","docs:collect","docs:archive","docs:reject","docs:export","roster:manage","task:manage","backup:restore","logs:view"],
+  manager:   ["docs:collect","docs:archive","docs:reject","docs:export","roster:manage","task:manage","template:config","backup:restore","logs:view","config:manage"],
   applicant: ["docs:create","docs:edit"]
 };
 function can(perm){ var set = PERMISSIONS[state.role] || []; return set.indexOf(perm) >= 0; }
@@ -981,6 +998,7 @@ function buildNav() {
       var b = document.createElement("button");
       b.dataset.key = n.key;
       b.title = n.title;
+      if (n.tier === "aux") b.classList.add("nav-aux");
       b.innerHTML = '<span class="ico">' + (ICONS[n.ico] || "") + '</span><span class="txt">' + esc(n.title) + "</span>";
       b.onclick = function(){ switchView(n.key); };
       nav.appendChild(b);
@@ -1122,10 +1140,39 @@ function renderDashboard() {
       "</div>"
     : "";
 
+  var sellTags = '<div class="sell-tags"><span>闭环留痕</span><span>本地离线</span><span>文件夹收集</span></div>';
+
   var heroHtml =
     '<div class="hero"><h2>班级材料，从提交到归档留痕一站闭环</h2>' +
     "<p>数据只存本机浏览器，不上云；选定文件夹可自动识别新增、修改与删除并登记留痕。</p>" +
-    sellHtml + "</div>";
+    sellTags + sellHtml + "</div>";
+
+  /* 下一步重点：按岗位与待办给出唯一主动作 */
+  var abTitle, abDesc, abGo, abFilter = "", abLabel;
+  if (isApplicant) {
+    if (focusDocs.length) {
+      abTitle = "有 " + focusDocs.length + " 份材料需要你关注";
+      abDesc = "被驳回或待审核的材料在这里，及时补充或跟进";
+      abGo = "docs"; abLabel = "查看我的材料";
+    } else {
+      abTitle = "暂无需要你跟进的材料";
+      abDesc = "提交新材料后，审核进度会显示在这里";
+      abGo = canCreate ? "submit" : "docs"; abLabel = canCreate ? "提交材料" : "查看台账";
+    }
+  } else if (pending.length > 0) {
+    abTitle = pending.length + " 份材料待" + (canArchive ? "审核" : "跟进");
+    abDesc = canArchive ? "优先处理待审核材料，通过后归档并留痕" : "新材料进入待审核队列，跟进流转状态";
+    abGo = "docs"; abFilter = "待审核"; abLabel = "去处理";
+  } else {
+    abTitle = "暂无待处理材料";
+    abDesc = canCreate ? "可录入新材料，或核对名单与任务进度" : "可核对名单未交人员，跟进任务截止时间";
+    abGo = canCreate ? "submit" : (canRoster ? "roster" : "docs");
+    abLabel = canCreate ? "提交材料" : (canRoster ? "核对名单" : "查看台账");
+  }
+  var actionHtml = '<div class="action-bar"><div><div class="ab-t">' + esc(abTitle) +
+    '</div><div class="ab-d">' + esc(abDesc) + '</div></div>' +
+    '<button class="btn primary" data-go="' + abGo + '"' + (abFilter ? ' data-filter="' + abFilter + '"' : "") +
+    ">" + esc(abLabel) + "</button></div>";
 
   var firstGo = canCreate ? "submit" : "docs";
   var thirdGo = canRoster ? "roster" : (canTask ? "tasks" : "docs");
@@ -1154,15 +1201,18 @@ function renderDashboard() {
 
   document.getElementById("view-dashboard").innerHTML = empty
     ? heroHtml + stepsHtml + (rightPanel ? '<div class="grid-2">' + rightPanel + "</div>" : "")
-    : heroHtml + '<div class="kpi-row">' + kpiHtml + "</div>" + auxHtml + queueHtml + gridHtml;
+    : heroHtml + actionHtml + queueHtml + '<div class="kpi-row">' + kpiHtml + "</div>" + auxHtml + gridHtml;
 
   document.querySelectorAll("#view-dashboard .kpi").forEach(function(card){
     var go = function(){ drillByStatus(card.dataset.filter); };
     card.onclick = go;
     card.onkeydown = function(e){ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
   });
-  document.querySelectorAll("#view-dashboard .aux-line a[data-go], #view-dashboard .step-go[data-go]").forEach(function(a){
-    a.onclick = function(){ switchView(a.dataset.go); };
+  document.querySelectorAll("#view-dashboard [data-go]").forEach(function(a){
+    a.onclick = function(){
+      if (a.dataset.filter) { docsFilter.status = a.dataset.filter; docsFilter.page = 1; }
+      switchView(a.dataset.go);
+    };
   });
   document.querySelectorAll("#view-dashboard tbody tr.clickable").forEach(function(tr){
     tr.onclick = function(){ openDoc(Number(tr.dataset.id), "docs"); };
