@@ -89,17 +89,33 @@ def main():
     dash = app.views["dashboard"]
     app.role_var.set("applicant"); app._toggle_role(); root.update()
     app.switch("dashboard"); root.update_idletasks()
-    assert not dash.roster_chip.winfo_ismapped(), "申请人不应显示名单 chip"
-    assert not dash.task_chip.winfo_ismapped(), "申请人不应显示任务 chip"
-    assert not dash.right_frame.winfo_ismapped(), "申请人不应显示近期动态"
-    assert "关注" in dash.bottom_frame.cget("text")
+    assert not dash.roster_hint.winfo_ismapped(), "申请人不应显示名单提示"
+    assert not dash.task_hint.winfo_ismapped(), "申请人不应显示任务提示"
+    assert not dash.log_card.winfo_ismapped(), "申请人不应显示近期动态"
+    assert "关注" in dash.bottom_title.cget("text")
     app.role_var.set("reviewer"); app._toggle_role(); root.update()
     app.switch("dashboard"); root.update_idletasks()
-    assert dash.roster_chip.winfo_ismapped(), "审核者应显示名单 chip"
-    assert dash.task_chip.winfo_ismapped(), "审核者应显示任务 chip"
-    assert dash.right_frame.winfo_ismapped(), "审核者应显示近期动态"
-    assert "需处理" in dash.bottom_frame.cget("text")
+    assert dash.roster_hint.winfo_ismapped(), "审核者应显示名单提示"
+    assert dash.task_hint.winfo_ismapped(), "审核者应显示任务提示"
+    assert dash.log_card.winfo_ismapped(), "审核者应显示近期动态"
+    assert "待处理" in dash.bottom_title.cget("text")
     print("看板岗位显隐 OK")
+
+    # 主题切换：深色 / 浅色各重建一次，数据与视图保持不变
+    import theme
+    for m in ("dark", "light"):
+        theme.apply(m)
+        app._restyle()
+        root.update()
+        assert theme.resolved() == m, "主题未按预期生效：%s" % m
+        assert app.current in app.views, "切主题后当前视图丢失"
+        for k in ("dashboard", "docs", "roster", "tasks", "submit", "logs"):
+            app.switch(k)
+            root.update()
+        assert app.views["docs"].tree.get_children(), "切主题后台账为空"
+        assert app.views["dashboard"].card_values["total"].cget("text") != "0", "切主题后看板未刷新"
+    theme.apply("light")
+    print("主题切换 OK")
 
     root.destroy()
     print("GUI SMOKE OK")
