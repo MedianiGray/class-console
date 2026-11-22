@@ -123,6 +123,48 @@ def main():
     assert all(by_id[i]["status"] == "已驳回" for i in (ids_c, ids_d))
     print("多选批量/审批节点 OK")
 
+    # 台账效率层：列宽持久化、表头排序、命名保存视图、命令面板、完成矩阵
+    import ui_docs
+    dv._widths["name"] = 300
+    dv._apply_widths(); dv._save_widths()
+    assert dv._load_widths()["name"] == 300, "列宽未持久化"
+    dv._sort_key = "time"; dv._sort_dir = "desc"; dv._sync_headings()
+    assert "▼" in dv.tree.heading("time")["text"], "表头未显示排序箭头"
+    dv.reset_widths(); root.update()
+    assert dv._load_widths()["name"] == dv.WIDTHS["name"], "重置列宽未落盘"
+    dv.q.set(""); dv.cat.set("全部"); dv.type.set("全部"); dv.status.set("全部")
+    dv._widths["name"] = 260; dv._apply_widths()
+    dv._sort_key = "name"; dv._sort_dir = "asc"; dv._sync_headings()
+    ui_docs.simpledialog.askstring = lambda *a, **k: "冒烟视图"
+    dv.save_current_view()
+    saved_views = dv._load_views()
+    assert saved_views and saved_views[-1]["name"] == "冒烟视图", "保存视图未落库"
+    dv.q.set("不存在"); dv._widths["name"] = 180; dv._apply_widths()
+    dv._apply_view("冒烟视图"); root.update()
+    assert dv.q.get() == "" and dv._widths["name"] == 260, "套用视图未还原筛选或列宽"
+    assert dv._sort_key == "name" and dv._sort_dir == "asc", "套用视图未还原排序"
+    app.confirm = lambda title, msg: True
+    dv._delete_view("冒烟视图")
+    assert not any(v["name"] == "冒烟视图" for v in dv._load_views()), "删除视图失败"
+    dv.reset_widths(); root.update()
+
+    app.switch("docs"); root.update()
+    app._open_cmdk(); root.update()
+    pal = app.cmdk
+    assert pal.top.winfo_exists(), "Ctrl+K 命令面板未打开"
+    pal.entry.delete(0, "end"); pal.entry.insert(0, ">归档")
+    pal._load(">归档"); root.update()
+    assert pal.items and all(it.get("kind") == "动作" for it in pal.items), ">归档 不应混入材料"
+    assert any("归档" in it["title"] for it in pal.items), ">归档 未命中归档动作"
+    pal.close(); root.update()
+
+    rv.nb.select(1); root.update()
+    assert rv.nb.index(rv.nb.select()) == 1, "完成矩阵标签未选中"
+    assert len(rv.matrix.get_children()) == len(repo.list_roster()), "完成矩阵行数与名单不一致"
+    assert rv.matrix_summary.cget("text").startswith("已交"), "完成矩阵汇总缺失"
+    print("台账效率层/命令面板/完成矩阵 OK")
+
+
     # 提醒中心：顶栏常驻入口、角标按待办计数、对话框可打开
     snap = app.reminder_snapshot()
     assert snap["total"] > 0

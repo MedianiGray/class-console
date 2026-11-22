@@ -11,6 +11,7 @@ class RosterView(ttk.Frame):
     COLS = ("sid", "who", "status")
     HEADS = {"sid": "学号", "who": "姓名", "status": "材料状态"}
     WIDTHS = {"sid": 140, "who": 160, "status": 90}
+    MATRIX_CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班级事务"]
 
     def __init__(self, master, repo, window):
         super().__init__(master)
@@ -30,9 +31,23 @@ class RosterView(ttk.Frame):
         wrap.columnconfigure(1, weight=1)
         wrap.rowconfigure(0, weight=1)
 
-        table_box = tk.Frame(wrap, bg=C["card"], highlightthickness=1,
+        style = ttk.Style(self.window)
+        style.configure("Roster.TNotebook", background=C["bg"], borderwidth=0)
+        style.configure("Roster.TNotebook.Tab", background=C["bg_soft"],
+                        foreground=C["sub"], padding=(14, 6))
+        style.map("Roster.TNotebook.Tab",
+                  background=[("selected", C["card"])],
+                  foreground=[("selected", C["text"])])
+        self.nb = ttk.Notebook(wrap, style="Roster.TNotebook")
+        self.nb.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        list_tab = tk.Frame(self.nb, bg=C["bg"])
+        self.nb.add(list_tab, text="名单核对")
+        matrix_tab = tk.Frame(self.nb, bg=C["bg"])
+        self.nb.add(matrix_tab, text="完成矩阵")
+
+        table_box = tk.Frame(list_tab, bg=C["card"], highlightthickness=1,
                              highlightbackground=C["line"])
-        table_box.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        table_box.pack(fill="both", expand=True)
         self.tree = ttk.Treeview(table_box, columns=self.COLS, show="headings",
                                  selectmode="browse")
         for c in self.COLS:
@@ -45,6 +60,34 @@ class RosterView(ttk.Frame):
         ysb.pack(side="right", fill="y", padx=(0, 1), pady=1)
 
         self.empty = ttk.Label(table_box, text="名单为空，可在下方添加成员", style="Muted.TLabel")
+
+        # 完成矩阵：名单成员 × 材料类别，补「谁哪类还没交」的信息
+        self.matrix_summary = ttk.Label(matrix_tab, text="", style="Muted.TLabel",
+                                        anchor="w")
+        self.matrix_summary.pack(fill="x", padx=8, pady=(6, 4))
+        mx_box = tk.Frame(matrix_tab, bg=C["card"], highlightthickness=1,
+                          highlightbackground=C["line"])
+        mx_box.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        self.matrix = ttk.Treeview(
+            mx_box, columns=("sid", "who") + tuple(self.MATRIX_CATS),
+            show="headings", selectmode="browse")
+        self.matrix.heading("sid", text="学号", anchor="w")
+        self.matrix.heading("who", text="姓名", anchor="w")
+        self.matrix.column("sid", width=110, minwidth=88, anchor="w", stretch=False)
+        self.matrix.column("who", width=92, minwidth=76, anchor="w", stretch=False)
+        for cat in self.MATRIX_CATS:
+            self.matrix.heading(cat, text=cat, anchor="center")
+            self.matrix.column(cat, width=82, minwidth=66, anchor="center", stretch=False)
+        self.matrix.tag_configure("zebra", background=C["zebra"])
+        mysb = ttk.Scrollbar(mx_box, orient="vertical", command=self.matrix.yview)
+        mxsb = ttk.Scrollbar(mx_box, orient="horizontal", command=self.matrix.xview)
+        self.matrix.configure(yscrollcommand=mysb.set, xscrollcommand=mxsb.set)
+        self.matrix.grid(row=0, column=0, sticky="nsew", padx=(1, 0), pady=(1, 0))
+        mysb.grid(row=0, column=1, sticky="ns", padx=(0, 1), pady=1)
+        mxsb.grid(row=1, column=0, sticky="ew", padx=(1, 0), pady=(0, 1))
+        mx_box.rowconfigure(0, weight=1)
+        mx_box.columnconfigure(0, weight=1)
+        self.matrix.bind("<Double-1>", self._open_student)
 
         # 右侧核对面板：三个数字 + 未交名单，补足「谁没交」的信息
         panel = tk.Frame(wrap, bg=C["card"], highlightthickness=1,
@@ -108,6 +151,7 @@ class RosterView(ttk.Frame):
                 status = "未交"
             self.tree.insert("", "end", tags=(r["id"], tag),
                              values=(r.get("sid", ""), r.get("who", ""), status))
+        self._refresh_matrix(rows, docs)
         chk = self.repo.roster_check()
         self.summary.config(text="名单共 %d 人" % chk["total"])
         for key, val in (("total", chk["total"]), ("done", chk["done"]),
@@ -145,6 +189,55 @@ class RosterView(ttk.Frame):
             self.btn_add.pack(side="left")
             self.btn_remove.pack(side="left", padx=8)
             self.btn_clear.pack(side="left")
+
+    def _cell_status(self, docs, sid, cat):
+        rows = [d for d in docs
+                if d.get("sid") == sid and d.get("cat") == cat]
+        status = {d.get("status") for d in rows}
+        if "已归档" in status:
+            return "已交"
+        if "待审核" in status:
+            return "待审"
+        if "已驳回" in status or "待补材料" in status:
+            return "补交"
+        return "—"
+
+    def _refresh_matrix(self, rows, docs):
+        self.matrix.delete(*self.matrix.get_children())
+        counts = {"已交": 0, "待审": 0, "补交": 0, "—": 0}
+        for i, r in enumerate(rows):
+            sid = r.get("sid") or ""
+            cells = [self._cell_status(docs, sid, c) for c in self.MATRIX_CATS]
+            for c in cells:
+                counts[c] = counts.get(c, 0) + 1
+            self.matrix.insert("", "end", tags=(r["id"], "zebra" if i % 2 else ""),
+                               values=(sid, r.get("who", "")) + tuple(cells))
+        total = sum(counts.values())
+        self.matrix_summary.config(
+            text=("已交 %d 格 · 待审 %d 格 · 补交 %d 格 · 无记录 %d 格　"
+                  "双击一行查看该生全部材料" % (counts["已交"], counts["待审"],
+                                       counts["补交"], counts["—"]) if total else
+                  "名单为空，先添加成员再查看完成矩阵"))
+
+    def _open_student(self, _event=None):
+        iid = self.matrix.focus()
+        if not iid:
+            return "break"
+        vals = self.matrix.item(iid, "values")
+        if not vals:
+            return "break"
+        sid = str(vals[0])
+        docs = self.window.views.get("docs")
+        if docs is None or not sid:
+            return "break"
+        docs.q.set(sid)
+        docs.cat.set("全部")
+        docs.type.set("全部")
+        docs.status.set("全部")
+        docs.refresh()
+        self.window.switch("docs")
+        self.window.toast("已按学号 %s 筛出台账" % sid)
+        return "break"
 
     def add_dialog(self):
         if not self.window.can("roster:manage"):

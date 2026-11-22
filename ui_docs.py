@@ -4,9 +4,10 @@
 import csv
 import os
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 
 import archive
+import theme
 from theme import FONT, C
 
 
@@ -30,6 +31,12 @@ class DocsView(ttk.Frame):
         self.window = window
         self._total = 0
         self._row_iids = {}
+        self._resize = None
+        self._widths = self._load_widths()
+        sort = theme.load_ui("doc_sort", {}) if isinstance(
+            theme.load_ui("doc_sort", {}), dict) else {}
+        self._sort_key = sort.get("key") if sort.get("key") in self.COLS else None
+        self._sort_dir = "desc" if sort.get("dir") == "desc" else "asc"
         self._build()
 
     def _build(self):
@@ -76,11 +83,14 @@ class DocsView(ttk.Frame):
         wrap = tk.Frame(body, bg=C["card"], highlightthickness=1,
                         highlightbackground=C["line"])
         wrap.pack(side="left", fill="both", expand=True)
+        # 列宽调大时让表格自己横向滚动，不能把右侧详情栏挤出窗口
+        wrap.pack_propagate(False)
         self.tree = ttk.Treeview(wrap, columns=self.COLS, show="headings",
                                  selectmode="extended")
         for c in self.COLS:
-            self.tree.heading(c, text=self.HEADS[c], anchor="w")
-            self.tree.column(c, width=self.WIDTHS[c], minwidth=54, anchor="w", stretch=True)
+            self.tree.heading(c, text=self._head_text(c), anchor="w")
+            self.tree.column(c, width=self._widths[c], minwidth=54, anchor="w",
+                             stretch=False)
         self.tree.tag_configure("zebra", background=C["zebra"])
         self.tree.tag_configure("pend", background=C["tag_orange"])
         self.tree.tag_configure("rej", background=C["tag_red"])
@@ -100,8 +110,13 @@ class DocsView(ttk.Frame):
 
         # 选中联动与快捷键
         self.tree.bind("<<TreeviewSelect>>", lambda e: self._update_actions())
-        self.tree.bind("<Double-1>", lambda e: self.view())
+        self.tree.bind("<Double-1>", self._on_double)
         self.tree.bind("<Return>", lambda e: self.view())
+        # 表头拖动分隔线调列宽；松开后落盘；单击表头排序
+        self.tree.bind("<ButtonPress-1>", self._col_press, add="+")
+        self.tree.bind("<B1-Motion>", self._col_motion, add="+")
+        self.tree.bind("<ButtonRelease-1>", self._col_release, add="+")
+        self.tree.bind("<Motion>", self._col_hover, add="+")
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
@@ -112,6 +127,14 @@ class DocsView(ttk.Frame):
                                      command=self.reject)
         self.btn_csv = ttk.Button(bar, text="导出 CSV", command=self.export_csv)
         self.btn_place = ttk.Button(bar, text="归位文件", command=self.place_files)
+        self.view_btn = tk.Button(bar, text="视图 ▾", relief="flat", bd=0,
+                                  bg=C["bg"], fg=C["text"],
+                                  activebackground=C["bg_soft"], activeforeground=C["text"],
+                                  font=(FONT, 10), padx=10, pady=5, cursor="hand2")
+        self.view_menu = tk.Menu(self.view_btn, tearoff=0, bg=C["card"], fg=C["text"],
+                                 activebackground=C["primary_soft"], activeforeground=C["primary"],
+                                 bd=0)
+        self.view_btn.bind("<Button-1>", self._post_views)
         self.more = tk.Button(bar, text="更多 ▾", relief="flat", bd=0,
                               bg=C["bg"], fg=C["text"],
                               activebackground=C["bg_soft"], activeforeground=C["text"],
@@ -123,6 +146,8 @@ class DocsView(ttk.Frame):
         menu.add_command(label="打开归档目录", command=self.open_archive_dir)
         menu.add_separator()
         menu.add_command(label="导出当前视图 CSV", command=self.export_csv)
+        menu.add_separator()
+        menu.add_command(label="重置列宽", command=self.reset_widths)
         self.more_menu = menu
         self.more.bind("<Button-1>", self._post_more)
         self.hint = ttk.Label(bar, text="", style="Muted.TLabel")
@@ -157,6 +182,239 @@ class DocsView(ttk.Frame):
         self.detail_text.tag_configure("node", foreground=C["primary"], font=(FONT, 10, "bold"))
         self.detail_text.tag_configure("node_muted", foreground=C["sub"], font=(FONT, 10, "bold"))
         self._render_detail()
+
+    # ---------- 列宽 / 排序 ----------
+    def _head_text(self, col):
+        text = self.HEADS[col]
+        if self._sort_key == col:
+            text += " ▲" if self._sort_dir == "asc" else " ▼"
+        return text
+
+    def _sync_headings(self):
+        for c in self.COLS:
+            self.tree.heading(c, text=self._head_text(c), anchor="w")
+
+    def _load_widths(self):
+        saved = theme.load_ui("doc_col_widths", {})
+        out = dict(self.WIDTHS)
+        if not isinstance(saved, dict):
+            return out
+        for c in self.COLS:
+            try:
+                w = int(saved.get(c, self.WIDTHS[c]))
+            except (TypeError, ValueError):
+                w = self.WIDTHS[c]
+            out[c] = max(54, min(520, w))
+        return out
+
+    def _save_widths(self):
+        try:
+            theme.save_ui("doc_col_widths", self._widths)
+        except Exception:
+            pass
+
+    def _apply_widths(self):
+        for c in self.COLS:
+            self.tree.column(c, width=self._widths[c])
+
+    def reset_widths(self):
+        self._widths = dict(self.WIDTHS)
+        self._apply_widths()
+        self._save_widths()
+        self.window.toast("列宽已恢复默认")
+
+    # ---------- 命名保存视图 ----------
+    def _load_views(self):
+        raw = theme.load_ui("doc_views", [])
+        if not isinstance(raw, list):
+            return []
+        out = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            out.append(item)
+        return out[:20]
+
+    def _save_views(self, views):
+        try:
+            theme.save_ui("doc_views", views)
+        except Exception:
+            pass
+
+    def _snapshot_view(self, name):
+        return {
+            "name": name,
+            "q": self.q.get(),
+            "cat": self.cat.get(),
+            "type": self.type.get(),
+            "status": self.status.get(),
+            "sort_key": self._sort_key,
+            "sort_dir": self._sort_dir,
+            "widths": dict(self._widths),
+        }
+
+    def _apply_view(self, name):
+        views = self._load_views()
+        view = next((v for v in views if v.get("name") == name), None)
+        if not view:
+            self.window.toast("视图不存在，可能已被删除")
+            return
+        widths = view.get("widths") if isinstance(view.get("widths"), dict) else {}
+        for c in self.COLS:
+            try:
+                w = int(widths.get(c, self.WIDTHS[c]))
+            except (TypeError, ValueError):
+                w = self.WIDTHS[c]
+            self._widths[c] = max(54, min(520, w))
+        self._apply_widths()
+        self._save_widths()
+        self.q.set(str(view.get("q") or ""))
+        self.cat.set(view.get("cat") or "全部")
+        self.type.set(view.get("type") or "全部")
+        self.status.set(view.get("status") or "全部")
+        skey = view.get("sort_key")
+        self._sort_key = skey if skey in self.COLS else None
+        self._sort_dir = "desc" if view.get("sort_dir") == "desc" else "asc"
+        self._sync_headings()
+        self.refresh()
+        self.window.toast("已套用视图「%s」" % name)
+
+    def save_current_view(self):
+        name = simpledialog.askstring(
+            "保存当前视图", "给这套筛选、排序和列宽起个名字：", parent=self)
+        if name is None:
+            return
+        name = name.strip()
+        if not name:
+            self.window.toast("视图名称不能为空")
+            return
+        if len(name) > 20:
+            self.window.toast("视图名称最多 20 个字")
+            return
+        views = self._load_views()
+        snap = self._snapshot_view(name)
+        idx = next((i for i, v in enumerate(views) if v.get("name") == name), None)
+        if idx is None:
+            views.append(snap)
+        else:
+            views[idx] = snap
+        self._save_views(views)
+        self.window.toast("视图「%s」已保存" % name)
+
+    def _delete_view(self, name):
+        if not self.window.confirm("删除视图", "确定删除视图「%s」吗？" % name):
+            return
+        views = [v for v in self._load_views() if v.get("name") != name]
+        self._save_views(views)
+        self.window.toast("视图「%s」已删除" % name)
+
+    def _post_views(self, event=None):
+        menu = self.view_menu
+        menu.delete(0, "end")
+        views = self._load_views()
+        if views:
+            for v in views:
+                menu.add_command(label=v.get("name"),
+                                 command=lambda n=v.get("name"): self._apply_view(n))
+        else:
+            menu.add_command(label="还没有保存的视图", state="disabled")
+        menu.add_separator()
+        menu.add_command(label="保存当前视图…", command=self.save_current_view)
+        if views:
+            sub = tk.Menu(menu, tearoff=0, bg=C["card"], fg=C["text"],
+                          activebackground=C["primary_soft"],
+                          activeforeground=C["primary"], bd=0)
+            for v in views:
+                sub.add_command(label=v.get("name"),
+                                command=lambda n=v.get("name"): self._delete_view(n))
+            menu.add_cascade(label="删除视图", menu=sub)
+        x = self.view_btn.winfo_rootx()
+        y = self.view_btn.winfo_rooty() + self.view_btn.winfo_height()
+        try:
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+        return "break"
+
+    def _col_at(self, x):
+        col = self.tree.identify_column(x)
+        try:
+            idx = int(str(col).replace("#", "")) - 1
+            return self.COLS[idx] if 0 <= idx < len(self.COLS) else None
+        except ValueError:
+            return None
+
+    def _col_press(self, event):
+        if self.tree.identify_region(event.x, event.y) != "separator":
+            return None
+        col = self._col_at(event.x)
+        if not col:
+            return None
+        self._resize = {"col": col, "x": event.x, "w": self._widths[col]}
+        self.tree.configure(cursor="sb_h_double_arrow")
+        return "break"
+
+    def _col_motion(self, event):
+        if not self._resize:
+            return None
+        delta = event.x - self._resize["x"]
+        width = max(54, min(520, self._resize["w"] + delta))
+        self._widths[self._resize["col"]] = width
+        self.tree.column(self._resize["col"], width=width)
+        return "break"
+
+    def _col_release(self, event):
+        if self._resize:
+            self._resize = None
+            self._save_widths()
+            self.tree.configure(cursor="")
+            return "break"
+        if self.tree.identify_region(event.x, event.y) != "heading":
+            return None
+        col = self._col_at(event.x)
+        if not col:
+            return None
+        if self._sort_key == col:
+            self._sort_dir = "desc" if self._sort_dir == "asc" else "asc"
+        else:
+            self._sort_key = col
+            self._sort_dir = "desc" if col == "time" else "asc"
+        try:
+            theme.save_ui("doc_sort", {"key": self._sort_key, "dir": self._sort_dir})
+        except Exception:
+            pass
+        self._sync_headings()
+        self.refresh()
+        return "break"
+
+    def _col_hover(self, event):
+        if self._resize:
+            return None
+        region = self.tree.identify_region(event.x, event.y)
+        self.tree.configure(cursor="sb_h_double_arrow" if region == "separator" else "")
+        return None
+
+    def _on_double(self, event):
+        if self.tree.identify_region(event.x, event.y) in ("separator", "heading"):
+            return "break"
+        self.view()
+        return "break"
+
+    def _sort_rows(self, rows):
+        if not self._sort_key:
+            return rows
+        key = self._sort_key
+        reverse = self._sort_dir == "desc"
+
+        def val(d):
+            if key == "time":
+                return str(d.get("time") or "")
+            return str(d.get(key) or "")
+
+        return sorted(rows, key=val, reverse=reverse)
 
     def _detail_reset(self):
         self.detail_text.config(state="normal")
@@ -343,11 +601,12 @@ class DocsView(ttk.Frame):
         if tlabel and tlabel != "全部":
             tkey = next((k for k, v in self.TYPE_OPTIONS if v == tlabel), "")
             rows = [x for x in rows if (x.get("form_type") or "general") == tkey]
-        return rows
+        return self._sort_rows(rows)
 
     def refresh(self):
         rows = self._filtered_rows()
         keep = self._selected_ids()
+        self._sync_headings()
         self.tree.delete(*self.tree.get_children())
         self._row_iids = {}
         for i, d in enumerate(rows):
@@ -381,7 +640,7 @@ class DocsView(ttk.Frame):
         # 按权限点控制审核/归位/导出：无权限的入口不出现，方法内也再拦一次
         can_archive = self.window.can("docs:archive")
         can_export = self.window.can("docs:export")
-        for b in (self.btn_view, self.btn_place, self.btn_csv, self.more,
+        for b in (self.btn_view, self.btn_place, self.btn_csv, self.view_btn, self.more,
                   self.btn_archive, self.btn_reject):
             b.pack_forget()
         self.btn_view.pack(side="left")
@@ -390,6 +649,7 @@ class DocsView(ttk.Frame):
             self.btn_place.pack(side="left", padx=8)
         if can_export:
             self.btn_csv.pack(side="left", padx=8)
+        self.view_btn.pack(side="left", padx=8)
         if can_archive or can_export:
             self.more.pack(side="left", padx=8)
         if self.window.can("docs:reject"):

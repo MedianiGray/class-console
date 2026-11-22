@@ -152,7 +152,7 @@ class MainWindow(ttk.Frame):
 
         self._sync_role_hint()
         self.bind_all("<Control-f>", self._focus_search)
-        self.bind_all("<Control-k>", self._focus_search)
+        self.bind_all("<Control-k>", self._open_cmdk)
         self.switch(self.current if self._nav_visible(self.current) else "dashboard")
 
     def _build_topbar(self):
@@ -318,6 +318,19 @@ class MainWindow(ttk.Frame):
     def _focus_search(self, _e=None):
         self.search_entry.focus_set()
         self.search_entry.selection_range(0, "end")
+        return "break"
+
+    def _open_cmdk(self, _e=None):
+        old = getattr(self, "cmdk", None)
+        if old is not None:
+            try:
+                if old.top.winfo_exists():
+                    old.close()
+                    return "break"
+            except Exception:
+                pass
+        import ui_cmdk
+        self.cmdk = ui_cmdk.open_palette(self)
         return "break"
 
     def _sync_role_hint(self):

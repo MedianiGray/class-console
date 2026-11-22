@@ -415,6 +415,35 @@
   .view-menu .vrow select{width:100%}
   .view-menu .col-checks{display:flex;flex-direction:column;gap:2px}
   .view-menu .col-checks label{display:flex;align-items:center;gap:8px;font-size:13px;padding:2px 0;cursor:pointer}
+  .sv-wrap{display:flex;flex-direction:column;gap:6px;min-width:230px}
+  .sv-list{display:flex;flex-direction:column;gap:2px;max-height:132px;overflow:auto}
+  .sv-item{display:flex;align-items:center;gap:4px}
+  .sv-apply{flex:1;min-width:0;text-align:left;border:1px solid transparent;background:transparent;
+    color:var(--text);font:inherit;font-size:12.5px;padding:4px 7px;border-radius:6px;cursor:pointer;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sv-apply:hover{background:var(--bg-soft);border-color:var(--line)}
+  .sv-x{flex:none;border:0;background:transparent;color:var(--sub);font-size:13px;line-height:1;
+    padding:4px 6px;cursor:pointer;border-radius:5px}
+  .sv-x:hover{background:var(--red-soft,#fbe9e7);color:var(--red)}
+  .sv-new{display:flex;gap:6px}
+  .sv-new input{flex:1;min-width:0;height:30px;font-size:12.5px;padding:0 8px}
+  .sv-new button{flex:none;height:30px}
+  .sv-empty{font-size:12px;color:var(--sub);padding:2px 0}
+  .seg{display:inline-flex;align-items:center;gap:2px;padding:2px;background:var(--bg-soft);
+    border:1px solid var(--line);border-radius:8px}
+  .seg button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;
+    padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .seg button:hover{color:var(--text)}
+  .seg button.on{background:var(--card);color:var(--primary);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .mx-table{table-layout:fixed}
+  .mx-table th:first-child,.mx-table td:first-child{width:110px}
+  .mx-table th:nth-child(2),.mx-table td:nth-child(2){width:96px}
+  .mx-table .mx-cell{text-align:center;font-size:12.5px;letter-spacing:.02em}
+  .mx-ok{color:var(--green);font-weight:600}
+  .mx-pend{color:var(--orange)}
+  .mx-rej{color:var(--red)}
+  .mx-none{color:var(--sub)}
+  .mx-note{font-size:12px;color:var(--sub);margin:8px 0 0}
 
   .kbd-hint{font-size:var(--fs-xs);color:var(--sub);white-space:nowrap}
 
@@ -832,7 +861,7 @@
     <div class="cmdk-head">
       <span class="cmdk-ico">⌘</span>
       <input id="cmdkInput" type="text" autocomplete="off" spellcheck="false"
-        placeholder="搜索材料，或输入动作：模板 / 导出 / 提醒 / 主题" aria-label="命令面板搜索">
+        placeholder="搜索材料，或输入 >归档 / >导出 / >提醒 执行动作" aria-label="命令面板搜索">
       <kbd>ESC</kbd>
     </div>
     <div class="cmdk-list" id="cmdkList"></div>
@@ -1994,6 +2023,83 @@ function applyPrefs(){
   if (DENS_OPTS.indexOf(p.density) >= 0) docsFilter.density = p.density;
 }
 
+/* 命名保存视图：筛选 + 排序 + 列宽 + 列显隐，一键还原 */
+var VIEWS_KEY = "classconsole_web_views";
+function namedViews(){
+  try {
+    var raw = JSON.parse(localStorage.getItem(VIEWS_KEY));
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(function(v){ return v && typeof v.name === "string" && clean(v.name); }).slice(0, 20);
+  } catch(e){ return []; }
+}
+function saveNamedViews(arr){
+  try { localStorage.setItem(VIEWS_KEY, JSON.stringify(arr.slice(0, 20))); } catch(e){}
+}
+function saveNamedView(){
+  var input = document.getElementById("vName");
+  if (!input) return;
+  var name = clean(input.value);
+  if (!name) { toast("先给视图起个名字"); input.focus(); return; }
+  if (name.length > 20) { toast("视图名称最多 20 个字"); input.focus(); return; }
+  var widths = {};
+  DOC_COLS.forEach(function(c){ widths[c.key] = colWidth(c.key); });
+  var snap = {
+    name: name,
+    filters: { q:docsFilter.q, cat:docsFilter.cat, type:docsFilter.type,
+      status:docsFilter.status, sortKey:docsFilter.sortKey, sortDir:docsFilter.sortDir,
+      pageSize:docsFilter.pageSize, density:docsFilter.density },
+    widths: widths,
+    hidden: hiddenCols().slice()
+  };
+  var views = namedViews();
+  var idx = views.map(function(v){ return v.name; }).indexOf(name);
+  if (idx >= 0) views[idx] = snap; else views.push(snap);
+  saveNamedViews(views);
+  renderDocs();
+  toast(idx >= 0 ? "视图「" + name + "」已更新" : "视图「" + name + "」已保存");
+}
+function applyNamedView(index){
+  var v = namedViews()[index];
+  if (!v) return;
+  var f = v.filters || {};
+  docsFilter.q = typeof f.q === "string" ? f.q : "";
+  docsFilter.cat = f.cat || "全部";
+  docsFilter.type = f.type || "全部";
+  docsFilter.status = f.status || "全部";
+  docsFilter.sortKey = f.sortKey || "id";
+  docsFilter.sortDir = f.sortDir === "asc" ? "asc" : "desc";
+  docsFilter.pageSize = SIZE_OPTS.indexOf(f.pageSize) >= 0 ? f.pageSize : 25;
+  docsFilter.density = DENS_OPTS.indexOf(f.density) >= 0 ? f.density : "comfortable";
+  docsFilter.page = 1;
+  DOC_COLS.forEach(function(c){
+    var w = v.widths && v.widths[c.key] != null ? v.widths[c.key] : (c.width || 110);
+    colWidths[c.key] = normalizeColWidth(w);
+  });
+  saveColWidths();
+  saveHiddenCols(Array.isArray(v.hidden) ? v.hidden : []);
+  savePrefs();
+  renderDocs();
+  toast("已套用视图「" + v.name + "」");
+}
+function deleteNamedView(index){
+  var views = namedViews();
+  var v = views[index];
+  if (!v) return;
+  views.splice(index, 1);
+  saveNamedViews(views);
+  renderDocs();
+  toast("视图「" + v.name + "」已删除");
+}
+function savedViewsHtml(){
+  var views = namedViews();
+  if (!views.length) return '<div class="sv-empty">还没有保存的视图</div>';
+  return '<div class="sv-list">' + views.map(function(v, i){
+    return '<div class="sv-item"><button type="button" class="sv-apply" data-i="' + i + '" title="套用「' +
+      esc(v.name) + '」">' + esc(v.name) + '</button><button type="button" class="sv-x" data-i="' +
+      i + '" aria-label="删除视图">×</button></div>';
+  }).join("") + "</div>";
+}
+
 function filteredDocs() {
   var q = clean(docsFilter.q).toLowerCase();
   var rows = visibleDocs(store.docs).filter(function(d){
@@ -2048,6 +2154,9 @@ function buildDocs() {
           '<div class="vrow"><span>密度</span><select id="fDensity">' + densOpts + '</select></div>' +
           '<div class="vrow"><span>列显示</span><div class="col-checks">' + colChecks + '</div></div>' +
           '<div class="vrow"><span>列宽</span><button class="btn subtle mini" id="fResetCols" type="button">重置列宽</button></div>' +
+          '<div class="vrow"><span>保存视图</span><div class="sv-wrap">' + savedViewsHtml() +
+            '<div class="sv-new"><input id="vName" maxlength="20" placeholder="视图名称，如“待审团务”" aria-label="视图名称">' +
+            '<button class="btn subtle mini" id="vSave" type="button">保存当前</button></div></div></div>' +
         "</div></details>" +
       "</div></div>" +
     '<div class="chips" id="docChips"></div>' +
@@ -2077,6 +2186,15 @@ function buildDocs() {
   document.getElementById("fSize").onchange = function(e){ docsFilter.pageSize = Number(e.target.value); docsFilter.page = 1; renderDocs(); };
   document.getElementById("fDensity").onchange = function(e){ docsFilter.density = e.target.value; renderDocs(); };
   document.getElementById("fResetCols").onclick = resetColWidths;
+  var vSave = document.getElementById("vSave"), vName = document.getElementById("vName");
+  if (vSave) vSave.onclick = saveNamedView;
+  if (vName) vName.onkeydown = function(e){ if (e.key === "Enter") { e.preventDefault(); saveNamedView(); } };
+  document.querySelectorAll(".sv-apply").forEach(function(b){
+    b.onclick = function(){ applyNamedView(Number(b.dataset.i)); };
+  });
+  document.querySelectorAll(".sv-x").forEach(function(b){
+    b.onclick = function(){ deleteNamedView(Number(b.dataset.i)); };
+  });
   document.querySelectorAll(".col-cb").forEach(function(cb){
     cb.onchange = function(){
       var h = hiddenCols(), key = cb.dataset.key;
@@ -3024,6 +3142,46 @@ function copyText(text, msg) {
   } else { fallback(); toast(msg); }
 }
 
+var rosterTab = "list";
+function rosterMatrix(rows){
+  var m = {}, counts = { "已交":0, "待审":0, "补交":0, "—":0 };
+  store.docs.forEach(function(d){
+    if (!d.sid || !d.cat) return;
+    var k = d.sid + "|" + d.cat;
+    if (!m[k]) m[k] = [];
+    m[k].push(d.status);
+  });
+  function cell(sid, cat){
+    var sts = m[sid + "|" + cat] || [];
+    if (sts.indexOf("已归档") >= 0) return "已交";
+    if (sts.indexOf("待审核") >= 0) return "待审";
+    if (sts.indexOf("已驳回") >= 0 || sts.indexOf("待补材料") >= 0) return "补交";
+    return "—";
+  }
+  var body = rows.map(function(r){
+    return '<tr class="mx-row" data-sid="' + esc(r.sid) + '"><td class="num-col">' + esc(r.sid) +
+      "</td><td>" + esc(r.who) + "</td>" +
+      CATS.map(function(cat){
+        var s = cell(r.sid, cat);
+        counts[s] = (counts[s] || 0) + 1;
+        var cls = s === "已交" ? "mx-ok" : (s === "待审" ? "mx-pend" : (s === "补交" ? "mx-rej" : "mx-none"));
+        return '<td class="mx-cell ' + cls + '" title="' + esc(cat) + " · " + esc(s) + '">' + s + "</td>";
+      }).join("") + "</tr>";
+  }).join("");
+  var head = "<tr><th>学号</th><th>姓名</th>" + CATS.map(function(c){ return "<th>" + esc(c) + "</th>"; }).join("") + "</tr>";
+  var empty = '<tr><td colspan="' + (2 + CATS.length) + '" class="empty"><div class="empty-title">名单为空</div>' +
+    '<div class="empty-sub">先添加成员，矩阵才有行</div></td></tr>';
+  var html = '<div class="card panel"><div class="toolbar" style="padding:0 0 10px">' +
+    "<h3 style='margin:0'>完成矩阵（" + rows.length + " 人 × " + CATS.length + " 类）</h3>" +
+    '<span class="spacer"></span><span class="hint">双击一行查看该生全部材料</span></div>' +
+    '<div class="table-wrap"><table class="mx-table"><colgroup><col style="width:110px"><col style="width:96px">' +
+    CATS.map(function(){ return '<col style="width:17%">'; }).join("") +
+    "</colgroup><thead>" + head + "</thead><tbody>" + (body || empty) + "</tbody></table></div>" +
+    '<div class="mx-note">已交 ' + counts["已交"] + " 格 · 待审 " + counts["待审"] + " 格 · 补交 " +
+    counts["补交"] + " 格 · 无记录 " + counts["—"] + " 格。无记录不等于欠交，按实际通知口径判断。</div></div>";
+  return html;
+}
+
 function renderRoster() {
   var canManage = can("roster:manage");
   var chk = rosterCheck();
@@ -3067,14 +3225,7 @@ function renderRoster() {
     return "<li>" + esc(d.who) + "（" + esc(d.sid) + "）· " + esc(d.name) + "</li>";
   }).join("") : '<div class="empty" style="padding:10px 0">材料提交人均在名单内</div>';
 
-  document.getElementById("view-roster").innerHTML =
-    '<div class="toolbar">' +
-      (canManage ? '<button class="btn primary" id="rbAdd">添加一人</button>' +
-                '<span class="spacer"></span>' +
-                '<button class="btn subtle mini" id="rbImport">导入名单</button>' +
-                '<button class="btn danger mini" id="rbClear">清空名单</button>' : "") +
-      '<span class="hint">名单仅存本浏览器，随备份导出</span></div>' +
-    '<div class="cards" style="grid-template-columns:repeat(3,1fr)">' + cards + "</div>" +
+  var mainHtml = rosterTab === "matrix" ? rosterMatrix(rows) :
     '<div class="grid-2">' +
       '<div class="card panel"><h3>班级名单（' + rows.length + "）</h3>" +
         '<div class="table-wrap"><table><colgroup><col style="width:26%"><col><col style="width:18%"><col style="width:18%"></colgroup>' +
@@ -3087,6 +3238,31 @@ function renderRoster() {
         '<div class="card panel" style="margin-top:14px"><h3>名单外的材料提交人</h3><ul class="trace">' + extraHtml + "</ul></div>" +
       "</div>" +
     "</div>";
+
+  document.getElementById("view-roster").innerHTML =
+    '<div class="toolbar">' +
+      '<div class="seg"><button type="button" data-tab="list" class="' + (rosterTab === "list" ? "on" : "") + '">名单核对</button>' +
+      '<button type="button" data-tab="matrix" class="' + (rosterTab === "matrix" ? "on" : "") + '">完成矩阵</button></div>' +
+      '<span class="spacer"></span>' +
+      (canManage ? '<button class="btn primary" id="rbAdd">添加一人</button>' +
+                '<button class="btn subtle mini" id="rbImport">导入名单</button>' +
+                '<button class="btn danger mini" id="rbClear">清空名单</button>' +
+                '<span class="hint">名单仅存本浏览器，随备份导出</span>' : "") +
+      "</div>" +
+    '<div class="cards" style="grid-template-columns:repeat(3,1fr)">' + cards + "</div>" +
+    mainHtml;
+
+  document.querySelectorAll(".seg button").forEach(function(b){
+    b.onclick = function(){ rosterTab = b.dataset.tab; renderRoster(); };
+  });
+  document.querySelectorAll(".mx-row").forEach(function(tr){
+    tr.ondblclick = function(){
+      docsFilter.q = tr.dataset.sid; docsFilter.cat = "全部"; docsFilter.type = "全部";
+      docsFilter.status = "全部"; docsFilter.page = 1;
+      switchView("docs");
+      toast("已按学号 " + tr.dataset.sid + " 筛出台账");
+    };
+  });
 
   var rbA = document.getElementById("rbAdd"), rbI = document.getElementById("rbImport"), rbC = document.getElementById("rbClear");
   if (rbA) rbA.onclick = rosterAddModal;
@@ -3850,10 +4026,12 @@ function docMatchesQuery(d, q){
     .map(function(x){ return clean(x).toLowerCase(); }).join(" ").indexOf(q) >= 0;
 }
 function buildCommandResults(raw){
-  var q = clean(raw).toLowerCase();
-  var docs = visibleDocs(store.docs).slice().sort(function(a,b){ return b.id - a.id; })
+  var actionMode = clean(raw).charAt(0) === ">";
+  var text = actionMode ? clean(raw).slice(1) : raw;
+  var q = clean(text).toLowerCase();
+  var docs = actionMode ? [] : visibleDocs(store.docs).slice().sort(function(a,b){ return b.id - a.id; })
     .filter(function(d){ return docMatchesQuery(d, q); });
-  var views = NAV.filter(navVisible).map(function(n){
+  var views = actionMode ? [] : NAV.filter(navVisible).map(function(n){
     return { kind:"view", group:"跳转视图", title:n.title,
       sub:"前往 · " + navGroupLabel(n.group), keywords:n.key,
       run:function(){ switchView(n.key); } };
@@ -3864,6 +4042,14 @@ function buildCommandResults(raw){
   ];
   if (can("docs:create")) acts.push({ kind:"act", group:"常用动作", title:"提交新材料", sub:"跳到提交表单，按模板填字段", keywords:"提交 新建 材料",
     run:function(){ switchView("submit"); } });
+  if (can("docs:archive")) acts.push({ kind:"act", group:"台账动作", title:"归档已选材料", sub:"对台账当前选中或勾选的材料执行归档", keywords:"归档 通过 入库",
+    run:function(){
+      switchView("docs");
+      var ids = Object.keys(state.selected).map(Number).filter(function(id){ return findDoc(id); });
+      if (ids.length) { bulkDoc("archive"); return; }
+      if (state.selectedId != null && findDoc(state.selectedId)) { archiveSelected(); return; }
+      toast("请先在台账中选中要归档的材料");
+    } });
   if (can("docs:export")) acts.push({ kind:"act", group:"常用动作", title:"导出当前台账 CSV", sub:"按当前筛选与排序导出", keywords:"导出 csv 表格",
     run:function(){ switchView("docs"); exportCsv(); } });
   acts.push({ kind:"act", group:"常用动作", title:"切换深浅色", sub:"在深色与浅色之间切换并记住", keywords:"主题 深色 浅色 外观",
@@ -3890,8 +4076,8 @@ function buildCommandResults(raw){
   function hit(it){ if (!q) return true; return (it.title + " " + it.sub + " " + (it.keywords || ""))
     .toLowerCase().indexOf(q) >= 0; }
   var viewHits = views.filter(hit), actHits = acts.filter(hit);
-  var docHits = docItems.slice(0, q ? 12 : 4);
-  var out = q ? docHits.concat(viewHits, actHits) : actHits.concat(docHits, viewHits);
+  var docHits = actionMode ? [] : docItems.slice(0, q ? 12 : 4);
+  var out = actionMode ? actHits : (q ? docHits.concat(viewHits, actHits) : actHits.concat(docHits, viewHits));
   return out.slice(0, 22);
 }
 

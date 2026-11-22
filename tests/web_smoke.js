@@ -18,7 +18,7 @@ function makeEl() {
     checked: false, indeterminate: false, disabled: false, files: [],
     classList: { add(){}, remove(){}, toggle(){}, contains(){ return false; } },
     onclick: null, onchange: null, appendChild(){}, remove(){}, click(){},
-    querySelectorAll(){ return []; }, addEventListener(){}
+    querySelector(){ return makeEl(); }, querySelectorAll(){ return []; }, addEventListener(){}
   };
 }
 const els = {};
@@ -37,7 +37,7 @@ const localStorageStub = {
 };
 const sandbox = {
   document: documentStub, localStorage: localStorageStub,
-  console, setTimeout(){}, URL: { createObjectURL(){ return "blob:x"; }, revokeObjectURL(){} },
+  console, setTimeout(){}, clearTimeout(){}, URL: { createObjectURL(){ return "blob:x"; }, revokeObjectURL(){} },
   Blob: function(){}, FileReader: function(){},
   Date, Math, JSON, Array, Object, String, Number, RegExp, Error, isNaN, parseInt, parseFloat
 };
@@ -326,6 +326,52 @@ const cmdDoc = sandbox.buildCommandResults("奖学金");
 assert("命令面板可搜材料", cmdDoc.length === 1 && cmdDoc[0].kind === "doc");
 const cmdExp = sandbox.buildCommandResults("导出");
 assert("命令面板可搜动作", cmdExp.length === 1 && cmdExp[0].title.indexOf("导出") >= 0);
+sandbox.state.role = "reviewer";
+const cmdArc = sandbox.buildCommandResults(">归档");
+assert(">归档 只返回动作", cmdArc.length >= 1 && cmdArc.every(function(x){ return x.kind === "act"; }));
+assert(">归档 命中台账归档", cmdArc.some(function(x){ return x.title === "归档已选材料"; }));
+assert(">归档 不混入材料", cmdArc.every(function(x){ return x.kind !== "doc"; }));
+
+// 命名保存视图：筛选/排序/列宽/隐藏列一键还原、重名覆盖、删除
+sandbox.docsFilter.q = "视图关键词"; sandbox.docsFilter.cat = "团务材料";
+sandbox.docsFilter.type = "全部"; sandbox.docsFilter.status = "全部";
+sandbox.docsFilter.sortKey = "name"; sandbox.docsFilter.sortDir = "asc";
+sandbox.docsFilter.pageSize = 50; sandbox.docsFilter.density = "compact";
+sandbox.colWidths.name = 333;
+sandbox.saveHiddenCols(["file"]);
+els["vName"].value = "冒烟视图";
+let viewErr = null;
+try { sandbox.saveNamedView(); } catch(e){ viewErr = e; }
+assert("保存视图不抛错", viewErr === null);
+const nv = sandbox.namedViews();
+assert("命名视图已落库", nv.length === 1 && nv[0].name === "冒烟视图");
+assert("视图快照含筛选", nv[0].filters.q === "视图关键词" && nv[0].filters.cat === "团务材料");
+assert("视图快照含排序", nv[0].filters.sortKey === "name" && nv[0].filters.sortDir === "asc");
+assert("视图快照含列宽", nv[0].widths.name === 333);
+assert("视图快照含隐藏列", nv[0].hidden.indexOf("file") >= 0);
+sandbox.docsFilter.q = ""; sandbox.docsFilter.cat = "全部";
+sandbox.docsFilter.sortKey = "id"; sandbox.docsFilter.sortDir = "desc";
+sandbox.colWidths.name = 210; sandbox.saveHiddenCols([]);
+sandbox.applyNamedView(0);
+assert("套用视图恢复筛选", sandbox.docsFilter.q === "视图关键词" && sandbox.docsFilter.cat === "团务材料");
+assert("套用视图恢复排序", sandbox.docsFilter.sortKey === "name" && sandbox.docsFilter.sortDir === "asc");
+assert("套用视图恢复列宽", sandbox.loadColWidths().name === 333);
+assert("套用视图恢复隐藏列", sandbox.hiddenCols().indexOf("file") >= 0);
+els["vName"].value = "冒烟视图"; sandbox.saveNamedView();
+assert("同名视图覆盖不新增", sandbox.namedViews().length === 1);
+sandbox.deleteNamedView(0);
+assert("删除视图", sandbox.namedViews().length === 0);
+sandbox.saveHiddenCols([]);
+sandbox.colWidths.name = sandbox.defaultColWidth("name");
+sandbox.saveColWidths();
+
+// 完成矩阵：按名单出人，按五类出列，口径为有记录优先
+const mxHtml = sandbox.rosterMatrix(sandbox.listRoster());
+assert("矩阵表头含五类", ["团务材料","奖助材料","学分材料","宣传材料","班级事务"].every(function(c){ return mxHtml.indexOf(c) >= 0; }));
+assert("矩阵含全部名单行", (mxHtml.match(/class="mx-row"/g) || []).length === sandbox.listRoster().length);
+assert("矩阵标注无记录口径", mxHtml.indexOf("无记录不等于欠交") >= 0);
+assert("矩阵已交格带样式", mxHtml.indexOf("mx-cell mx-ok") >= 0);
+
 
 // 归档规则设计器：默认兼容、映射、变量与非法拦截
 const arDoc = { name:"体测成绩统计表", cat:"团务材料", who:"刘一帆", sid:"250222", code:"团务-007" };

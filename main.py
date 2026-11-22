@@ -6,6 +6,7 @@
 """
 
 import sys
+import ctypes
 import traceback
 import datetime
 import tkinter as tk
@@ -35,6 +36,19 @@ def _install_error_logger():
     sys.excepthook = hook
 
 
+def enable_dpi_awareness():
+    """声明 DPI 感知，避免 125%/150% 缩放下 Tk 按 100% 排布导致右侧被裁。"""
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+
 def center_window(root, w, h):
     root.update_idletasks()
     sw = root.winfo_screenwidth()
@@ -46,6 +60,7 @@ def center_window(root, w, h):
 
 def main():
     _install_error_logger()
+    enable_dpi_awareness()
     theme.init_from_settings()
     root = tk.Tk()
     root.title("班级操作台 · v%s %s" % (VERSION, VERSION_LABEL))
@@ -56,7 +71,8 @@ def main():
         repo = build_repository()
         MainWindow(root, repo)
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-        center_window(root, min(1220, max(980, sw - 120)), min(860, max(660, sh - 50)))
+        center_window(root, min(1220, max(960, sw - 80)),
+                      min(860, max(620, sh - 70)))
         root.minsize(960, 640)
         root.mainloop()
     except Exception as e:
