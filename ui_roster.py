@@ -30,7 +30,8 @@ class RosterView(ttk.Frame):
         wrap.columnconfigure(1, weight=1)
         wrap.rowconfigure(0, weight=1)
 
-        table_box = ttk.Frame(wrap)
+        table_box = tk.Frame(wrap, bg=C["card"], highlightthickness=1,
+                             highlightbackground=C["line"])
         table_box.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         self.tree = ttk.Treeview(table_box, columns=self.COLS, show="headings",
                                  selectmode="browse")
@@ -40,8 +41,8 @@ class RosterView(ttk.Frame):
         self.tree.tag_configure("zebra", background=C["zebra"])
         ysb = ttk.Scrollbar(table_box, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=ysb.set)
-        self.tree.pack(side="left", fill="both", expand=True)
-        ysb.pack(side="right", fill="y")
+        self.tree.pack(side="left", fill="both", expand=True, padx=(1, 0), pady=1)
+        ysb.pack(side="right", fill="y", padx=(0, 1), pady=1)
 
         self.empty = ttk.Label(table_box, text="名单为空，可在下方添加成员", style="Muted.TLabel")
 
