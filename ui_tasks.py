@@ -33,7 +33,7 @@ class TasksView(ttk.Frame):
         self.tree = ttk.Treeview(wrap, columns=self.COLS, show="headings",
                                  selectmode="browse")
         for c in self.COLS:
-            self.tree.heading(c, text=self.HEADS[c])
+            self.tree.heading(c, text=self.HEADS[c], anchor="w")
             self.tree.column(c, width=self.WIDTHS[c], anchor="w", stretch=True)
         self.tree.tag_configure("zebra", background=C["zebra"])
         self.tree.tag_configure("green", foreground=C["green"])
@@ -51,9 +51,12 @@ class TasksView(ttk.Frame):
         bar.pack(fill="x", padx=18, pady=12)
         self.btn_add = ttk.Button(bar, text="添加任务", style="Accent.TButton",
                                   command=lambda: self.edit_dialog(None))
-        self.btn_edit = ttk.Button(bar, text="编辑", command=self.edit_selected)
-        self.btn_toggle = ttk.Button(bar, text="完成 / 还原", command=self.toggle_selected)
-        self.btn_del = ttk.Button(bar, text="删除", command=self.remove_selected)
+        self.btn_edit = ttk.Button(bar, text="编辑", style="Ghost.TButton",
+                                   command=self.edit_selected)
+        self.btn_toggle = ttk.Button(bar, text="完成 / 还原", style="Ghost.TButton",
+                                     command=self.toggle_selected)
+        self.btn_del = ttk.Button(bar, text="删除", style="Danger.TButton",
+                                  command=self.remove_selected)
 
     def _selected(self):
         sel = self.tree.selection()
