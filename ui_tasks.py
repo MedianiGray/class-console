@@ -125,7 +125,7 @@ class TasksView(ttk.Frame):
         ttk.Label(dlg, text="关联类别").grid(row=1, column=0, sticky="w", padx=16, pady=10)
         ttk.Combobox(dlg, textvariable=v_cat, values=self.CATS, state="readonly",
                      width=22).grid(row=1, column=1, padx=16, pady=10)
-        ttk.Label(dlg, text="截止日期 *").grid(row=2, column=0, sticky="w", padx=16, pady=10)
+        ttk.Label(dlg, text="截止日期 *（YYYY-MM-DD）").grid(row=2, column=0, sticky="w", padx=16, pady=10)
         ttk.Entry(dlg, textvariable=v_deadline, width=24).grid(row=2, column=1, padx=16, pady=10)
         ttk.Label(dlg, text="应交范围").grid(row=3, column=0, sticky="w", padx=16, pady=10)
         ttk.Combobox(dlg, textvariable=v_scope, values=self.SCOPES, state="readonly",
