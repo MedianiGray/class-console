@@ -235,6 +235,11 @@
   /* 岗位下拉 */
   .role-select{width:100%;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-soft);
     min-height:34px;padding:0 10px;font-size:13px;color:var(--text);margin-top:10px}
+  /* 申请人学号：只在申请人视角显示，用于只看本人材料 */
+  .applicant-id{display:none;margin-top:8px}
+  .applicant-id label{display:block;font-size:12px;color:var(--sub);margin-bottom:4px}
+  .applicant-id input{width:100%;border:1px solid var(--line);border-radius:var(--radius-sm);
+    background:var(--bg-soft);min-height:34px;padding:0 10px;font-size:13px;color:var(--text)}
 
   /* 次级弱按钮 */
   .btn.subtle{background:var(--bg-soft);border-color:var(--line);color:var(--muted)}
@@ -478,6 +483,11 @@
         <option value="manager">汇总者</option>
         <option value="applicant">申请人</option>
       </select>
+      <div class="applicant-id" id="applicantIdWrap">
+        <label for="applicantSid">申请人学号</label>
+        <input id="applicantSid" type="text" inputmode="numeric" autocomplete="off"
+               placeholder="填写后只看本人材料" aria-label="申请人学号">
+      </div>
       <div class="theme-switch" id="themeSwitch" role="group" aria-label="界面主题">
         <button type="button" data-theme-mode="light">浅色</button>
         <button type="button" data-theme-mode="dark">深色</button>
@@ -665,6 +675,13 @@ var SEED_TASKS = [
 
 /* ============ 本地缓存存储层（对齐仓库契约） ============ */
 var store = { docs: [], logs: [], roster: [], tasks: [], seq: { doc: 0, log: 0 } };
+var APPLICANT_KEY = "classconsole_web_applicant_sid";
+function loadApplicantSid(){
+  try { return clean(localStorage.getItem(APPLICANT_KEY)); } catch(e){ return ""; }
+}
+function saveApplicantSid(sid){
+  try { localStorage.setItem(APPLICANT_KEY, clean(sid)); } catch(e){}
+}
 
 function nowStr() {
   var d = new Date();
@@ -811,8 +828,23 @@ function normalizeTask(raw, i){
 }
 function listTasks(){ return store.tasks.slice().sort(function(a,b){ return a.deadline < b.deadline ? -1 : 1; }); }
 function findTask(id){ return store.tasks.find(function(t){ return t.id === id; }) || null; }
+function pad2(n){ return (n < 10 ? "0" : "") + n; }
+function normalizeDeadline(value){
+  var raw = clean(value);
+  if (!raw) return "";
+  var m = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (!m) throw new Error("截止日期格式应为 YYYY-MM-DD，例如 2026-11-30");
+  var y = Number(m[1]), mo = Number(m[2]), day = Number(m[3]);
+  var dt = new Date(Date.UTC(y, mo - 1, day));
+  if (y < 1900 || y > 2100 || dt.getUTCFullYear() !== y ||
+      dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== day) {
+    throw new Error("截止日期格式应为 YYYY-MM-DD，例如 2026-11-30");
+  }
+  return y + "-" + pad2(mo) + "-" + pad2(day);
+}
 function addTask(data){
   var row = normalizeTask(data, store.seq.task || 0);
+  row.deadline = normalizeDeadline(data.deadline);
   if (!row.title) throw new Error("任务标题不能为空");
   if (!row.deadline) throw new Error("请选择截止日期");
   var maxId = store.tasks.length ? Math.max.apply(null, store.tasks.map(function(x){ return x.id; })) : 0;
@@ -821,7 +853,12 @@ function addTask(data){
 }
 function updateTask(id, data){
   var t = findTask(id); if (!t) return null;
-  ["title","cat","scope","deadline","note"].forEach(function(k){ if (data[k] != null) t[k] = clean(data[k]); });
+  ["title","cat","scope","note"].forEach(function(k){ if (data[k] != null) t[k] = clean(data[k]); });
+  if (data.deadline != null) {
+    var dl = normalizeDeadline(data.deadline);
+    if (!dl) throw new Error("请选择截止日期");
+    t.deadline = dl;
+  }
   if (typeof data.done === "boolean") t.done = data.done;
   saveStore(); return t;
 }
@@ -847,14 +884,20 @@ function taskStats(){
   return { total: store.tasks.length, ongoing: ongoing, due: due, overdue: overdue, done: done };
 }
 
-/* 核对：应交（名单）/ 已交（有材料）/ 未交 / 名单外材料 */
+/* 核对：应交（名单）/ 已交（待审核或已归档）/ 未交 / 需补交（仅已驳回）/ 名单外材料 */
 function rosterCheck(){
-  var submitted = {};
-  store.docs.forEach(function(d){ if (d.sid) submitted[d.sid] = true; });
+  var submitted = {}, rejected = {};
+  store.docs.forEach(function(d){
+    if (!d.sid) return;
+    if (d.status === "待审核" || d.status === "已归档") submitted[d.sid] = true;
+    else if (d.status === "已驳回") rejected[d.sid] = true;
+  });
   var absent = store.roster.filter(function(r){ return !submitted[r.sid]; });
+  var resubmit = store.roster.filter(function(r){ return rejected[r.sid] && !submitted[r.sid]; });
   var rosterSids = store.roster.map(function(r){ return r.sid; });
   var extra = store.docs.filter(function(d){ return d.sid && rosterSids.indexOf(d.sid) < 0; });
-  return { total: store.roster.length, done: store.roster.length - absent.length, absent: absent, extra: extra };
+  return { total: store.roster.length, done: store.roster.length - absent.length,
+    absent: absent, resubmit: resubmit, extra: extra };
 }
 function listLogs(){ return store.logs.slice().sort(function(a,b){ return b.id - a.id; }); }
 function addLog(act, obj, who, role, src) {
@@ -934,12 +977,19 @@ function saveWatch(dirName, baseline, updatedAt){
   try { localStorage.setItem(WATCH_KEY, JSON.stringify({ dirName:clean(dirName), baseline:baseline, updatedAt:updatedAt || nowStr() })); } catch(e){}
 }
 
-function stats() {
+function visibleDocs(rows) {
+  rows = rows || store.docs;
+  if (state.role !== "applicant") return rows;
+  var sid = clean(state.applicantSid);
+  return sid ? rows.filter(function(d){ return clean(d.sid) === sid; }) : [];
+}
+function stats(docs) {
+  docs = docs || store.docs;
   return {
-    total: store.docs.length,
-    pending: store.docs.filter(function(d){ return d.status === "待审核"; }).length,
-    archived: store.docs.filter(function(d){ return d.status === "已归档"; }).length,
-    rejected: store.docs.filter(function(d){ return d.status === "已驳回"; }).length
+    total: docs.length,
+    pending: docs.filter(function(d){ return d.status === "待审核"; }).length,
+    archived: docs.filter(function(d){ return d.status === "已归档"; }).length,
+    rejected: docs.filter(function(d){ return d.status === "已驳回"; }).length
   };
 }
 function backup(){ return { docs: store.docs, logs: store.logs, roster: store.roster, tasks: store.tasks }; }
@@ -960,6 +1010,7 @@ function restore(docs, logs, roster, tasks) {
 /* ============ 界面状态与通用反馈 ============ */
 var state = {
   role: "handler", current: "dashboard", operatorName: "学委",
+  applicantSid: loadApplicantSid(),
   selectedId: null, persist: true, drawerId: null, selected: {}
 };
 var docsFilter = { q: "", cat: "全部", type: "全部", status: "全部", sortKey: "id", sortDir: "desc",
@@ -1093,7 +1144,7 @@ function switchView(key) {
   refreshAll();
 }
 function refreshAll() {
-  var s = stats();
+  var s = stats(visibleDocs());
   document.getElementById("statusRight").textContent = "材料 " + s.total + " 条 · 日志 " + store.logs.length + " 条";
   var persistTip = state.persist === false ? " · 存储不可用(仅本次会话)" : "";
   document.getElementById("statusLeft").textContent = "本地缓存 · " + roleLabel() + persistTip;
@@ -1116,14 +1167,15 @@ function refreshAll() {
 
 /* ============ 看板（待办优先 + 卡片下钻） ============ */
 function renderDashboard() {
-  var docs = store.docs, logs = listLogs();
-  var s = stats();
+  var isApplicant = state.role === "applicant";
+  var sid = clean(state.applicantSid);
+  var docs = visibleDocs(store.docs), logs = listLogs();
+  var s = stats(docs);
   var pending = docs.filter(function(d){ return d.status === "待审核"; });
   var rejected = docs.filter(function(d){ return d.status === "已驳回"; });
 
   var canArchive = can("docs:archive"), canRoster = can("roster:manage"),
       canTask = can("task:manage"), canLogs = can("logs:view");
-  var isApplicant = state.role === "applicant";
 
   var chk = rosterCheck();
   var tsk = taskStats();
@@ -1165,8 +1217,11 @@ function renderDashboard() {
   if (isApplicant) {
     focusDocs = pending.concat(rejected);
     queueTitle = "需我关注的材料（" + focusDocs.length + "）";
-    queueEmpty = '<tr><td colspan="4" class="empty"><div class="empty-title">暂无需要你跟进的材料</div>' +
-      '<div class="empty-sub">你提交的材料进入审核后会显示在这里</div></td></tr>';
+    queueEmpty = sid
+      ? '<tr><td colspan="4" class="empty"><div class="empty-title">暂无需要你跟进的材料</div>' +
+        '<div class="empty-sub">你提交的材料进入审核后会显示在这里</div></td></tr>'
+      : '<tr><td colspan="4" class="empty"><div class="empty-title">请先填写申请人学号</div>' +
+        '<div class="empty-sub">未填写时不展示任何人的材料</div></td></tr>';
   } else if (canArchive) {
     focusDocs = pending;
     queueTitle = "待审核 · 需处理（" + pending.length + "）";
@@ -1203,7 +1258,7 @@ function renderDashboard() {
       "</div>";
   }
 
-  var empty = docs.length === 0;
+  var empty = docs.length === 0 && !isApplicant;
   var canCreate = can("docs:create");
 
   var sellHtml = empty
@@ -1222,8 +1277,12 @@ function renderDashboard() {
     sellTags + sellHtml + "</div>";
 
   /* 下一步重点：按岗位与待办给出唯一主动作 */
-  var abTitle, abDesc, abGo, abFilter = "", abLabel;
-  if (isApplicant) {
+  var abTitle, abDesc, abGo, abFilter = "", abLabel, abFocus = "";
+  if (isApplicant && !sid) {
+    abTitle = "请先填写申请人学号";
+    abDesc = "在左侧「申请人学号」填写后，这里只显示你的材料；未填写时不展示任何人的材料";
+    abGo = "dashboard"; abLabel = "填写学号"; abFocus = "applicantSid";
+  } else if (isApplicant) {
     if (focusDocs.length) {
       abTitle = "有 " + focusDocs.length + " 份材料需要你关注";
       abDesc = "被驳回或待审核的材料在这里，及时补充或跟进";
@@ -1243,10 +1302,12 @@ function renderDashboard() {
     abGo = canCreate ? "submit" : (canRoster ? "roster" : "docs");
     abLabel = canCreate ? "提交材料" : (canRoster ? "核对名单" : "查看台账");
   }
+  var abAttrs = abFocus
+    ? 'data-focus="' + abFocus + '"'
+    : 'data-go="' + abGo + '"' + (abFilter ? ' data-filter="' + abFilter + '"' : "");
   var actionHtml = '<div class="action-bar"><div><div class="ab-k">下一步</div><div class="ab-t">' + esc(abTitle) +
     '</div><div class="ab-d">' + esc(abDesc) + '</div></div>' +
-    '<button class="btn primary" data-go="' + abGo + '"' + (abFilter ? ' data-filter="' + abFilter + '"' : "") +
-    ">" + esc(abLabel) + "</button></div>";
+    '<button class="btn primary" ' + abAttrs + ">" + esc(abLabel) + "</button></div>";
 
   var firstGo = canCreate ? "submit" : "docs";
   var thirdGo = canRoster ? "roster" : (canTask ? "tasks" : "docs");
@@ -1286,6 +1347,12 @@ function renderDashboard() {
     a.onclick = function(){
       if (a.dataset.filter) { docsFilter.status = a.dataset.filter; docsFilter.page = 1; }
       switchView(a.dataset.go);
+    };
+  });
+  document.querySelectorAll("#view-dashboard [data-focus]").forEach(function(a){
+    a.onclick = function(){
+      var el = document.getElementById(a.dataset.focus);
+      if (el && el.focus) el.focus();
     };
   });
   document.querySelectorAll("#view-dashboard tbody tr.clickable").forEach(function(tr){
@@ -1333,7 +1400,7 @@ function applyPrefs(){
 
 function filteredDocs() {
   var q = clean(docsFilter.q).toLowerCase();
-  var rows = store.docs.filter(function(d){
+  var rows = visibleDocs(store.docs).filter(function(d){
     if (docsFilter.cat !== "全部" && d.cat !== docsFilter.cat) return false;
     if (docsFilter.type !== "全部" && (d.form_type || "general") !== docsFilter.type) return false;
     if (docsFilter.status !== "全部" && d.status !== docsFilter.status) return false;
@@ -1526,14 +1593,24 @@ function renderDocs() {
     return "<tr class='clickable" + sel + "' data-id='" + d.id + "'>" + cb + tds + "</tr>";
   }).join("");
 
+  var applicantNoSid = state.role === "applicant" && !clean(state.applicantSid);
   var bodyEl = document.getElementById("docsBody");
   if (!total) {
     var headEmpty = store.docs.length === 0;
+    var emptyTitle, emptySub;
+    if (applicantNoSid) {
+      emptyTitle = "请先填写申请人学号";
+      emptySub = "在左侧「申请人学号」填写后，这里只显示你的材料";
+    } else if (headEmpty) {
+      emptyTitle = "还没有材料";
+      emptySub = "点击下方「提交材料」录入第一条";
+    } else {
+      emptyTitle = "没有符合条件的材料";
+      emptySub = "试试放宽搜索或清除筛选条件";
+    }
     bodyEl.innerHTML = '<tr><td colspan="' + (1 + visCols.length) + '" class="empty">' +
-      (headEmpty
-        ? '<div class="empty-title">还没有材料</div><div class="empty-sub">点击下方「提交材料」录入第一条</div>'
-        : '<div class="empty-title">没有符合条件的材料</div><div class="empty-sub">试试放宽搜索或清除筛选条件</div>') +
-      "</td></tr>";
+      '<div class="empty-title">' + esc(emptyTitle) + '</div>' +
+      '<div class="empty-sub">' + esc(emptySub) + '</div></td></tr>';
   } else {
     bodyEl.innerHTML = trs;
   }
@@ -2258,8 +2335,12 @@ function renderRoster() {
   var canManage = can("roster:manage");
   var chk = rosterCheck();
   var rows = listRoster();
-  var submitted = {};
-  store.docs.forEach(function(d){ if (d.sid) submitted[d.sid] = true; });
+  var submitted = {}, rejected = {};
+  store.docs.forEach(function(d){
+    if (!d.sid) return;
+    if (d.status === "待审核" || d.status === "已归档") submitted[d.sid] = true;
+    else if (d.status === "已驳回") rejected[d.sid] = true;
+  });
 
   var cards = [
     {label:"应交人数", num:chk.total, color:"var(--muted)"},
@@ -2272,7 +2353,8 @@ function renderRoster() {
 
   var trs = rows.map(function(r){
     var ok = submitted[r.sid];
-    var tag = ok ? '<span class="tag green">已交</span>' : '<span class="tag orange">未交</span>';
+    var tag = ok ? '<span class="tag green">已交</span>'
+      : (rejected[r.sid] ? '<span class="tag orange">需补交</span>' : '<span class="tag orange">未交</span>');
     var delCell = canManage ? '<button class="btn subtle mini rb-del" data-id="' + r.id + '">移除</button>' : '<span class="muted">—</span>';
     return "<tr><td class='num-col'>" + esc(r.sid) + "</td><td>" + esc(r.who) + "</td><td>" + tag + "</td>" +
       "<td>" + delCell + "</td></tr>";
@@ -2632,24 +2714,48 @@ function importBackup(e) {
 /* ============ 初始化 ============ */
 function bindRole() {
   var sel = document.getElementById("roleSelect");
+  var sidEl = document.getElementById("applicantSid");
+  var sidWrap = document.getElementById("applicantIdWrap");
   function syncLabel() {
     sel.value = state.role;
     var role = ROLES[state.role] || ROLES.handler;
+    var displayName = role.label, displayRole = role.operator, operatorName = role.operator;
+    if (state.role === "applicant" && state.applicantSid) {
+      displayRole = "学号 " + state.applicantSid;
+      var ro = findRosterBySid(state.applicantSid);
+      if (ro) { displayName = ro.who; operatorName = ro.who; }
+    }
+    state.operatorName = operatorName;
     var nameEl = document.getElementById("idName");
     var roleEl = document.getElementById("idRole");
     var avatarEl = document.getElementById("idAvatar");
-    if (nameEl) nameEl.textContent = role.label;
-    if (roleEl) roleEl.textContent = role.operator;
-    if (avatarEl) avatarEl.textContent = role.operator.charAt(0);
+    if (nameEl) nameEl.textContent = displayName;
+    if (roleEl) roleEl.textContent = displayRole;
+    if (avatarEl) avatarEl.textContent = operatorName.charAt(0);
+    if (sidWrap) sidWrap.style.display = state.role === "applicant" ? "" : "none";
+    if (sidEl && document.activeElement !== sidEl) sidEl.value = state.applicantSid;
   }
   sel.onchange = function(){
     state.role = sel.value;
-    state.operatorName = ROLES[state.role].operator;
     applyRoleDefaults();
     buildNav();
     syncLabel();
     closeDrawer();
     switchView(state.current);
+    if (state.role === "applicant" && !state.applicantSid && sidEl && sidEl.focus) sidEl.focus();
+  };
+  if (sidEl) sidEl.oninput = function(){
+    var val = clean(sidEl.value).replace(/[^\d]/g, "").slice(0, 20);
+    if (sidEl.value !== val) sidEl.value = val;
+    if (val === state.applicantSid) return;
+    state.applicantSid = val;
+    saveApplicantSid(val);
+    state.selectedId = null;
+    state.selected = {};
+    syncLabel();
+    if (state.role === "applicant" && (state.current === "dashboard" || state.current === "docs")) {
+      switchView(state.current);
+    }
   };
   syncLabel();
 }
