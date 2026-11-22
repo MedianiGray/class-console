@@ -91,14 +91,23 @@ class RosterView(ttk.Frame):
 
     def refresh(self):
         rows = self.repo.list_roster()
-        submitted = {d.get("sid") for d in self.repo.list_docs() if d.get("sid")}
+        docs = self.repo.list_docs()
+        submitted = {d.get("sid") for d in docs
+                     if d.get("sid") and d.get("status") in ("待审核", "已归档")}
+        rejected = {d.get("sid") for d in docs
+                    if d.get("sid") and d.get("status") == "已驳回"}
         self.tree.delete(*self.tree.get_children())
         for i, r in enumerate(rows):
             tag = "zebra" if i % 2 else ""
-            done = r.get("sid") in submitted
+            sid = r.get("sid")
+            if sid in submitted:
+                status = "已交"
+            elif sid in rejected:
+                status = "需补交"
+            else:
+                status = "未交"
             self.tree.insert("", "end", tags=(r["id"], tag),
-                             values=(r.get("sid", ""), r.get("who", ""),
-                                     "已交" if done else "未交"))
+                             values=(r.get("sid", ""), r.get("who", ""), status))
         chk = self.repo.roster_check()
         self.summary.config(text="名单共 %d 人" % chk["total"])
         for key, val in (("total", chk["total"]), ("done", chk["done"]),
