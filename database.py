@@ -61,6 +61,23 @@ def days_until(deadline: str):
     return (dl - datetime.date.today()).days
 
 
+def normalize_deadline(value) -> str:
+    """把常见日期写法统一为 YYYY-MM-DD；空值返回空串，非法值抛错。"""
+    raw = _clean(value)
+    if not raw:
+        return ""
+    parsed = None
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            parsed = datetime.datetime.strptime(raw, fmt)
+            break
+        except ValueError:
+            continue
+    if parsed is None or not (1900 <= parsed.year <= 2100):
+        raise RepositoryError("截止日期格式应为 YYYY-MM-DD，例如 2026-11-30")
+    return parsed.strftime("%Y-%m-%d")
+
+
 class RepositoryError(RuntimeError):
     """数据读写失败，供界面捕获并提示，避免直接崩溃。"""
 
@@ -197,7 +214,7 @@ class LocalRepository:
             )""")
         # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
         cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
-        for miss in ("reason", "code", "path", "form_type", "extra"):
+        for miss in ("reason", "code", "path", "form_type", "extra", "arch"):
             if miss not in cols:
                 c.execute("ALTER TABLE docs ADD COLUMN %s TEXT" % miss)
         conn.commit()
@@ -363,6 +380,7 @@ class LocalRepository:
             raise RepositoryError("写入材料失败：%s" % e)
         finally:
             conn.close()
+        return doc_id
 
     def _get_doc(self, conn, doc_id):
         return conn.execute("SELECT * FROM docs WHERE id=?", (doc_id,)).fetchone()
@@ -379,6 +397,17 @@ class LocalRepository:
             return dict(row)
         except sqlite3.Error as e:
             raise RepositoryError("归档失败：%s" % e)
+        finally:
+            conn.close()
+
+    def set_arch(self, doc_id, path):
+        """记录材料归档后的实际文件路径。"""
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE docs SET arch=? WHERE id=?", (_clean(path), doc_id))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("写入归档路径失败：%s" % e)
         finally:
             conn.close()
 
@@ -468,11 +497,16 @@ class LocalRepository:
         roster = self.list_roster()
         docs = self.list_docs()
         roster_sids = {r["sid"] for r in roster}
-        submitted = {_clean(d.get("sid")) for d in docs if _clean(d.get("sid"))}
+        # 已交 = 有材料在待审核或已归档；只有已驳回不算已交，进入需补交
+        submitted = {_clean(d.get("sid")) for d in docs
+                     if _clean(d.get("sid")) and d.get("status") in ("待审核", "已归档")}
+        rejected = {_clean(d.get("sid")) for d in docs
+                    if _clean(d.get("sid")) and d.get("status") == "已驳回"}
         absent = [r for r in roster if r["sid"] not in submitted]
+        resubmit = [r for r in roster if r["sid"] in rejected and r["sid"] not in submitted]
         extra = [d for d in docs if _clean(d.get("sid")) and d["sid"] not in roster_sids]
         return {"total": len(roster), "done": len(roster) - len(absent),
-                "absent": absent, "extra": extra}
+                "absent": absent, "resubmit": resubmit, "extra": extra}
 
     # ---------- 任务 ----------
     def list_tasks(self) -> list:
@@ -494,7 +528,8 @@ class LocalRepository:
         return next((x for x in self.list_tasks() if x["id"] == tid), None)
 
     def add_task(self, data: dict) -> int:
-        title, deadline = _clean(data.get("title")), _clean(data.get("deadline"))
+        title = _clean(data.get("title"))
+        deadline = normalize_deadline(data.get("deadline"))
         if not title:
             raise RepositoryError("任务标题不能为空")
         if not deadline:
@@ -518,7 +553,12 @@ class LocalRepository:
             if conn.execute("SELECT 1 FROM tasks WHERE id=?", (tid,)).fetchone() is None:
                 return None
             fields = {k: _clean(data.get(k)) for k in
-                      ("title", "cat", "scope", "deadline", "note") if data.get(k) is not None}
+                      ("title", "cat", "scope", "note") if data.get(k) is not None}
+            if data.get("deadline") is not None:
+                deadline = normalize_deadline(data.get("deadline"))
+                if not deadline:
+                    raise RepositoryError("请选择截止日期")
+                fields["deadline"] = deadline
             if "done" in data:
                 fields["done"] = 1 if data["done"] else 0
             if fields:
@@ -609,14 +649,15 @@ class LocalRepository:
                     continue
                 cur = conn.execute("""INSERT INTO docs
                     (name,cat,who,sid,note,file,path,code,time,status,scope,reason,
-                     form_type,extra)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     form_type,extra,arch)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (_clean(d.get("name")), _clean(d.get("cat")), _clean(d.get("who")),
                      _clean(d.get("sid")), _clean(d.get("note")), _clean(d.get("file")),
                      _clean(d.get("path")), _clean(d.get("code")),
                      _clean(d.get("time")), _clean(d.get("status")) or "待审核",
                      _clean(d.get("scope")) or "全员", _clean(d.get("reason")),
-                     _clean(d.get("form_type")) or "general", _clean(d.get("extra"))))
+                     _clean(d.get("form_type")) or "general", _clean(d.get("extra")),
+                     _clean(d.get("arch"))))
                 id_map[str(d.get("id"))] = cur.lastrowid
             for a in attachments:
                 if not isinstance(a, dict):
