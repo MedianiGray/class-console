@@ -7,6 +7,7 @@ from tkinter import ttk, filedialog
 
 from theme import FONT, C
 from database import form_template
+import archive
 
 
 class SubmitView(ttk.Frame):
@@ -31,87 +32,154 @@ class SubmitView(ttk.Frame):
         self._build()
 
     def _build(self):
-        card = tk.Frame(self, bg=C["card"])
-        card.pack(padx=32, pady=24, fill="both", expand=True)
-        card.columnconfigure(1, weight=1)
+        # 操作区固定在窗口底部，滚动只作用于表单字段
+        footer = tk.Frame(self, bg=C["bg"])
+        footer.pack(side="bottom", fill="x")
+        tk.Frame(footer, bg=C["line"], height=1).pack(fill="x")
+        bar = tk.Frame(footer, bg=C["bg"])
+        bar.pack(fill="x", padx=24, pady=10)
+        self.err_label = ttk.Label(bar, text="", foreground=C["red"], font=(FONT, 9))
+        self.err_label.pack(side="left")
+        self.btn_submit = ttk.Button(bar, text="提交材料", style="Accent.TButton",
+                                     command=self.submit)
+        self.btn_submit.pack(side="right")
+        ttk.Button(bar, text="清空", command=self.clear).pack(side="right", padx=8)
 
-        ttk.Label(card, text="带 * 为必填项，提交后进入待审核列表并生成操作记录",
-                  style="Sub.TLabel").grid(row=0, column=0, columnspan=2, sticky="w",
-                                           padx=24, pady=(12, 16))
+        # 表单外套滚动容器；卡片限宽居中，字段不被拉成整行宽
+        holder = tk.Frame(self, bg=C["bg"])
+        holder.pack(fill="both", expand=True)
+        canvas = tk.Canvas(holder, bg=C["bg"], highlightthickness=0, bd=0,
+                           yscrollincrement=40)
+        vsb = ttk.Scrollbar(holder, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=C["bg"])
+        win = canvas.create_window((0, 0), window=inner, anchor="n")
 
-        self.var_type = tk.StringVar(value="general")
+        def _fit(event):
+            width = min(840, max(540, event.width - 64))
+            canvas.itemconfigure(win, width=width)
+            canvas.coords(win, max(24, (event.width - width) // 2), 12)
+        canvas.bind("<Configure>", _fit)
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        def _wheel(e):
+            canvas.yview_scroll(int(-e.delta / 120) * 3, "units")
+
+        def _bind_wheel(_e=None):
+            canvas.bind_all("<MouseWheel>", _wheel)
+
+        def _unbind_wheel(_e=None):
+            canvas.unbind_all("<MouseWheel>")
+
+        for w in (canvas, inner):
+            w.bind("<Enter>", _bind_wheel)
+            w.bind("<Leave>", _unbind_wheel)
+
+        card = tk.Frame(inner, bg=C["card"], highlightthickness=1,
+                        highlightbackground=C["line"])
+        card.pack(fill="x", pady=(4, 20))
+
+        head = tk.Frame(card, bg=C["card"])
+        head.pack(fill="x", padx=26, pady=(12, 0))
+        tk.Label(head, text="填写材料信息", bg=C["card"], fg=C["text"],
+                 font=(FONT, 11, "bold")).pack(side="left")
+        tk.Label(head, text="带 * 为必填，提交后进入待审核队列", bg=C["card"],
+                 fg=C["sub"], font=(FONT, 9)).pack(side="right", pady=(3, 0))
+        tk.Frame(card, bg=C["line"], height=1).pack(fill="x", padx=26, pady=(12, 0))
+
+        body = tk.Frame(card, bg=C["card"])
+        body.pack(fill="x", padx=26, pady=(12, 16))
+        body.columnconfigure(0, weight=1, uniform="f")
+        body.columnconfigure(1, weight=1, uniform="f")
+
+        self.var_type = tk.StringVar(value=self.TYPE_OPTIONS[0][1])
         self.var_title = tk.StringVar()
         self.var_name = tk.StringVar()
         self.var_sid = tk.StringVar()
         self.var_cat = tk.StringVar()
         self.var_code = tk.StringVar()
-        self.var_note = tk.Text(card, height=4, font=(FONT, 11))
+        self.var_note = None
 
-        ttk.Label(card, text="材料类型").grid(row=1, column=0, sticky="w",
-                                              padx=(24, 12), pady=10)
-        type_cb = ttk.Combobox(card, textvariable=self.var_type,
+        cell = self._cell(body, 0, 0, "材料类型 *")
+        type_cb = ttk.Combobox(cell, textvariable=self.var_type,
                                values=[label for _, label in self.TYPE_OPTIONS],
                                state="readonly")
-        type_cb.grid(row=1, column=1, sticky="ew", pady=10)
+        type_cb.pack(fill="x")
         type_cb.bind("<<ComboboxSelected>>", lambda e: self._on_type())
         self._type_label = {label: key for key, label in self.TYPE_OPTIONS}
 
-        self._row_entry(card, 2, "材料名称 *", self.var_title)
-        self._row_entry(card, 3, "提交人 / 记录人", self.var_name)
-        self._row_entry(card, 4, "学号", self.var_sid)
-
-        ttk.Label(card, text="材料类别 *").grid(row=5, column=0, sticky="w",
-                                                padx=(24, 12), pady=10)
-        cat_cb = ttk.Combobox(card, textvariable=self.var_cat, values=self.CATS,
+        cell = self._cell(body, 0, 1, "材料类别 *")
+        cat_cb = ttk.Combobox(cell, textvariable=self.var_cat, values=self.CATS,
                               state="readonly")
-        cat_cb.grid(row=5, column=1, sticky="ew", pady=10)
+        cat_cb.pack(fill="x")
         cat_cb.bind("<<ComboboxSelected>>", lambda e: self._suggest_code())
         cat_cb.bind("<Return>", lambda e: self.submit())
         cat_cb.bind("<Escape>", lambda e: self.clear())
 
-        self._row_entry(card, 6, "材料编号（留空自动）", self.var_code)
+        cell = self._cell(body, 1, 0, "材料名称 *", span=2)
+        self._entry(cell, self.var_title)
+
+        cell = self._cell(body, 2, 0, "提交人 / 记录人")
+        self._entry(cell, self.var_name)
+        cell = self._cell(body, 2, 1, "学号")
+        self._entry(cell, self.var_sid)
+
+        cell = self._cell(body, 3, 0, "材料编号（留空自动）")
+        self._entry(cell, self.var_code)
 
         # 模板专属字段（随类型重建）
-        self.extra_box = ttk.Frame(card)
-        self.extra_box.grid(row=7, column=0, columnspan=2, sticky="ew")
-        self.extra_box.columnconfigure(1, weight=1)
+        self.extra_box = tk.Frame(body, bg=C["card"])
+        self.extra_box.grid(row=4, column=0, columnspan=2, sticky="ew")
+        self.extra_box.columnconfigure(0, weight=1)
+        self._extra_row = 4
 
-        ttk.Label(card, text="材料说明").grid(row=8, column=0, sticky="nw",
-                                              padx=(24, 12), pady=10)
-        self.var_note.grid(row=8, column=1, sticky="ew", pady=10)
+        cell = self._cell(body, 5, 0, "材料说明", span=2)
+        self.var_note = tk.Text(cell, height=2, font=(FONT, 10), relief="flat",
+                                bd=0, bg=C["surface_alt"], fg=C["text"],
+                                insertbackground=C["text"], highlightthickness=1,
+                                highlightbackground=C["line"],
+                                highlightcolor=C["primary"], padx=8, pady=6)
+        self.var_note.pack(fill="x")
 
-        ttk.Label(card, text="附件").grid(row=9, column=0, sticky="nw",
-                                          padx=(24, 12), pady=10)
-        att = ttk.Frame(card)
-        att.grid(row=9, column=1, sticky="ew", pady=10)
-        self.att_list = tk.Listbox(att, height=3, font=(FONT, 10),
-                                   selectmode="extended")
-        self.att_list.pack(side="left", fill="both", expand=True)
-        att_btns = ttk.Frame(att)
-        att_btns.pack(side="left", padx=(8, 0))
-        ttk.Button(att_btns, text="添加附件", command=self.pick_files).pack(anchor="w")
-        ttk.Button(att_btns, text="移除所选", command=self.remove_selected).pack(anchor="w", pady=6)
-        ttk.Button(att_btns, text="清空", command=self.clear_files).pack(anchor="w")
-
-        self.err_label = ttk.Label(card, text="", foreground=C["red"], font=(FONT, 10))
-        self.err_label.grid(row=10, column=0, columnspan=2, sticky="w", padx=24, pady=(6, 0))
-
-        actions = ttk.Frame(card)
-        actions.grid(row=11, column=0, columnspan=2, sticky="e", padx=24, pady=(18, 22))
-        ttk.Button(actions, text="清空", command=self.clear).pack(side="right", padx=8)
-        self.btn_submit = ttk.Button(actions, text="提交材料", style="Accent.TButton",
-                                     command=self.submit)
-        self.btn_submit.pack(side="right")
+        cell = self._cell(body, 6, 0, "附件", span=2, pady=(0, 0))
+        att = tk.Frame(cell, bg=C["card"])
+        att.pack(fill="x")
+        self.att_list = tk.Listbox(att, height=2, font=(FONT, 9), selectmode="extended",
+                                   relief="flat", bd=0, bg=C["surface_alt"],
+                                   fg=C["text"], highlightthickness=1,
+                                   highlightbackground=C["line"],
+                                   selectbackground=C["select"])
+        self.att_list.pack(fill="x")
+        att_btns = tk.Frame(att, bg=C["card"])
+        att_btns.pack(fill="x", pady=(6, 0))
+        ttk.Button(att_btns, text="添加附件", command=self.pick_files).pack(side="left")
+        ttk.Button(att_btns, text="移除所选", command=self.remove_selected).pack(side="left", padx=6)
+        ttk.Button(att_btns, text="清空", command=self.clear_files).pack(side="left")
 
         self._render_extra("general")
 
-    def _row_entry(self, parent, r, label, var):
-        ttk.Label(parent, text=label).grid(row=r, column=0, sticky="w",
-                                           padx=(24, 12), pady=10)
+    def _cell(self, parent, row, col, label, span=1, pady=(0, 10)):
+        cell = tk.Frame(parent, bg=C["card"])
+        padx = (0, 10) if (col == 0 and span == 1) else (0, 0)
+        cell.grid(row=row, column=col, columnspan=span, sticky="ew",
+                  padx=padx, pady=pady)
+        tk.Label(cell, text=label, bg=C["card"], fg=C["sub"], font=(FONT, 9),
+                 anchor="w").pack(fill="x", pady=(0, 3))
+        return cell
+
+    def _entry(self, parent, var):
         entry = ttk.Entry(parent, textvariable=var)
-        entry.grid(row=r, column=1, sticky="ew", pady=10)
+        entry.pack(fill="x")
         entry.bind("<Return>", lambda e: self.submit())
         entry.bind("<Escape>", lambda e: self.clear())
+        return entry
+
+    def _row_entry(self, parent, r, label, var):
+        cell = self._cell(parent, r, 0, label, span=2)
+        return self._entry(cell, var)
 
     # ---------- 模板专属字段 ----------
     def _current_type(self):
@@ -125,22 +193,28 @@ class SubmitView(ttk.Frame):
         for i, f in enumerate(tpl["fields"]):
             key, label, kind = f["key"], f["label"], f["type"]
             req = " *" if f.get("required") else ""
-            ttk.Label(self.extra_box, text=label + req).grid(
-                row=i, column=0, sticky="w", padx=(24, 12), pady=8)
+            cell = tk.Frame(self.extra_box, bg=C["card"])
+            cell.grid(row=i, column=0, sticky="ew", pady=(0, 10))
+            tk.Label(cell, text=label + req, bg=C["card"], fg=C["sub"],
+                     font=(FONT, 9), anchor="w").pack(fill="x", pady=(0, 4))
             if kind == "textarea":
-                w = tk.Text(self.extra_box, height=3, font=(FONT, 11))
-                w.grid(row=i, column=1, sticky="ew", pady=8)
+                w = tk.Text(cell, height=3, font=(FONT, 10), relief="flat", bd=0,
+                            bg=C["surface_alt"], fg=C["text"],
+                            insertbackground=C["text"], highlightthickness=1,
+                            highlightbackground=C["line"],
+                            highlightcolor=C["primary"], padx=8, pady=6)
+                w.pack(fill="x")
                 self.extra_vars[key] = {"kind": "textarea", "widget": w}
             elif kind == "select":
                 var = tk.StringVar(value=(f["options"][0] if f.get("options") else ""))
-                cb = ttk.Combobox(self.extra_box, textvariable=var,
+                cb = ttk.Combobox(cell, textvariable=var,
                                   values=f.get("options", []), state="readonly")
-                cb.grid(row=i, column=1, sticky="ew", pady=8)
+                cb.pack(fill="x")
                 self.extra_vars[key] = {"kind": "select", "var": var}
             else:
                 var = tk.StringVar()
-                entry = ttk.Entry(self.extra_box, textvariable=var)
-                entry.grid(row=i, column=1, sticky="ew", pady=8)
+                entry = ttk.Entry(cell, textvariable=var)
+                entry.pack(fill="x")
                 self.extra_vars[key] = {"kind": "entry", "var": var}
 
     def _extra_value(self, key):
@@ -225,7 +299,7 @@ class SubmitView(ttk.Frame):
                       self.attachments))
         if filled and not self.window.confirm("清空确认", "当前已填写的内容将被清空，确定继续吗？"):
             return
-        self.var_type.set("general")
+        self.var_type.set(self.TYPE_OPTIONS[0][1])
         self.var_title.set("")
         self.var_name.set("")
         self.var_sid.set("")
@@ -259,12 +333,20 @@ class SubmitView(ttk.Frame):
         self._submitting = True
         self.btn_submit.config(state="disabled")
         try:
-            self.repo.add_doc({
+            doc_id = self.repo.add_doc({
                 "name": title, "cat": cat, "who": name, "sid": sid,
                 "note": note, "file": first.get("name", ""), "path": first.get("path", ""),
                 "code": self.var_code.get().strip(), "scope": "全员",
                 "form_type": ftype, "extra": extra, "attachments": self.attachments,
             })
+            if doc_id:
+                row = {"id": doc_id, "name": title, "cat": cat, "who": name,
+                       "sid": sid, "path": first.get("path", ""),
+                       "file": first.get("name", ""), "status": "待审核",
+                       "attachments": self.attachments}
+                res = archive.place(row)
+                if res.get("path"):
+                    self.repo.set_arch(doc_id, res["path"])
         except Exception as e:
             self._submitting = False
             self.btn_submit.config(state="normal")
@@ -278,7 +360,7 @@ class SubmitView(ttk.Frame):
         self._submitting = False
         self.btn_submit.config(state="normal")
 
-        self.var_type.set("general")
+        self.var_type.set(self.TYPE_OPTIONS[0][1])
         self.var_title.set("")
         self.var_name.set("")
         self.var_sid.set("")
