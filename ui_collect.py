@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """文件夹收集视图：扫描本机文件夹，比对台账后将未登记材料批量入账并自动编号。
 
-边界：只登记文件名与本机路径，不移动、不复制原文件；不做后台持续监听，
-每次手动点「扫描新文件」比对一次台账。
+入账时按「类别 / 学号-姓名 / 编号_材料名」复制一份到归档根目录；
+原文件保持不动。不做后台持续监听，每次手动扫描比对一次台账。
 """
 
 import os
@@ -10,6 +10,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+import archive
 from theme import FONT, C
 
 
@@ -30,7 +31,8 @@ class CollectView(ttk.Frame):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=18, pady=(16, 10))
 
-        ttk.Button(top, text="选择文件夹", command=self.pick_folder).pack(side="left")
+        ttk.Button(top, text="选择文件夹", style="Ghost.TButton",
+                   command=self.pick_folder).pack(side="left")
         ttk.Label(top, text="默认类别").pack(side="left", padx=(16, 0))
         self.var_cat = tk.StringVar(value=self.CATS[0])
         ttk.Combobox(top, textvariable=self.var_cat, values=self.CATS,
@@ -49,7 +51,7 @@ class CollectView(ttk.Frame):
         self.tree = ttk.Treeview(wrap, columns=cols, show="headings",
                                  selectmode="browse")
         for c in cols:
-            self.tree.heading(c, text=heads[c])
+            self.tree.heading(c, text=heads[c], anchor="w")
             self.tree.column(c, width=widths[c], anchor="w", stretch=True)
         self.tree.tag_configure("zebra", background=C["zebra"])
 
@@ -169,6 +171,10 @@ class CollectView(ttk.Frame):
             try:
                 self.repo.add_log("收集入账", "%d 份文件" % ok,
                                   self.window.operator_name, self.window.role_label())
+            except Exception:
+                pass
+            try:
+                archive.write_index(self.repo.list_docs())
             except Exception:
                 pass
         self.window.refresh_all()
