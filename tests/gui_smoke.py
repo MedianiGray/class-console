@@ -3,14 +3,16 @@
 
 运行：
     py -3.14 tests/gui_smoke.py
-覆盖：视图切换、角色切换、提交入库、留痕角色跟随、校验拦截、归档驳回、禁用联动、脏记录渲染。
+覆盖：视图切换、角色切换、提交入库、留痕角色跟随、校验拦截、归档驳回、禁用联动、脏记录渲染、申请人学号过滤、日志备份附件恢复。
 """
 import sys
+import json
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import tkinter as tk  # noqa: E402
+import ui_logs  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
 
@@ -87,12 +89,44 @@ def main():
 
     # 看板岗位显隐：申请人隐藏名单/任务 chip 与近期动态，审核者恢复
     dash = app.views["dashboard"]
+    app.applicant_sid = "250203"
     app.role_var.set("applicant"); app._toggle_role(); root.update()
     app.switch("dashboard"); root.update_idletasks()
     assert not dash.roster_hint.winfo_ismapped(), "申请人不应显示名单提示"
     assert not dash.task_hint.winfo_ismapped(), "申请人不应显示任务提示"
     assert not dash.log_card.winfo_ismapped(), "申请人不应显示近期动态"
     assert "关注" in dash.bottom_title.cget("text")
+
+    # 申请人只看本人：看板与台账都按学号过滤
+    own = [d for d in repo.list_docs() if d.get("sid") == "250203"]
+    own_focus = [d for d in own if d.get("status") in ("待审核", "已驳回")]
+    assert dash.hero_num.cget("text") == str(len(own_focus))
+    assert len(dash.doc_tree.get_children()) == min(len(own_focus), 5)
+    dv.refresh(); root.update()
+    assert len(dv.tree.get_children()) == len(own), "申请人台账应只显示本人材料"
+
+    # 未填学号：不展示任何人的材料
+    app.applicant_sid = ""
+    dash.refresh(); root.update()
+    assert dash.hero_num.cget("text") == "0"
+    assert len(dash.doc_tree.get_children()) == 0
+    assert "学号" in dash.hero_hint.cget("text")
+    app.applicant_sid = "250203"
+    print("申请人学号过滤 OK")
+
+    # 操作日志导入备份：附件必须随记录恢复，不能被清空
+    repo.add_doc({"name": "附件恢复测试", "cat": "学分材料", "who": "赵六",
+                  "sid": "250204",
+                  "attachments": [{"name": "a.pdf", "path": "D:/a.pdf", "kind": "材料"}]})
+    backup_path = Path(tempfile.mkdtemp()) / "logs-backup.json"
+    with open(backup_path, "w", encoding="utf-8") as f:
+        json.dump(repo.backup(), f, ensure_ascii=False)
+    ui_logs.filedialog.askopenfilename = lambda **kw: str(backup_path)
+    app.views["logs"].import_backup()
+    restored = [d for d in repo.list_docs() if d["name"] == "附件恢复测试"][0]
+    assert len(restored["attachments"]) == 1, restored
+    print("日志备份附件恢复 OK")
+
     app.role_var.set("reviewer"); app._toggle_role(); root.update()
     app.switch("dashboard"); root.update_idletasks()
     assert dash.roster_hint.winfo_ismapped(), "审核者应显示名单提示"
