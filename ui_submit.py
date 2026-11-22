@@ -7,7 +7,6 @@ from tkinter import ttk, filedialog
 
 from theme import FONT, C
 from database import form_template
-import archive
 
 
 class SubmitView(ttk.Frame):
@@ -333,20 +332,14 @@ class SubmitView(ttk.Frame):
         self._submitting = True
         self.btn_submit.config(state="disabled")
         try:
-            doc_id = self.repo.add_doc({
+            self.repo.add_doc({
                 "name": title, "cat": cat, "who": name, "sid": sid,
                 "note": note, "file": first.get("name", ""), "path": first.get("path", ""),
                 "code": self.var_code.get().strip(), "scope": "全员",
                 "form_type": ftype, "extra": extra, "attachments": self.attachments,
             })
-            if doc_id:
-                row = {"id": doc_id, "name": title, "cat": cat, "who": name,
-                       "sid": sid, "path": first.get("path", ""),
-                       "file": first.get("name", ""), "status": "待审核",
-                       "attachments": self.attachments}
-                res = archive.place(row)
-                if res.get("path"):
-                    self.repo.set_arch(doc_id, res["path"])
+            # 提交只登记，不提前复制；文件统一由「归档」落盘，
+            # 避免待审/驳回材料进入归档目录，也避免同一份材料被复制两次。
         except Exception as e:
             self._submitting = False
             self.btn_submit.config(state="normal")
