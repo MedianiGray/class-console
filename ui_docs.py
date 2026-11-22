@@ -141,6 +141,10 @@ class DocsView(ttk.Frame):
 
     def _filtered_rows(self):
         rows = self.repo.list_docs(self.q.get().strip(), self.cat.get())
+        # 申请人视角只看本人材料；学号在设置里配置，未配置时为空
+        if self.window.role == "applicant":
+            sid = str(getattr(self.window, "applicant_sid", "") or "").strip()
+            rows = [x for x in rows if sid and x.get("sid") == sid]
         st = self.status.get()
         if st and st != "全部":
             rows = [x for x in rows if x.get("status") == st]
@@ -172,16 +176,28 @@ class DocsView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
-        # 按权限点控制审核按钮显隐：主操作左侧，低频收进「更多」，破坏性操作靠右
+        # 按权限点控制审核/归位/导出：无权限的入口不出现，方法内也再拦一次
+        can_archive = self.window.can("docs:archive")
+        can_export = self.window.can("docs:export")
         for b in (self.btn_view, self.btn_place, self.btn_csv, self.more,
                   self.btn_archive, self.btn_reject):
             b.pack_forget()
         self.btn_view.pack(side="left")
-        if self.window.can("docs:archive"):
+        if can_archive:
             self.btn_archive.pack(side="left", padx=8)
-        self.more.pack(side="left", padx=8)
+            self.btn_place.pack(side="left", padx=8)
+        if can_export:
+            self.btn_csv.pack(side="left", padx=8)
+        if can_archive or can_export:
+            self.more.pack(side="left", padx=8)
         if self.window.can("docs:reject"):
             self.btn_reject.pack(side="right")
+        self.more_menu.entryconfig("归位文件到归档目录",
+                                   state="normal" if can_archive else "disabled")
+        self.more_menu.entryconfig("导出当前视图 CSV",
+                                   state="normal" if can_export else "disabled")
+        self.more_menu.entryconfig("打开归档目录",
+                                   state="normal" if can_archive else "disabled")
         self._update_actions()
 
     def _post_more(self, event=None):
@@ -331,6 +347,9 @@ class DocsView(ttk.Frame):
         return res.get("note") or "已处理"
 
     def open_archive_dir(self):
+        if not self.window.can("docs:archive"):
+            self.window.toast("当前视角无权打开归档目录")
+            return
         base = archive.root()
         try:
             base.mkdir(parents=True, exist_ok=True)
@@ -340,12 +359,21 @@ class DocsView(ttk.Frame):
             self.window.toast("无法打开 %s" % base)
 
     def place_files(self):
-        """把当前筛选结果里的材料统一归位到归档根目录。"""
-        rows = self._filtered_rows()
-        if not rows:
-            self.window.toast("当前没有可归位的材料")
+        """把当前筛选结果中的已归档材料统一归位到归档根目录。"""
+        if not self.window.can("docs:archive"):
+            self.window.toast("当前视角无权归位文件")
             return
-        target = [d for d in rows if d.get("status") == "已归档"] or rows
+        rows = self._filtered_rows()
+        target = [d for d in rows if d.get("status") == "已归档"]
+        if not target:
+            self.window.toast("当前筛选没有已归档材料可归位")
+            return
+        if not self.window.confirm(
+                "归位确认",
+                "将把当前筛选中的 %d 条已归档材料复制到归档目录。\n"
+                "同名同大小跳过，同名不同内容会自动加 _v2，不会覆盖。\n"
+                "确定继续吗？" % len(target)):
+            return
         copied = 0
         for d in target:
             res = archive.place(d)
@@ -389,6 +417,9 @@ class DocsView(ttk.Frame):
             self.window.toast("已驳回，并写入操作日志")
 
     def export_csv(self):
+        if not self.window.can("docs:export"):
+            self.window.toast("当前视角无权导出材料")
+            return
         rows = self._filtered_rows()
         if not rows:
             self.window.toast("当前没有可导出的材料")
