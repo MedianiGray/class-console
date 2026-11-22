@@ -287,6 +287,32 @@ def main():
     assert open(res["path"], "r", encoding="utf-8").read() == before
     print("24. 归档冲突不覆盖 OK")
 
+    # 25. 模板附加字段：只增删附加，内置保留，随备份往返
+    r.restore([], [], templates=[])
+    base_meeting = len(r.form_template("meeting")["fields"])
+    r.add_template_field("custom", "审核人", "text", True)
+    assert len(r.template_custom("custom")) == 1
+    assert len(r.form_template("custom")["fields"]) >= 1
+    assert len(r.form_template("meeting")["fields"]) == base_meeting
+    try:
+        r.add_template_field("custom", "错误类型", "number")
+        raise SystemExit("应拦截未知字段类型")
+    except RepositoryError:
+        pass
+    try:
+        r.add_template_field("custom", "空下拉", "select")
+        raise SystemExit("应拦截空下拉")
+    except RepositoryError:
+        pass
+    bak = r.backup()
+    assert any(x["label"] == "审核人" for x in bak["templates"])
+    r.restore([], [], templates=bak["templates"])
+    rows = r.template_custom("custom")
+    assert len(rows) == 1 and rows[0]["label"] == "审核人"
+    r.remove_template_field(rows[0]["id"])
+    assert r.template_custom("custom") == []
+    print("25. 模板附加字段/备份往返 OK")
+
     print("SELFTEST OK")
 
 

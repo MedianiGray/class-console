@@ -12,10 +12,16 @@ from tkinter import ttk, filedialog, messagebox
 import archive
 import theme
 from theme import FONT, C
-from database import app_data_dir
+from database import app_data_dir, FORM_TEMPLATES
 from version import VERSION, VERSION_LABEL
 
 REPO_URL = "https://github.com/MedianiGray/class-console"
+TPL_KINDS = [("text", "单行文本"), ("textarea", "多行文本"),
+             ("date", "日期"), ("select", "下拉")]
+TPL_KIND_MAP = dict(TPL_KINDS)
+TPL_KIND_REV = {v: k for k, v in TPL_KINDS}
+TPL_TYPES = ([("custom", "自定义材料"), ("general", "个人材料")] +
+             [(k, v["label"]) for k, v in FORM_TEMPLATES.items() if k != "custom"])
 
 
 def open_settings(window):
@@ -214,6 +220,76 @@ class SettingsDialog:
                   "copy" if archive.auto_copy() else "mkdir",
                   self._pick_archive_copy).pack(side="left")
 
+        # 材料模板：内置字段保留，只增删附加字段；弱实现但常驻
+        card5b = self._section(wrap, "材料模板")
+        can_tpl = self.window.can("template:config")
+        toprow = tk.Frame(card5b, bg=C["card"])
+        toprow.pack(fill="x", padx=14, pady=(12, 8))
+        tk.Label(toprow, text="模板", bg=C["card"], fg=C["text"],
+                 font=(FONT, 10)).pack(side="left", padx=(0, 10))
+        self.tpl_type_var = tk.StringVar(value=TPL_TYPES[0][1])
+        tpl_cb = ttk.Combobox(toprow, textvariable=self.tpl_type_var,
+                              values=[label for _k, label in TPL_TYPES],
+                              state="readonly", width=14)
+        tpl_cb.pack(side="left")
+        tpl_cb.bind("<<ComboboxSelected>>", lambda e: self._reload_template_fields())
+        tk.Label(toprow, text="内置字段固定保留，仅追加附加字段", bg=C["card"],
+                 fg=C["sub"], font=(FONT, 8)).pack(side="left", padx=(8, 0))
+
+        self.tpl_tree = ttk.Treeview(card5b, columns=("label", "kind", "req"),
+                                     show="headings", height=4, selectmode="browse")
+        for col, title, width in (("label", "字段", 220), ("kind", "类型", 90),
+                                  ("req", "必填", 60)):
+            self.tpl_tree.heading(col, text=title)
+            self.tpl_tree.column(col, width=width, anchor="w" if col == "label" else "center")
+        self.tpl_tree.pack(fill="x", padx=14, pady=(0, 8))
+
+        addrow = tk.Frame(card5b, bg=C["card"])
+        addrow.pack(fill="x", padx=14, pady=(0, 4))
+        tk.Label(addrow, text="字段", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 9)).pack(side="left")
+        self.tpl_label_var = tk.StringVar()
+        self.tpl_kind_var = tk.StringVar(value=TPL_KINDS[0][1])
+        self.tpl_req_var = tk.BooleanVar(value=False)
+        ttk.Entry(addrow, textvariable=self.tpl_label_var, width=18).pack(
+            side="left", padx=(6, 0))
+        tk.Label(addrow, text="类型", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 9)).pack(side="left", padx=(8, 0))
+        ttk.Combobox(addrow, textvariable=self.tpl_kind_var,
+                     values=[label for _k, label in TPL_KINDS],
+                     state="readonly", width=9).pack(side="left", padx=(6, 0))
+        tk.Checkbutton(addrow, text="必填", variable=self.tpl_req_var,
+                       bg=C["card"], fg=C["text"], selectcolor=C["card"],
+                       activebackground=C["card"], activeforeground=C["text"],
+                       font=(FONT, 9)).pack(side="left", padx=(4, 0))
+        self.tpl_add_btn = ttk.Button(addrow, text="添加字段",
+                                      command=self._add_template_field)
+        self.tpl_add_btn.pack(side="right")
+
+        optrow = tk.Frame(card5b, bg=C["card"])
+        optrow.pack(fill="x", padx=14, pady=(0, 6))
+        tk.Label(optrow, text="下拉选项", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 9)).pack(side="left")
+        self.tpl_opts_var = tk.StringVar()
+        ttk.Entry(optrow, textvariable=self.tpl_opts_var).pack(side="left", fill="x",
+                                                              expand=True, padx=(8, 8))
+        self.tpl_del_btn = ttk.Button(optrow, text="删除选中",
+                                      command=self._remove_template_field)
+        self.tpl_del_btn.pack(side="right")
+        tk.Label(card5b, text="下拉选项用逗号分隔；仅「下拉」类型使用。", bg=C["card"],
+                 fg=C["sub"], font=(FONT, 8), anchor="w").pack(fill="x", padx=14,
+                                                               pady=(0, 4))
+
+        tpl_note = ("当前视角只读，需经办人 / 审核者 / 汇总者才能增删。"
+                    if not can_tpl else
+                    "附加字段会出现在提交表单、台账详情与 CSV 导出；删除只删附加字段。")
+        tk.Label(card5b, text=tpl_note, bg=C["card"], fg=C["sub"], font=(FONT, 8),
+                 anchor="w").pack(fill="x", padx=14, pady=(0, 12))
+        if not can_tpl:
+            self.tpl_add_btn.config(state="disabled")
+            self.tpl_del_btn.config(state="disabled")
+        self._reload_template_fields()
+
         # 数据
         card3 = self._section(wrap, "数据")
         path = str(app_data_dir())
@@ -253,6 +329,75 @@ class SettingsDialog:
                         except tk.TclError:
                             pass
                         return
+
+    # ---------- 模板字段 ----------
+    def _current_template_key(self):
+        label = self.tpl_type_var.get()
+        return next((k for k, lbl in TPL_TYPES if lbl == label), "custom")
+
+    def _reload_template_fields(self):
+        if not hasattr(self, "tpl_tree"):
+            return
+        for iid in self.tpl_tree.get_children():
+            self.tpl_tree.delete(iid)
+        self._tpl_rows = []
+        key = self._current_template_key()
+        try:
+            rows = self.window.repo.template_custom(key)
+        except Exception:
+            rows = []
+        for r in rows:
+            self.tpl_tree.insert("", "end", values=(
+                r.get("label") or "", TPL_KIND_MAP.get(r.get("type"), r.get("type") or ""),
+                "是" if r.get("required") else "否"))
+            self._tpl_rows.append(r)
+
+    def _add_template_field(self):
+        if not self.window.can("template:config"):
+            return
+        label = (self.tpl_label_var.get() or "").strip()
+        kind = TPL_KIND_REV.get(self.tpl_kind_var.get(), "text")
+        opts = [x.strip() for x in (self.tpl_opts_var.get() or "").split(",") if x.strip()]
+        try:
+            self.window.repo.add_template_field(
+                self._current_template_key(), label, kind,
+                bool(self.tpl_req_var.get()), opts)
+        except Exception as e:
+            messagebox.showwarning("模板字段", str(e), parent=self.top)
+            return
+        self.tpl_label_var.set("")
+        self.tpl_opts_var.set("")
+        self.tpl_req_var.set(False)
+        self._reload_template_fields()
+        submit = self.window.views.get("submit")
+        if submit is not None and hasattr(submit, "reload_template"):
+            submit.reload_template()
+        self.window.refresh_all()
+
+    def _remove_template_field(self):
+        if not self.window.can("template:config"):
+            return
+        sel = self.tpl_tree.selection()
+        if not sel:
+            return
+        idx = self.tpl_tree.index(sel[0])
+        if idx >= len(self._tpl_rows):
+            return
+        row = self._tpl_rows[idx]
+        if not messagebox.askyesno("删除字段",
+                                   "确定删除附加字段「%s」？" % (row.get("label") or ""),
+                                   parent=self.top):
+            return
+        try:
+            self.window.repo.remove_template_field(row["id"])
+        except Exception as e:
+            messagebox.showwarning("模板字段", str(e), parent=self.top)
+            return
+        self._reload_template_fields()
+        submit = self.window.views.get("submit")
+        if submit is not None and hasattr(submit, "reload_template"):
+            submit.reload_template()
+        self.window.refresh_all()
 
     # ---------- 回调 ----------
     def _redraw(self):
@@ -400,7 +545,7 @@ class SettingsDialog:
                 data = json.load(f)
             self.window.repo.restore(data.get("docs", []), data.get("logs", []),
                                      data.get("roster"), data.get("tasks"),
-                                     data.get("attachments"))
+                                     data.get("attachments"), data.get("templates"))
         except Exception as e:
             messagebox.showerror("恢复失败", str(e), parent=self.top)
             return

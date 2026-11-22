@@ -6,7 +6,6 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 
 from theme import FONT, C
-from database import form_template
 
 
 class SubmitView(ttk.Frame):
@@ -188,7 +187,7 @@ class SubmitView(ttk.Frame):
         for w in self.extra_box.winfo_children():
             w.destroy()
         self.extra_vars = {}
-        tpl = form_template(ftype)
+        tpl = self.repo.form_template(ftype)
         for i, f in enumerate(tpl["fields"]):
             key, label, kind = f["key"], f["label"], f["type"]
             req = " *" if f.get("required") else ""
@@ -287,7 +286,7 @@ class SubmitView(ttk.Frame):
                 errors.append("学号长度应为 4-12 位")
         elif sid and (not sid.isdigit() or not (4 <= len(sid) <= 12)):
             errors.append("学号格式不正确")
-        for f in form_template(ftype)["fields"]:
+        for f in self.repo.form_template(ftype)["fields"]:
             if f.get("required") and not self._extra_value(f["key"]):
                 errors.append(f["label"])
         return title, name, sid, cat, errors
@@ -371,3 +370,7 @@ class SubmitView(ttk.Frame):
 
     def refresh(self):
         self.err_label.config(text="")
+
+    def reload_template(self):
+        """模板字段在设置里改动后，重建当前类型的附加字段。"""
+        self._render_extra(self._current_type())
