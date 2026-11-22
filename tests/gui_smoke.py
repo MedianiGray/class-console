@@ -3,14 +3,16 @@
 
 运行：
     py -3.14 tests/gui_smoke.py
-覆盖：视图切换、角色切换、提交入库、留痕角色跟随、校验拦截、归档驳回、禁用联动、脏记录渲染。
+覆盖：视图切换、角色切换、提交入库、留痕角色跟随、校验拦截、归档驳回、禁用联动、脏记录渲染、申请人学号过滤、日志备份附件恢复。
 """
 import sys
+import json
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import tkinter as tk  # noqa: E402
+import ui_logs  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
 
@@ -54,20 +56,20 @@ def main():
 
     sv = app.views["submit"]
 
-    # 同学视角提交：留痕角色跟随当前视角
-    app.role_var.set("同学"); app._toggle_role(); root.update()
-    sv.var_title.set("同学视角提交"); sv.var_name.set("王五"); sv.var_sid.set("250203")
+    # 申请人视角提交：留痕角色跟随当前视角
+    app.role_var.set("applicant"); app._toggle_role(); root.update()
+    sv.var_title.set("申请人视角提交"); sv.var_name.set("王五"); sv.var_sid.set("250203")
     sv.var_cat.set("学分材料"); sv.submit(); root.update()
     last = repo.list_logs()[0]
-    assert last["role"] == "同学" and last["who"] == app.operator_name
-    print("同学视角留痕 OK")
+    assert last["role"] == "申请人" and last["who"] == app.operator_name
+    print("申请人视角留痕 OK")
 
-    # 管理员视角提交：留痕角色切换为管理员
-    app.role_var.set("管理员"); app._toggle_role(); root.update()
+    # 审核者视角提交：留痕角色切换为审核者
+    app.role_var.set("reviewer"); app._toggle_role(); root.update()
     sv.var_title.set("复测材料"); sv.var_name.set("李四"); sv.var_sid.set("250202")
     sv.var_cat.set("奖助材料"); sv.submit(); root.update()
     last = repo.list_logs()[0]
-    assert last["role"] == "管理员" and last["who"] == app.operator_name
+    assert last["role"] == "审核者" and last["who"] == app.operator_name
     print("提交/角色跟随 OK")
 
     sv.var_title.set("拦截"); sv.var_name.set(""); sv.var_sid.set("abc"); sv.var_cat.set("")
@@ -84,6 +86,70 @@ def main():
     dv.tree.selection_remove(*dv.tree.selection()); dv._update_actions()
     assert str(dv.btn_view.cget("state")) == "disabled"
     print("归档驳回/禁用 OK")
+
+    # 看板岗位显隐：申请人隐藏名单/任务 chip 与近期动态，审核者恢复
+    dash = app.views["dashboard"]
+    app.applicant_sid = "250203"
+    app.role_var.set("applicant"); app._toggle_role(); root.update()
+    app.switch("dashboard"); root.update_idletasks()
+    assert not dash.roster_hint.winfo_ismapped(), "申请人不应显示名单提示"
+    assert not dash.task_hint.winfo_ismapped(), "申请人不应显示任务提示"
+    assert not dash.log_card.winfo_ismapped(), "申请人不应显示近期动态"
+    assert "关注" in dash.bottom_title.cget("text")
+
+    # 申请人只看本人：看板与台账都按学号过滤
+    own = [d for d in repo.list_docs() if d.get("sid") == "250203"]
+    own_focus = [d for d in own if d.get("status") in ("待审核", "已驳回")]
+    assert dash.hero_num.cget("text") == str(len(own_focus))
+    assert len(dash.doc_tree.get_children()) == min(len(own_focus), 5)
+    dv.refresh(); root.update()
+    assert len(dv.tree.get_children()) == len(own), "申请人台账应只显示本人材料"
+
+    # 未填学号：不展示任何人的材料
+    app.applicant_sid = ""
+    dash.refresh(); root.update()
+    assert dash.hero_num.cget("text") == "0"
+    assert len(dash.doc_tree.get_children()) == 0
+    assert "学号" in dash.hero_hint.cget("text")
+    app.applicant_sid = "250203"
+    print("申请人学号过滤 OK")
+
+    # 操作日志导入备份：附件必须随记录恢复，不能被清空
+    repo.add_doc({"name": "附件恢复测试", "cat": "学分材料", "who": "赵六",
+                  "sid": "250204",
+                  "attachments": [{"name": "a.pdf", "path": "D:/a.pdf", "kind": "材料"}]})
+    backup_path = Path(tempfile.mkdtemp()) / "logs-backup.json"
+    with open(backup_path, "w", encoding="utf-8") as f:
+        json.dump(repo.backup(), f, ensure_ascii=False)
+    ui_logs.filedialog.askopenfilename = lambda **kw: str(backup_path)
+    app.views["logs"].import_backup()
+    restored = [d for d in repo.list_docs() if d["name"] == "附件恢复测试"][0]
+    assert len(restored["attachments"]) == 1, restored
+    print("日志备份附件恢复 OK")
+
+    app.role_var.set("reviewer"); app._toggle_role(); root.update()
+    app.switch("dashboard"); root.update_idletasks()
+    assert dash.roster_hint.winfo_ismapped(), "审核者应显示名单提示"
+    assert dash.task_hint.winfo_ismapped(), "审核者应显示任务提示"
+    assert dash.log_card.winfo_ismapped(), "审核者应显示近期动态"
+    assert "待处理" in dash.bottom_title.cget("text")
+    print("看板岗位显隐 OK")
+
+    # 主题切换：深色 / 浅色各重建一次，数据与视图保持不变
+    import theme
+    for m in ("dark", "light"):
+        theme.apply(m)
+        app._restyle()
+        root.update()
+        assert theme.resolved() == m, "主题未按预期生效：%s" % m
+        assert app.current in app.views, "切主题后当前视图丢失"
+        for k in ("dashboard", "docs", "roster", "tasks", "submit", "logs"):
+            app.switch(k)
+            root.update()
+        assert app.views["docs"].tree.get_children(), "切主题后台账为空"
+        assert app.views["dashboard"].card_values["total"].cget("text") != "0", "切主题后看板未刷新"
+    theme.apply("light")
+    print("主题切换 OK")
 
     root.destroy()
     print("GUI SMOKE OK")

@@ -5,6 +5,7 @@
     py -3.14 tests/selftest.py
 全部通过会打印 SELFTEST OK；任一断言失败会以非零退出码结束。
 """
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -142,6 +143,14 @@ def main():
             pass
     chk = r.roster_check()
     assert chk["total"] == 1 and "absent" in chk and "extra" in chk
+    # 只有已驳回不算已交，进入需补交
+    r.add_roster("250240", "需补交生")
+    did = r.add_doc({"name": "被驳回材料", "cat": "学分材料",
+                     "who": "需补交生", "sid": "250240"})
+    r.reject_doc(did)
+    chk = r.roster_check()
+    assert chk["total"] == 2 and chk["done"] == 0
+    assert any(x["sid"] == "250240" for x in chk["resubmit"])
     r.remove_roster(r.find_roster_by_sid("250230")["id"])
     assert r.find_roster_by_sid("250230") is None
     print("15. 名单 CRUD/核对 OK")
@@ -155,6 +164,21 @@ def main():
     assert r.find_task(tid)["done"] is True
     r.update_task(tid, {"title": "改名任务"})
     assert r.find_task(tid)["title"] == "改名任务"
+    # 日期只收 YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD，其余直接拦截
+    for bad in ("明天", "2026-02-30", "2026-13-01"):
+        try:
+            r.add_task({"title": "坏日期", "deadline": bad})
+            raise SystemExit("应拦截日期 %s" % bad)
+        except RepositoryError:
+            pass
+    tfmt = r.add_task({"title": "格式任务", "deadline": "2026/12/01"})
+    assert r.find_task(tfmt)["deadline"] == "2026-12-01"
+    try:
+        r.update_task(tid, {"deadline": "明天"})
+        raise SystemExit("应拦截更新坏日期")
+    except RepositoryError:
+        pass
+    r.remove_task(tfmt)
     r.remove_task(tid)
     assert r.find_task(tid) is None
     print("16. 任务 CRUD/统计 OK")
@@ -177,6 +201,91 @@ def main():
     r.reject_doc(rid, "证明缺失")
     assert [x for x in r.list_docs() if x["id"] == rid][0]["reason"] == "证明缺失"
     print("18. 备注留存 OK")
+
+    # 19. 编号按类别递增、手动编号保留、路径随备份往返
+    r.restore([], [])
+    r.add_doc({"name": "甲", "cat": "团务材料", "who": "x"})
+    r.add_doc({"name": "乙", "cat": "团务材料", "who": "x"})
+    codes = sorted(d["code"] for d in r.list_docs())
+    assert codes == ["团务-001", "团务-002"], codes
+    r.add_doc({"name": "丙", "cat": "奖助材料", "who": "x",
+               "code": "奖助-099", "path": "D:/a.pdf"})
+    row = [d for d in r.list_docs() if d["name"] == "丙"][0]
+    assert row["code"] == "奖助-099" and row["path"] == "D:/a.pdf"
+    bak = r.backup()
+    r.restore([], [])
+    r.restore(bak["docs"], bak["logs"])
+    row2 = [d for d in r.list_docs() if d["name"] == "丙"][0]
+    assert row2["code"] == "奖助-099" and row2["path"] == "D:/a.pdf"
+    print("19. 编号生成/手动保留/路径往返 OK")
+
+    # 20. 模板材料：扩展内容与多附件往返
+    r.add_doc({"name": "第一次班会", "cat": "团务材料", "who": "主持人",
+               "form_type": "meeting",
+               "extra": {"topic": "学风建设", "place": "301", "attended": "42"},
+               "attachments": [{"name": "合影.jpg", "path": "D:/img/1.jpg", "kind": "照片"},
+                               {"name": "记录.docx", "path": "D:/doc/1.docx"}]})
+    row = [d for d in r.list_docs() if d["name"] == "第一次班会"][0]
+    assert row["form_type"] == "meeting"
+    assert row["extra"]["topic"] == "学风建设"
+    assert len(row["attachments"]) == 2
+    assert row["attachments"][0]["name"] == "合影.jpg"
+    print("20. 模板扩展内容/多附件 OK")
+
+    # 21. 模板编号前缀优先于类别前缀
+    assert row["code"].startswith("班会-"), row["code"]
+    print("21. 模板编号前缀 OK")
+
+    # 22. 备份恢复：附件随记录映射往返
+    bak = r.backup()
+    assert len(bak["attachments"]) == 2
+    r.restore([], [])
+    r.restore(bak["docs"], bak["logs"], bak["roster"], bak["tasks"], bak["attachments"])
+    row2 = [d for d in r.list_docs() if d["name"] == "第一次班会"][0]
+    assert len(row2["attachments"]) == 2
+    assert row2["attachments"][0]["path"] == "D:/img/1.jpg"
+    print("22. 附件备份恢复往返 OK")
+
+    # 23. 归档落盘：目录规则、复制、跳过与索引
+    import archive
+    tmp2 = tempfile.mkdtemp(prefix="cc-arch-")
+    src = os.path.join(tmp2, "src", "体测成绩.pdf")
+    os.makedirs(os.path.dirname(src), exist_ok=True)
+    with open(src, "w", encoding="utf-8") as f:
+        f.write("pdf")
+    base = os.path.join(tmp2, "归档")
+    doc = {"id": 1, "code": "团务-007", "name": "体测成绩统计表",
+           "cat": "团务材料", "who": "刘一帆", "sid": "250222", "path": src,
+           "status": "待审核"}
+    res = archive.place(doc, base=base)
+    assert res["copied"] is True, res
+    assert os.path.isfile(res["path"]), res
+    parts = os.path.normpath(res["path"]).split(os.sep)
+    assert parts[-3] == "团务材料" and parts[-2] == "250222-刘一帆", parts
+    assert os.path.basename(res["path"]) == "团务-007_体测成绩统计表.pdf"
+    again = archive.place(doc, base=base)
+    assert again["copied"] is False and "跳过" in again["note"], again
+    assert archive.safe('a/b:c*?') == "a_b_c_", archive.safe('a/b:c*?')
+    empty = archive.place({"id": 2, "name": "纸质材料", "cat": "学分材料",
+                           "who": "李", "sid": ""}, base=base)
+    assert empty["copied"] is False and "仅建目录" in empty["note"]
+    assert os.path.isdir(empty["dir"]) and empty["dir"].endswith("学分材料" + os.sep + "李")
+    any_id = r.list_docs()[0]["id"]
+    r.set_arch(any_id, res["path"])
+    assert [x for x in r.list_docs() if x["id"] == any_id][0]["arch"] == res["path"]
+    idx = archive.write_index(r.list_docs(), base=base)
+    assert idx and os.path.isfile(idx)
+    print("23. 归档落盘/索引 OK")
+
+    # 24. 同名不同内容：递进 _v2，不覆盖已有归档
+    with open(src, "w", encoding="utf-8") as f:
+        f.write("pdf-v2-different")
+    before = open(res["path"], "r", encoding="utf-8").read()
+    collision = archive.place(doc, base=base)
+    assert collision["copied"] is True, collision
+    assert collision["path"].endswith("_v2.pdf"), collision
+    assert open(res["path"], "r", encoding="utf-8").read() == before
+    print("24. 归档冲突不覆盖 OK")
 
     print("SELFTEST OK")
 

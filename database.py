@@ -61,6 +61,23 @@ def days_until(deadline: str):
     return (dl - datetime.date.today()).days
 
 
+def normalize_deadline(value) -> str:
+    """把常见日期写法统一为 YYYY-MM-DD；空值返回空串，非法值抛错。"""
+    raw = _clean(value)
+    if not raw:
+        return ""
+    parsed = None
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            parsed = datetime.datetime.strptime(raw, fmt)
+            break
+        except ValueError:
+            continue
+    if parsed is None or not (1900 <= parsed.year <= 2100):
+        raise RepositoryError("截止日期格式应为 YYYY-MM-DD，例如 2026-11-30")
+    return parsed.strftime("%Y-%m-%d")
+
+
 class RepositoryError(RuntimeError):
     """数据读写失败，供界面捕获并提示，避免直接崩溃。"""
 
@@ -77,12 +94,87 @@ def _like_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# 类别 → 编号前缀（编号形如 团务-001）
+CAT_PREFIX = {
+    "团务材料": "团务", "奖助材料": "奖助", "学分材料": "学分",
+    "宣传材料": "宣传", "班级事务": "事务",
+}
+
+
+def code_prefix(cat: str) -> str:
+    return CAT_PREFIX.get(_clean(cat), "材料")
+
+
+# 表单模板：内置标准预案 + 自定义材料。
+# fields: key 字段键, label 显示名, type 控件类型(text/textarea/date/select/sid/file),
+#         required 是否必填, options 选项(select)。
+FORM_TEMPLATES = {
+    "meeting": {
+        "label": "主题班会记录", "prefix": "班会",
+        "fields": [
+            {"key": "topic", "label": "班会主题", "type": "text", "required": True},
+            {"key": "meeting_date", "label": "日期", "type": "date"},
+            {"key": "place", "label": "地点", "type": "text"},
+            {"key": "host", "label": "主持人", "type": "text"},
+            {"key": "recorder", "label": "记录人", "type": "text"},
+            {"key": "expected", "label": "应到人数", "type": "text"},
+            {"key": "attended", "label": "实到人数", "type": "text"},
+            {"key": "process", "label": "班会过程", "type": "textarea"},
+            {"key": "summary", "label": "活动小结", "type": "textarea"},
+        ],
+    },
+    "dorm": {
+        "label": "宿舍走访记录", "prefix": "走访",
+        "fields": [
+            {"key": "visit_date", "label": "走访日期", "type": "date"},
+            {"key": "building", "label": "楼栋", "type": "text"},
+            {"key": "dorm_no", "label": "宿舍号", "type": "text"},
+            {"key": "visitor", "label": "走访人", "type": "text"},
+            {"key": "situation", "label": "走访情况", "type": "textarea"},
+            {"key": "rectify", "label": "需整改事项", "type": "textarea"},
+        ],
+    },
+    "pledg": {
+        "label": "班级承诺书", "prefix": "承诺",
+        "fields": [
+            {"key": "pledge_items", "label": "承诺事项", "type": "textarea", "required": True},
+            {"key": "class_name", "label": "班级", "type": "text"},
+            {"key": "sign_date", "label": "签署日期", "type": "date"},
+        ],
+    },
+    "talk": {
+        "label": "违纪约谈记录", "prefix": "约谈",
+        "fields": [
+            {"key": "talk_who", "label": "学生姓名", "type": "text", "required": True},
+            {"key": "talk_sid", "label": "学号", "type": "sid"},
+            {"key": "violation", "label": "违纪事项", "type": "textarea"},
+            {"key": "talk_time", "label": "约谈时间", "type": "text"},
+            {"key": "talk_place", "label": "地点", "type": "text"},
+            {"key": "counselor", "label": "约谈人", "type": "text"},
+            {"key": "content", "label": "谈话内容", "type": "textarea"},
+            {"key": "opinion", "label": "处理意见", "type": "textarea"},
+            {"key": "statement", "label": "学生表态", "type": "textarea"},
+            {"key": "focus", "label": "是否重点关注", "type": "select",
+             "options": ["否", "是"]},
+        ],
+    },
+    "custom": {"label": "自定义材料", "prefix": "事务", "fields": []},
+}
+
+FORM_PREFIX = {k: v["prefix"] for k, v in FORM_TEMPLATES.items()}
+
+
+def form_template(form_type: str) -> dict:
+    return FORM_TEMPLATES.get(_clean(form_type), FORM_TEMPLATES["custom"])
+
+
 class LocalRepository:
     """本地 SQLite 仓库。远程方案实现同名方法后可无缝替换。"""
 
     def __init__(self, db_path: Path):
         self.db_path = str(db_path)
         self._init_db()
+        self._backfill_codes()
 
     def _conn(self):
         conn = sqlite3.connect(self.db_path)
@@ -96,7 +188,8 @@ class LocalRepository:
             CREATE TABLE IF NOT EXISTS docs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT, cat TEXT, who TEXT, sid TEXT, note TEXT,
-                file TEXT, time TEXT, status TEXT, scope TEXT, reason TEXT
+                file TEXT, path TEXT, code TEXT, time TEXT,
+                status TEXT, scope TEXT, reason TEXT
             )""")
         c.execute("""
             CREATE TABLE IF NOT EXISTS logs (
@@ -114,10 +207,16 @@ class LocalRepository:
                 title TEXT, cat TEXT, scope TEXT, deadline TEXT,
                 note TEXT, done INTEGER
             )""")
-        # 旧库迁移：补齐 docs.reason 列（已存在则忽略）
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                doc_id INTEGER, name TEXT, path TEXT, kind TEXT, time TEXT
+            )""")
+        # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
         cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
-        if "reason" not in cols:
-            c.execute("ALTER TABLE docs ADD COLUMN reason TEXT")
+        for miss in ("reason", "code", "path", "form_type", "extra", "arch"):
+            if miss not in cols:
+                c.execute("ALTER TABLE docs ADD COLUMN %s TEXT" % miss)
         conn.commit()
         if c.execute("SELECT COUNT(*) AS n FROM docs").fetchone()["n"] == 0:
             for row in SEED_DOCS:
@@ -156,34 +255,132 @@ class LocalRepository:
                 args += [like, like, like]
             sql += " ORDER BY id DESC"
             rows = conn.execute(sql, args).fetchall()
-            return [dict(r) for r in rows]
+            att_map = self._attachment_map(conn)
+            out = []
+            for r in rows:
+                d = dict(r)
+                d["attachments"] = att_map.get(d["id"], [])
+                d["extra"] = self._parse_extra(d.get("extra"))
+                out.append(d)
+            return out
         except sqlite3.Error as e:
             raise RepositoryError("读取材料失败：%s" % e)
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _parse_extra(raw):
+        if not raw:
+            return {}
+        try:
+            v = json.loads(raw)
+            return v if isinstance(v, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    @staticmethod
+    def _attachment_map(conn):
+        rows = conn.execute("SELECT * FROM attachments ORDER BY id").fetchall()
+        amap = {}
+        for r in rows:
+            amap.setdefault(r["doc_id"], []).append(dict(r))
+        return amap
+
+    def list_attachments(self, doc_id: int) -> list:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM attachments WHERE doc_id=? ORDER BY id",
+                (doc_id,)).fetchall()
+            return [dict(r) for r in rows]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取附件失败：%s" % e)
+        finally:
+            conn.close()
+
+    def next_code(self, cat: str = "", form_type: str = "") -> str:
+        """生成下一个编号：模板前缀优先，否则类别前缀 + 三位流水号。"""
+        prefix = FORM_PREFIX.get(_clean(form_type)) or code_prefix(cat)
+        maxn = 0
+        for d in self.list_docs():
+            code = d.get("code") or ""
+            if code.startswith(prefix + "-"):
+                tail = code.split("-", 1)[1]
+                if tail.isdigit():
+                    maxn = max(maxn, int(tail))
+        return "%s-%03d" % (prefix, maxn + 1)
+
+    def _backfill_codes(self):
+        """旧库 / 种子记录缺编号时，按类别顺序补齐。"""
+        conn = self._conn()
+        try:
+            rows = conn.execute("SELECT id, cat, code FROM docs").fetchall()
+            used = {}
+            for r in rows:
+                prefix = code_prefix(r["cat"])
+                code = _clean(r["code"])
+                if code:
+                    used.setdefault(prefix, set()).add(code)
+                    continue
+                maxn = 0
+                for c in used.get(prefix, set()):
+                    if c.startswith(prefix + "-") and c.split("-", 1)[1].isdigit():
+                        maxn = max(maxn, int(c.split("-", 1)[1]))
+                maxn += 1
+                new_code = "%s-%03d" % (prefix, maxn)
+                used.setdefault(prefix, set()).add(new_code)
+                conn.execute("UPDATE docs SET code=? WHERE id=?", (new_code, r["id"]))
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
         finally:
             conn.close()
 
     def add_doc(self, data: dict):
         if not isinstance(data, dict):
             raise RepositoryError("提交数据格式不正确")
-        row = (
-            _clean(data.get("name")), _clean(data.get("cat")),
-            _clean(data.get("who")), _clean(data.get("sid")),
-            _clean(data.get("note")), _clean(data.get("file")),
-            now_str(), "待审核", _clean(data.get("scope")) or "全员",
-            _clean(data.get("reason")),
-        )
-        if not row[0] or not row[1] or not row[2]:
+        name = _clean(data.get("name"))
+        cat = _clean(data.get("cat"))
+        who = _clean(data.get("who"))
+        sid = _clean(data.get("sid"))
+        note = _clean(data.get("note"))
+        file_name = _clean(data.get("file"))
+        path = _clean(data.get("path"))
+        code = _clean(data.get("code"))
+        form_type = _clean(data.get("form_type")) or "general"
+        extra_raw = data.get("extra")
+        if isinstance(extra_raw, dict):
+            extra = json.dumps(extra_raw, ensure_ascii=False)
+        else:
+            extra = _clean(extra_raw)
+        if not code:
+            code = self.next_code(cat, form_type)
+        scope = _clean(data.get("scope")) or "全员"
+        reason = _clean(data.get("reason"))
+        if not name or not cat or not who:
             raise RepositoryError("材料名称、类别、姓名不能为空")
+        row = (name, cat, who, sid, note, file_name, path, code,
+               now_str(), "待审核", scope, reason, form_type, extra)
         conn = self._conn()
         try:
-            conn.execute("""INSERT INTO docs
-                (name,cat,who,sid,note,file,time,status,scope,reason)
-                VALUES (?,?,?,?,?,?,?,?,?,?)""", row)
+            cur = conn.execute("""INSERT INTO docs
+                (name,cat,who,sid,note,file,path,code,time,status,scope,reason,
+                 form_type,extra)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", row)
+            doc_id = cur.lastrowid
+            for att in (data.get("attachments") or []):
+                if not isinstance(att, dict):
+                    continue
+                conn.execute("""INSERT INTO attachments
+                    (doc_id,name,path,kind,time) VALUES (?,?,?,?,?)""",
+                    (doc_id, _clean(att.get("name")), _clean(att.get("path")),
+                     _clean(att.get("kind")), now_str()))
             conn.commit()
         except sqlite3.Error as e:
             raise RepositoryError("写入材料失败：%s" % e)
         finally:
             conn.close()
+        return doc_id
 
     def _get_doc(self, conn, doc_id):
         return conn.execute("SELECT * FROM docs WHERE id=?", (doc_id,)).fetchone()
@@ -200,6 +397,17 @@ class LocalRepository:
             return dict(row)
         except sqlite3.Error as e:
             raise RepositoryError("归档失败：%s" % e)
+        finally:
+            conn.close()
+
+    def set_arch(self, doc_id, path):
+        """记录材料归档后的实际文件路径。"""
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE docs SET arch=? WHERE id=?", (_clean(path), doc_id))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("写入归档路径失败：%s" % e)
         finally:
             conn.close()
 
@@ -289,11 +497,16 @@ class LocalRepository:
         roster = self.list_roster()
         docs = self.list_docs()
         roster_sids = {r["sid"] for r in roster}
-        submitted = {_clean(d.get("sid")) for d in docs if _clean(d.get("sid"))}
+        # 已交 = 有材料在待审核或已归档；只有已驳回不算已交，进入需补交
+        submitted = {_clean(d.get("sid")) for d in docs
+                     if _clean(d.get("sid")) and d.get("status") in ("待审核", "已归档")}
+        rejected = {_clean(d.get("sid")) for d in docs
+                    if _clean(d.get("sid")) and d.get("status") == "已驳回"}
         absent = [r for r in roster if r["sid"] not in submitted]
+        resubmit = [r for r in roster if r["sid"] in rejected and r["sid"] not in submitted]
         extra = [d for d in docs if _clean(d.get("sid")) and d["sid"] not in roster_sids]
         return {"total": len(roster), "done": len(roster) - len(absent),
-                "absent": absent, "extra": extra}
+                "absent": absent, "resubmit": resubmit, "extra": extra}
 
     # ---------- 任务 ----------
     def list_tasks(self) -> list:
@@ -315,7 +528,8 @@ class LocalRepository:
         return next((x for x in self.list_tasks() if x["id"] == tid), None)
 
     def add_task(self, data: dict) -> int:
-        title, deadline = _clean(data.get("title")), _clean(data.get("deadline"))
+        title = _clean(data.get("title"))
+        deadline = normalize_deadline(data.get("deadline"))
         if not title:
             raise RepositoryError("任务标题不能为空")
         if not deadline:
@@ -339,7 +553,12 @@ class LocalRepository:
             if conn.execute("SELECT 1 FROM tasks WHERE id=?", (tid,)).fetchone() is None:
                 return None
             fields = {k: _clean(data.get(k)) for k in
-                      ("title", "cat", "scope", "deadline", "note") if data.get(k) is not None}
+                      ("title", "cat", "scope", "note") if data.get(k) is not None}
+            if data.get("deadline") is not None:
+                deadline = normalize_deadline(data.get("deadline"))
+                if not deadline:
+                    raise RepositoryError("请选择截止日期")
+                fields["deadline"] = deadline
             if "done" in data:
                 fields["done"] = 1 if data["done"] else 0
             if fields:
@@ -403,30 +622,53 @@ class LocalRepository:
             conn.close()
 
     def backup(self) -> dict:
-        return {"docs": self.list_docs(), "logs": self.list_logs(),
-                "roster": self.list_roster(), "tasks": self.list_tasks()}
+        docs = self.list_docs()
+        atts = []
+        for d in docs:
+            atts.extend(d.get("attachments") or [])
+        return {"docs": docs, "logs": self.list_logs(),
+                "roster": self.list_roster(), "tasks": self.list_tasks(),
+                "attachments": atts}
 
-    def restore(self, docs: list, logs: list, roster=None, tasks=None):
+    def restore(self, docs: list, logs: list, roster=None, tasks=None, attachments=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
         tasks = tasks if isinstance(tasks, list) else []
+        attachments = attachments if isinstance(attachments, list) else []
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
             conn.execute("DELETE FROM logs")
             conn.execute("DELETE FROM roster")
             conn.execute("DELETE FROM tasks")
+            conn.execute("DELETE FROM attachments")
+            id_map = {}
             for d in docs:
                 if not isinstance(d, dict):
                     continue
-                conn.execute("""INSERT INTO docs
-                    (name,cat,who,sid,note,file,time,status,scope,reason)
-                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                cur = conn.execute("""INSERT INTO docs
+                    (name,cat,who,sid,note,file,path,code,time,status,scope,reason,
+                     form_type,extra,arch)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (_clean(d.get("name")), _clean(d.get("cat")), _clean(d.get("who")),
                      _clean(d.get("sid")), _clean(d.get("note")), _clean(d.get("file")),
+                     _clean(d.get("path")), _clean(d.get("code")),
                      _clean(d.get("time")), _clean(d.get("status")) or "待审核",
-                     _clean(d.get("scope")) or "全员", _clean(d.get("reason"))))
+                     _clean(d.get("scope")) or "全员", _clean(d.get("reason")),
+                     _clean(d.get("form_type")) or "general", _clean(d.get("extra")),
+                     _clean(d.get("arch"))))
+                id_map[str(d.get("id"))] = cur.lastrowid
+            for a in attachments:
+                if not isinstance(a, dict):
+                    continue
+                new_id = id_map.get(str(a.get("doc_id")))
+                if new_id is None:
+                    continue
+                conn.execute("""INSERT INTO attachments
+                    (doc_id,name,path,kind,time) VALUES (?,?,?,?,?)""",
+                    (new_id, _clean(a.get("name")), _clean(a.get("path")),
+                     _clean(a.get("kind")), _clean(a.get("time")) or now_str()))
             for l in logs:
                 if not isinstance(l, dict):
                     continue
@@ -454,6 +696,7 @@ class LocalRepository:
             raise RepositoryError("导入备份失败：%s" % e)
         finally:
             conn.close()
+        self._backfill_codes()
 
 
 def build_repository():

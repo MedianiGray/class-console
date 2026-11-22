@@ -9,11 +9,11 @@ import sys
 import traceback
 import datetime
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 
 from database import build_repository, app_data_dir
 from ui_main import MainWindow
-from theme import FONT, C
+import theme
 from version import VERSION, VERSION_LABEL
 
 
@@ -35,50 +35,6 @@ def _install_error_logger():
     sys.excepthook = hook
 
 
-def setup_style(root):
-    style = ttk.Style(root)
-    style.theme_use("clam")
-
-    style.configure(".", font=(FONT, 11), foreground=C["text"])
-    style.configure("TLabel", font=(FONT, 11))
-    style.configure("Muted.TLabel", foreground=C["muted"], font=(FONT, 10))
-    style.configure("Title.TLabel", font=(FONT, 17, "bold"), foreground=C["text"])
-    style.configure("Sub.TLabel", font=(FONT, 10), foreground=C["muted"])
-
-    # 按钮：默认 / 主要 / 危险
-    style.configure("TButton", padding=(14, 8), relief="flat", background="#F1F4F8",
-                    foreground=C["text"], bordercolor=C["line"], borderwidth=1,
-                    font=(FONT, 11))
-    style.map("TButton",
-              background=[("active", "#E9EEF4"), ("disabled", "#F1F5F9")],
-              foreground=[("disabled", "#9AA5B1")],
-              bordercolor=[("disabled", "#EDF0F4")])
-    style.configure("Accent.TButton", background=C["primary"], foreground="#FFFFFF",
-                    padding=(14, 8), relief="flat", borderwidth=0, font=(FONT, 11, "bold"))
-    style.map("Accent.TButton",
-              background=[("active", C["primary_hover"]), ("disabled", "#B9C2F5")],
-              foreground=[("disabled", "#FFFFFF")])
-    style.configure("Danger.TButton", background="#FFFFFF", foreground=C["red"],
-                    bordercolor="#FBD5D5", padding=(14, 8), relief="flat")
-    style.map("Danger.TButton", background=[("active", "#FEF2F2")])
-
-    # 输入控件：聚焦时边框变强调色
-    style.configure("TEntry", padding=(9, 7), bordercolor=C["line"], borderwidth=1)
-    style.map("TEntry", bordercolor=[("focus", C["primary"])])
-    style.configure("TCombobox", padding=(7, 5), bordercolor=C["line"], borderwidth=1)
-    style.map("TCombobox", bordercolor=[("focus", C["primary"])])
-    style.configure("TRadiobutton", font=(FONT, 11))
-
-    # 表格
-    style.configure("Treeview", rowheight=30, background=C["card"], fieldbackground=C["card"],
-                    bordercolor=C["line"], borderwidth=1, font=(FONT, 11))
-    style.configure("Treeview.Heading", font=(FONT, 10, "bold"), foreground=C["muted"],
-                    background="#F7F9FC", padding=(10, 7))
-    style.map("Treeview",
-              background=[("selected", C["select"])],
-              foreground=[("selected", C["text"])])
-
-
 def center_window(root, w, h):
     root.update_idletasks()
     sw = root.winfo_screenwidth()
@@ -90,14 +46,18 @@ def center_window(root, w, h):
 
 def main():
     _install_error_logger()
+    theme.init_from_settings()
     root = tk.Tk()
     root.title("班级操作台 · v%s %s" % (VERSION, VERSION_LABEL))
     try:
-        setup_style(root)
+        root.configure(bg=theme.C["bg"])
+        theme.apply_tk_defaults(root)
+        theme.setup_ttk(root)
         repo = build_repository()
         MainWindow(root, repo)
-        center_window(root, 1080, 680)
-        root.minsize(960, 600)
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        center_window(root, min(1220, max(980, sw - 120)), min(860, max(660, sh - 50)))
+        root.minsize(960, 640)
         root.mainloop()
     except Exception as e:
         messagebox.showerror("启动失败", "程序初始化失败：%s\n请确认本机数据目录可正常读写。" % e)

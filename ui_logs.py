@@ -23,8 +23,7 @@ class LogsView(ttk.Frame):
 
     def _build(self):
         top = ttk.Frame(self)
-        top.pack(fill="x", padx=18, pady=(16, 10))
-        ttk.Label(top, text="操作日志", style="Title.TLabel").pack(side="left")
+        top.pack(fill="x", padx=18, pady=(4, 10))
         self.count = ttk.Label(top, text="", style="Muted.TLabel")
         self.count.pack(side="right")
 
@@ -33,7 +32,7 @@ class LogsView(ttk.Frame):
         self.tree = ttk.Treeview(wrap, columns=self.COLS, show="headings",
                                  selectmode="browse")
         for c in self.COLS:
-            self.tree.heading(c, text=self.HEADS[c])
+            self.tree.heading(c, text=self.HEADS[c], anchor="w")
             self.tree.column(c, width=self.WIDTHS[c], anchor="w", stretch=True)
         self.tree.tag_configure("zebra", background=C["zebra"])
         self.tree.tag_configure("green", foreground=C["green"])
@@ -53,8 +52,10 @@ class LogsView(ttk.Frame):
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
-        self.btn_export = ttk.Button(bar, text="导出备份", command=self.export_backup)
-        self.btn_import = ttk.Button(bar, text="导入备份", command=self.import_backup)
+        self.btn_export = ttk.Button(bar, text="导出备份", style="Ghost.TButton",
+                                     command=self.export_backup)
+        self.btn_import = ttk.Button(bar, text="导入备份", style="Ghost.TButton",
+                                     command=self.import_backup)
         self.btn_export.pack(side="left")
 
     def refresh(self):
@@ -72,9 +73,9 @@ class LogsView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
-        # 导入备份仅管理员可见
+        # 导入备份按 backup:restore 权限点显隐
         self.btn_import.pack_forget()
-        if self.window.role == "admin":
+        if self.window.can("backup:restore"):
             self.btn_import.pack(side="left", padx=8)
 
     def export_backup(self):
@@ -91,7 +92,7 @@ class LogsView(ttk.Frame):
             messagebox.showerror("导出失败", str(e))
 
     def import_backup(self):
-        if self.window.role != "admin":
+        if not self.window.can("backup:restore"):
             self.window.toast("当前视角无权执行该操作")
             return
         path = filedialog.askopenfilename(title="选择备份文件",
@@ -120,7 +121,8 @@ class LogsView(ttk.Frame):
 
         try:
             self.repo.restore(docs, logs,
-                              data.get("roster", []), data.get("tasks", []))
+                              data.get("roster", []), data.get("tasks", []),
+                              data.get("attachments", []))
         except Exception as e:
             messagebox.showerror("导入失败", str(e))
             return

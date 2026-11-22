@@ -58,6 +58,18 @@ assert("已归档 4", st.archived === 4);
 assert("已驳回 0", st.rejected === 0);
 assert("日志 6 条", sandbox.listLogs().length === 6);
 
+// 申请人学号隔离：只看本人；未填学号不展示任何人的材料
+sandbox.state.role = "applicant";
+sandbox.state.applicantSid = "250201";
+assert("申请人只看本人 2 条", sandbox.filteredDocs().length === 2);
+assert("申请人统计只算本人", sandbox.stats(sandbox.visibleDocs()).total === 2);
+sandbox.state.applicantSid = "";
+assert("未填学号不展示材料", sandbox.filteredDocs().length === 0);
+sandbox.state.role = "handler";
+sandbox.state.applicantSid = "250201";
+assert("经办人不受申请人学号影响", sandbox.filteredDocs().length === 7);
+sandbox.state.applicantSid = "";
+
 // 数据层回归
 assert("关键词检索命中", sandbox.listDocs("覃祖悦").length === 2);
 assert("类别筛选", sandbox.listDocs("", "宣传材料").length === 2);
@@ -70,6 +82,26 @@ sandbox.archiveDoc(row.id);
 assert("归档状态", sandbox.findDoc(row.id).status === "已归档");
 sandbox.rejectDoc(row.id);
 assert("驳回状态", sandbox.findDoc(row.id).status === "已驳回");
+assert("自动编号按类别前缀", /^学分-\d{3}$/.test(row.code));
+assert("种子记录编号回填", sandbox.listDocs().every(function(d){ return /^[一-龥]+-\d{3}$/.test(d.code); }));
+const manual = sandbox.addDoc({ name:"手改编号", cat:"团务材料", who:"甲", sid:"250233", code:"团务-999" });
+assert("手填编号保留", manual.code === "团务-999");
+assert("路径字段兜底", sandbox.normalizeDoc({ name:"n", path:"D:/x/a.pdf" }, 0).path === "D:/x/a.pdf");
+
+// 模板材料：类型 / 扩展内容 / 附件 / 模板前缀编号 / 备份往返
+const mt = sandbox.addDoc({ name:"学风建设班会", cat:"团务材料", who:"主持人",
+  form_type:"meeting", extra:{topic:"学风建设", place:"301"},
+  attachments:[{name:"合影.jpg", path:"", kind:"照片"}] });
+assert("模板类型写入", mt.form_type === "meeting");
+assert("模板扩展内容往返", mt.extra.topic === "学风建设" && mt.extra.place === "301");
+assert("模板附件落库", mt.attachments.length === 1 && mt.attachments[0].name === "合影.jpg");
+assert("模板编号前缀", /^班会-\d{3}$/.test(mt.code));
+const mtRow = sandbox.findDoc(mt.id);
+assert("模板详情附件清单", mtRow.attachments.length === 1);
+const bakT = sandbox.backup();
+sandbox.restore(bakT.docs, bakT.logs, bakT.roster, bakT.tasks);
+const mt2 = sandbox.listDocs().find(d => d.name === "学风建设班会");
+assert("模板备份往返", mt2.form_type === "meeting" && mt2.extra.topic === "学风建设" && mt2.attachments.length === 1);
 
 // CSV 转义
 assert("CSV 纯文本原样", sandbox.csvCell("普通文本") === "普通文本");
@@ -92,7 +124,7 @@ const vis = sandbox.visibleCols().map(c => c.key);
 assert("可见列不含隐藏项", vis.indexOf("sid") < 0 && vis.indexOf("file") < 0);
 assert("可见列保留名称", vis.indexOf("name") >= 0);
 sandbox.saveHiddenCols([]);
-assert("恢复全显", sandbox.visibleCols().length === 7);
+assert("恢复全显", sandbox.visibleCols().length === 8);
 
 // 草稿暂存
 els["sName"].value = "草稿名称"; els["sWho"].value = "张三"; els["sSid"].value = "250201";
@@ -152,6 +184,13 @@ assert("空学号拦截", emptyThrew);
 sandbox.removeRoster(newR.id);
 assert("移除名单", sandbox.findRosterBySid("250230") === null);
 
+// 已交口径：待审核/已归档算已交，只有已驳回进入需补交
+const rs = sandbox.addRoster("250299", "需补交生");
+const rc = sandbox.rosterCheck();
+assert("已驳回归入需补交", rc.resubmit.some(r => r.sid === "250299"));
+assert("需补交不计已交", rc.done === 6);
+sandbox.removeRoster(rs.id);
+
 const parsed = sandbox.parseRosterText("250231,钱七\n250232\t孙八\n\n250233，周九");
 assert("粘贴/CSV 解析三行", parsed.length === 3 && parsed[2].who === "周九");
 
@@ -168,6 +207,13 @@ let t1 = false; try { sandbox.addTask({ title:"", deadline:"2026-12-01" }); } ca
 assert("缺标题拦截", t1);
 let t2 = false; try { sandbox.addTask({ title:"x", deadline:"" }); } catch(e){ t2 = true; }
 assert("缺截止日期拦截", t2);
+let t3 = false; try { sandbox.addTask({ title:"x", deadline:"明天" }); } catch(e){ t3 = true; }
+assert("非法日期格式拦截", t3);
+const tf = sandbox.addTask({ title:"格式任务", deadline:"2026/12/01" });
+assert("日期归一为 YYYY-MM-DD", tf.deadline === "2026-12-01");
+sandbox.removeTask(tf.id);
+let t4 = false; try { sandbox.updateTask(nt.id, { deadline:"2026-02-30" }); } catch(e){ t4 = true; }
+assert("更新非法日期拦截", t4);
 sandbox.toggleTask(nt.id);
 assert("完成切换", sandbox.findTask(nt.id).done === true);
 sandbox.updateTask(nt.id, { title:"改名任务" });
@@ -176,6 +222,38 @@ sandbox.removeTask(nt.id);
 assert("移除任务", sandbox.findTask(nt.id) === null);
 const normT = sandbox.normalizeTask({ title:"x", cat:"c" }, 2);
 assert("任务兜底范围与完成态", normT.scope === "全员" && normT.done === false && normT.id === 3);
+
+// 文件夹监听：快照比对口径
+const wEntries = [
+  { rel:"a.pdf", name:"a.pdf", size:1024, mtime:1700000000000 },
+  { rel:"b.jpg", name:"b.jpg", size:2048, mtime:1700000001000 },
+  { rel:"c.docx", name:"c.docx", size:512, mtime:1700000002000 }
+];
+const first = sandbox.compareWatch(wEntries, {}, {});
+assert("首次扫描全部记为新增", first.counts.new === 3 && first.items.length === 3);
+
+const snap = sandbox.watchSnapshotOf(wEntries);
+const secondEntries = [
+  { rel:"a.pdf", name:"a.pdf", size:1024, mtime:1700000000000 },
+  { rel:"b.jpg", name:"b.jpg", size:4096, mtime:1700000099000 },
+  { rel:"d.png", name:"d.png", size:300, mtime:1700000003000 }
+];
+const second = sandbox.compareWatch(secondEntries, snap, {});
+assert("二次扫描识别新增", second.counts.new === 1);
+assert("二次扫描识别修改", second.counts.changed === 1);
+assert("二次扫描识别不变", second.counts.kept === 1);
+assert("二次扫描识别删除", second.counts.removed === 1 && second.removed[0].name === "c.docx");
+
+const regHit = sandbox.compareWatch([{ rel:"e.x", name:"e.x", size:1, mtime:1 }], {}, { "e.x": true });
+assert("已登记文件名不记为新增", regHit.items[0].state === "registered");
+assert("去扩展名取材料名", sandbox.watchBaseName("班会签到表.pdf") === "班会签到表");
+assert("大小换算 KB", sandbox.watchHumanSize(2048) === "2 KB");
+
+sandbox.saveWatch("团日材料", snap, "11-18 10:00");
+const wl = sandbox.loadWatch();
+assert("监听目录名持久化", wl.dirName === "团日材料");
+assert("监听基线持久化", Object.keys(wl.baseline).length === 3);
+assert("已登记集合非空", Object.keys(sandbox.watchRegisteredSet()).length > 0);
 
 // 备份/恢复结构
 const bk = sandbox.backup();

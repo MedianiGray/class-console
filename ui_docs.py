@@ -2,21 +2,28 @@
 """材料台账视图：搜索、筛选、查看、归档、驳回。"""
 
 import csv
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+import archive
 from theme import FONT, C
+from database import form_template
 
 
 class DocsView(ttk.Frame):
-    COLS = ("name", "cat", "who", "sid", "time", "status", "file")
-    HEADS = {"name": "材料名称", "cat": "类别", "who": "提交人", "sid": "学号",
-             "time": "提交时间", "status": "状态", "file": "附件"}
-    WIDTHS = {"name": 260, "cat": 100, "who": 90, "sid": 90, "time": 130,
-              "status": 90, "file": 150}
+    COLS = ("code", "name", "cat", "who", "sid", "time", "status", "file")
+    HEADS = {"code": "编号", "name": "材料名称", "cat": "类别", "who": "提交人",
+             "sid": "学号", "time": "提交时间", "status": "状态", "file": "附件"}
+    WIDTHS = {"code": 80, "name": 190, "cat": 88, "who": 78, "sid": 78,
+              "time": 112, "status": 80, "file": 112}
     CATS = ["全部", "团务材料", "奖助材料", "学分材料", "宣传材料", "班级事务"]
-    STATUS_TAG = {"已归档": "green", "已驳回": "red",
-                  "待审核": "orange", "待补材料": "orange"}
+    TYPE_OPTIONS = [("全部", "全部"), ("general", "个人材料"), ("meeting", "主题班会记录"),
+                    ("dorm", "宿舍走访记录"), ("pledg", "班级承诺书"),
+                    ("talk", "违纪约谈记录"), ("custom", "自定义材料")]
+    TYPE_LABEL = dict(TYPE_OPTIONS)
+    STATUS_TAG = {"已归档": "", "已驳回": "rej",
+                  "待审核": "pend", "待补材料": "pend"}
 
     def __init__(self, master, repo, window):
         super().__init__(master)
@@ -28,21 +35,29 @@ class DocsView(ttk.Frame):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=18, pady=(16, 10))
 
-        ttk.Label(top, text="搜索").pack(side="left")
+        ttk.Label(top, text="搜索", style="Sub.TLabel").pack(side="left")
         self.q = tk.StringVar()
         self.q.trace_add("write", lambda *a: self.refresh())
-        search = ttk.Entry(top, textvariable=self.q, width=22)
+        search = ttk.Entry(top, textvariable=self.q, width=24)
         search.pack(side="left", padx=8)
         search.bind("<Return>", lambda e: self.refresh())
 
-        ttk.Label(top, text="类别").pack(side="left", padx=(16, 0))
+        ttk.Label(top, text="类别", style="Sub.TLabel").pack(side="left", padx=(18, 0))
         self.cat = tk.StringVar(value="全部")
         cb = ttk.Combobox(top, textvariable=self.cat, values=self.CATS,
                           width=12, state="readonly")
         cb.pack(side="left", padx=8)
         cb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
 
-        ttk.Label(top, text="状态").pack(side="left", padx=(16, 0))
+        ttk.Label(top, text="类型", style="Sub.TLabel").pack(side="left", padx=(18, 0))
+        self.type = tk.StringVar(value="全部")
+        tb = ttk.Combobox(top, textvariable=self.type,
+                          values=[label for _, label in self.TYPE_OPTIONS],
+                          width=14, state="readonly")
+        tb.pack(side="left", padx=8)
+        tb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+
+        ttk.Label(top, text="状态", style="Sub.TLabel").pack(side="left", padx=(18, 0))
         self.status = tk.StringVar(value="全部")
         sb = ttk.Combobox(top, textvariable=self.status,
                           values=["全部", "待审核", "已归档", "已驳回", "待补材料"],
@@ -50,24 +65,24 @@ class DocsView(ttk.Frame):
         sb.pack(side="left", padx=8)
         sb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
 
-        wrap = ttk.Frame(self)
+        wrap = tk.Frame(self, bg=C["card"], highlightthickness=1,
+                        highlightbackground=C["line"])
         wrap.pack(fill="both", expand=True, padx=18)
         self.tree = ttk.Treeview(wrap, columns=self.COLS, show="headings",
                                  selectmode="browse")
         for c in self.COLS:
-            self.tree.heading(c, text=self.HEADS[c])
+            self.tree.heading(c, text=self.HEADS[c], anchor="w")
             self.tree.column(c, width=self.WIDTHS[c], anchor="w", stretch=True)
         self.tree.tag_configure("zebra", background=C["zebra"])
-        self.tree.tag_configure("green", foreground=C["green"])
-        self.tree.tag_configure("orange", foreground=C["orange"])
-        self.tree.tag_configure("red", foreground=C["red"])
+        self.tree.tag_configure("pend", background=C["tag_orange"])
+        self.tree.tag_configure("rej", background=C["tag_red"])
 
+        wrap.rowconfigure(0, weight=1)
+        wrap.columnconfigure(0, weight=1)
         ysb = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
-        xsb = ttk.Scrollbar(wrap, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(yscrollcommand=ysb.set, xscrollcommand=xsb.set)
-        self.tree.pack(side="left", fill="both", expand=True)
-        ysb.pack(side="right", fill="y")
-        xsb.pack(side="bottom", fill="x")
+        self.tree.configure(yscrollcommand=ysb.set)
+        self.tree.grid(row=0, column=0, sticky="nsew", padx=(1, 0), pady=(1, 0))
+        ysb.grid(row=0, column=1, sticky="ns", padx=(0, 1), pady=1)
 
         self.empty = ttk.Label(wrap, text="暂无符合条件的材料，可到「提交材料」录入",
                                 style="Muted.TLabel")
@@ -85,6 +100,20 @@ class DocsView(ttk.Frame):
         self.btn_reject = ttk.Button(bar, text="驳回", style="Danger.TButton",
                                      command=self.reject)
         self.btn_csv = ttk.Button(bar, text="导出 CSV", command=self.export_csv)
+        self.btn_place = ttk.Button(bar, text="归位文件", command=self.place_files)
+        self.more = tk.Button(bar, text="更多 ▾", relief="flat", bd=0,
+                              bg=C["bg"], fg=C["text"],
+                              activebackground=C["bg_soft"], activeforeground=C["text"],
+                              font=(FONT, 10), padx=10, pady=5, cursor="hand2")
+        menu = tk.Menu(self.more, tearoff=0, bg=C["card"], fg=C["text"],
+                       activebackground=C["primary_soft"], activeforeground=C["primary"],
+                       bd=0)
+        menu.add_command(label="归位文件到归档目录", command=self.place_files)
+        menu.add_command(label="打开归档目录", command=self.open_archive_dir)
+        menu.add_separator()
+        menu.add_command(label="导出当前视图 CSV", command=self.export_csv)
+        self.more_menu = menu
+        self.more.bind("<Button-1>", self._post_more)
         self.hint = ttk.Label(bar, text="", style="Muted.TLabel")
         self.hint.pack(side="right")
 
@@ -105,27 +134,41 @@ class DocsView(ttk.Frame):
         has = self._selected() is not None
         state = "normal" if has else "disabled"
         self.btn_view.config(state=state)
-        if self.window.role == "admin":
+        if self.window.can("docs:archive"):
             self.btn_archive.config(state=state)
+        if self.window.can("docs:reject"):
             self.btn_reject.config(state=state)
 
     def _filtered_rows(self):
         rows = self.repo.list_docs(self.q.get().strip(), self.cat.get())
+        # 申请人视角只看本人材料；学号在设置里配置，未配置时为空
+        if self.window.role == "applicant":
+            sid = str(getattr(self.window, "applicant_sid", "") or "").strip()
+            rows = [x for x in rows if sid and x.get("sid") == sid]
         st = self.status.get()
         if st and st != "全部":
             rows = [x for x in rows if x.get("status") == st]
+        tlabel = self.type.get()
+        if tlabel and tlabel != "全部":
+            tkey = next((k for k, v in self.TYPE_OPTIONS if v == tlabel), "")
+            rows = [x for x in rows if (x.get("form_type") or "general") == tkey]
         return rows
 
     def refresh(self):
         rows = self._filtered_rows()
         self.tree.delete(*self.tree.get_children())
         for i, d in enumerate(rows):
-            row_tag = "zebra" if i % 2 else ""
             status = d.get("status", "") or ""
-            status_tag = self.STATUS_TAG.get(status, "orange")
-            self.tree.insert("", "end", tags=(d.get("id"), row_tag, status_tag), values=(
-                d.get("name", ""), d.get("cat", ""), d.get("who", ""), d.get("sid", ""),
-                d.get("time", ""), status, d.get("file") or "无附件"))
+            # 待审/驳回用极淡底色提示，其余走斑马纹；不给整行染字色，避免八列都变色
+            status_tag = self.STATUS_TAG.get(status, "")
+            row_tag = "zebra" if (i % 2 and not status_tag) else ""
+            tags = tuple(t for t in (d.get("id"), row_tag, status_tag) if t)
+            atts = d.get("attachments") or []
+            file_disp = ("%d 个附件" % len(atts)) if atts else (
+                "已归位" if d.get("arch") else (d.get("file") or "无附件"))
+            self.tree.insert("", "end", tags=tags, values=(
+                d.get("code", ""), d.get("name", ""), d.get("cat", ""), d.get("who", ""),
+                d.get("sid", ""), d.get("time", ""), status, file_disp))
         self.hint.config(text="共 %d 条" % len(rows))
 
         if rows:
@@ -133,15 +176,38 @@ class DocsView(ttk.Frame):
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
 
-        # 同学视角隐藏审核按钮
-        is_admin = self.window.role == "admin"
-        for b in (self.btn_archive, self.btn_reject):
+        # 按权限点控制审核/归位/导出：无权限的入口不出现，方法内也再拦一次
+        can_archive = self.window.can("docs:archive")
+        can_export = self.window.can("docs:export")
+        for b in (self.btn_view, self.btn_place, self.btn_csv, self.more,
+                  self.btn_archive, self.btn_reject):
             b.pack_forget()
-        if is_admin:
-            self.btn_archive.pack(side="left", padx=8)
-            self.btn_reject.pack(side="left")
         self.btn_view.pack(side="left")
+        if can_archive:
+            self.btn_archive.pack(side="left", padx=8)
+            self.btn_place.pack(side="left", padx=8)
+        if can_export:
+            self.btn_csv.pack(side="left", padx=8)
+        if can_archive or can_export:
+            self.more.pack(side="left", padx=8)
+        if self.window.can("docs:reject"):
+            self.btn_reject.pack(side="right")
+        self.more_menu.entryconfig("归位文件到归档目录",
+                                   state="normal" if can_archive else "disabled")
+        self.more_menu.entryconfig("导出当前视图 CSV",
+                                   state="normal" if can_export else "disabled")
+        self.more_menu.entryconfig("打开归档目录",
+                                   state="normal" if can_archive else "disabled")
         self._update_actions()
+
+    def _post_more(self, event=None):
+        x = self.more.winfo_rootx()
+        y = self.more.winfo_rooty() + self.more.winfo_height()
+        try:
+            self.more_menu.tk_popup(x, y)
+        finally:
+            self.more_menu.grab_release()
+        return "break"
 
     # ---------- 操作 ----------
     def _reason_dialog(self, title, prompt):
@@ -187,10 +253,41 @@ class DocsView(ttk.Frame):
         except Exception:
             pass
 
-        detail = ("名称：%s\n类别：%s\n提交人：%s（%s）\n提交时间：%s\n状态：%s\n附件：%s\n说明：%s"
-                  % (name, doc.get("cat", ""), doc.get("who", ""), doc.get("sid", ""),
+        ftype = doc.get("form_type") or "general"
+        tpl = form_template(ftype)
+        extra = doc.get("extra") or {}
+        detail = ("编号：%s\n类型：%s\n名称：%s\n类别：%s\n提交人：%s（%s）\n提交时间：%s\n状态：%s\n说明：%s"
+                  % (doc.get("code") or "—", tpl["label"], name, doc.get("cat", ""),
+                     doc.get("who", ""), doc.get("sid", ""),
                      doc.get("time", ""), doc.get("status", ""),
-                     doc.get("file") or "无", doc.get("note") or "无"))
+                     doc.get("note") or "无"))
+
+        for f in tpl["fields"]:
+            val = ""
+            if isinstance(extra, dict):
+                val = (extra.get(f["key"]) or "").strip()
+            if val:
+                detail += "\n%s：%s" % (f["label"], val)
+
+        atts = doc.get("attachments") or []
+        if atts:
+            detail += "\n附件（%d）：" % len(atts)
+            for a in atts:
+                line = "\n  · %s" % (a.get("name") or "未命名")
+                if a.get("path"):
+                    line += "（%s）" % a["path"]
+                detail += line
+        elif doc.get("file"):
+            detail += "\n附件：%s" % doc.get("file")
+        else:
+            detail += "\n附件：无"
+
+        doc_path = doc.get("path") or ""
+        if doc_path:
+            detail += "\n本机路径：%s" % doc_path
+        if doc.get("arch"):
+            detail += "\n归档文件：%s" % doc["arch"]
+            detail += "\n归档目录：%s" % os.path.dirname(doc["arch"])
         reason = doc.get("reason") or ""
         if reason:
             detail += "\n审核备注：%s" % reason
@@ -206,6 +303,9 @@ class DocsView(ttk.Frame):
         messagebox.showinfo("材料详情", detail)
 
     def archive(self):
+        if not self.window.can("docs:archive"):
+            self.window.toast("当前视角无权归档")
+            return
         doc_id = self._selected()
         if doc_id is None:
             self.window.toast("请先选择一条材料")
@@ -230,10 +330,65 @@ class DocsView(ttk.Frame):
                                   self.window.role_label())
             except Exception:
                 pass
+            note = self._place_one(doc_id, dict(saved, status="已归档"), quiet=True)
             self.window.refresh_all()
-            self.window.toast("已归档，并写入操作日志")
+            self.window.toast(("已归档，并写入操作日志" + note)[:60])
+
+    def _place_one(self, doc_id, doc, quiet=False):
+        """复制到归档根并按目录归位，返回一句提示。"""
+        res = archive.place(doc)
+        if res.get("path"):
+            self.repo.set_arch(doc_id, res["path"])
+        archive.write_index(self.repo.list_docs())
+        if quiet:
+            return " · " + res.get("note", "")
+        if res.get("copied"):
+            return "文件已归位：%s" % res["path"]
+        return res.get("note") or "已处理"
+
+    def open_archive_dir(self):
+        if not self.window.can("docs:archive"):
+            self.window.toast("当前视角无权打开归档目录")
+            return
+        base = archive.root()
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        if not archive.open_folder(base):
+            self.window.toast("无法打开 %s" % base)
+
+    def place_files(self):
+        """把当前筛选结果中的已归档材料统一归位到归档根目录。"""
+        if not self.window.can("docs:archive"):
+            self.window.toast("当前视角无权归位文件")
+            return
+        rows = self._filtered_rows()
+        target = [d for d in rows if d.get("status") == "已归档"]
+        if not target:
+            self.window.toast("当前筛选没有已归档材料可归位")
+            return
+        if not self.window.confirm(
+                "归位确认",
+                "将把当前筛选中的 %d 条已归档材料复制到归档目录。\n"
+                "同名同大小跳过，同名不同内容会自动加 _v2，不会覆盖。\n"
+                "确定继续吗？" % len(target)):
+            return
+        copied = 0
+        for d in target:
+            res = archive.place(d)
+            if res.get("copied"):
+                copied += 1
+            if res.get("path"):
+                self.repo.set_arch(d.get("id"), res["path"])
+        archive.write_index(self.repo.list_docs())
+        self.window.refresh_all()
+        self.window.toast("已处理 %d 条，复制 %d 个文件到归档目录" % (len(target), copied))
 
     def reject(self):
+        if not self.window.can("docs:reject"):
+            self.window.toast("当前视角无权驳回")
+            return
         doc_id = self._selected()
         if doc_id is None:
             self.window.toast("请先选择一条材料")
@@ -262,6 +417,9 @@ class DocsView(ttk.Frame):
             self.window.toast("已驳回，并写入操作日志")
 
     def export_csv(self):
+        if not self.window.can("docs:export"):
+            self.window.toast("当前视角无权导出材料")
+            return
         rows = self._filtered_rows()
         if not rows:
             self.window.toast("当前没有可导出的材料")
@@ -271,16 +429,20 @@ class DocsView(ttk.Frame):
             filetypes=[("CSV 文件", "*.csv")])
         if not path:
             return
-        headers = ["材料名称", "类别", "提交人", "学号", "提交时间", "状态",
-                   "附件", "备注", "审核备注"]
+        headers = ["材料编号", "材料类型", "材料名称", "类别", "提交人", "学号",
+                   "提交时间", "状态", "附件", "备注", "审核备注"]
         try:
             with open(path, "w", encoding="utf-8-sig", newline="") as f:
                 w = csv.writer(f)
                 w.writerow(headers)
                 for d in rows:
-                    w.writerow([d.get("name", ""), d.get("cat", ""), d.get("who", ""),
-                                d.get("sid", ""), d.get("time", ""), d.get("status", ""),
-                                d.get("file") or "", d.get("note", ""), d.get("reason") or ""])
+                    atts = d.get("attachments") or []
+                    att_names = "; ".join(a.get("name", "") for a in atts) or d.get("file") or ""
+                    tpl = form_template(d.get("form_type") or "general")
+                    w.writerow([d.get("code", ""), tpl["label"], d.get("name", ""),
+                                d.get("cat", ""), d.get("who", ""), d.get("sid", ""),
+                                d.get("time", ""), d.get("status", ""), att_names,
+                                d.get("note", ""), d.get("reason") or ""])
             self.window.toast("已导出 %d 条记录" % len(rows))
         except OSError as e:
             messagebox.showerror("导出失败", str(e))
