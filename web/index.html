@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>班级材料操作台 · 浏览器本地版 v0.15.0</title>
+<title>班级材料操作台 · 浏览器本地版 v0.16.0</title>
 <style>
   :root{
     color-scheme:light;
@@ -276,6 +276,10 @@
   /* 表头吸顶：长列表下滑时列名与排序指示始终可见 */
   .table-wrap thead th{position:sticky;top:0;z-index:3;background:var(--th-bg)}
   .table-wrap thead .sticky-l0,.table-wrap thead .sticky-l1{z-index:4}
+  .col-resize{position:absolute;top:0;right:0;bottom:0;width:8px;cursor:col-resize;z-index:6}
+  .col-resize::after{content:"";position:absolute;top:18%;right:0;bottom:18%;width:1px;background:transparent;transition:background .12s}
+  .col-resize:hover::after{background:var(--primary)}
+  body.col-resizing{cursor:col-resize;user-select:none}
   tbody tr.sel .sticky-l0,tbody tr.sel .sticky-l1{background:var(--primary-soft)}
   /* 密度三档 */
   .density-compact th,.density-compact td{padding:5px 10px}
@@ -582,6 +586,41 @@
   .rem-card .rc-go:hover{text-decoration:underline}
   .reminder-pop footer{padding:9px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--sub)}
 
+  /* 命令面板：搜材料 / 跳视图 / 执行动作 */
+  .cmdk-mask{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(8,10,14,.42);
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);display:none;z-index:40;padding:84px 16px 16px}
+  .cmdk-mask.show{display:flex;justify-content:center;align-items:flex-start}
+  .cmdk{width:660px;max-width:100%;max-height:min(72vh,600px);background:var(--card);
+    border:1px solid var(--line-strong);border-radius:14px;box-shadow:var(--shadow-lg);
+    overflow:hidden;display:flex;flex-direction:column}
+  .cmdk-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .cmdk-head .cmdk-ico{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;
+    background:var(--primary-soft);color:var(--primary);font-size:13px;font-weight:700;flex:none}
+  .cmdk-head input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);
+    font-size:15px;font-family:inherit;padding:4px 0}
+  .cmdk-head input::placeholder{color:var(--sub)}
+  .cmdk-head kbd{font-family:inherit;font-size:10px;color:var(--sub);border:1px solid var(--line);
+    border-radius:4px;padding:2px 5px;background:var(--card-soft)}
+  .cmdk-list{overflow:auto;padding:6px 7px 8px}
+  .cmdk-group{font-size:10px;color:var(--sub);letter-spacing:.05em;padding:9px 7px 4px}
+  .cmdk-item{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;cursor:pointer;
+    min-width:0;border:1px solid transparent}
+  .cmdk-item:hover{background:var(--bg-soft)}
+  .cmdk-item.on{background:var(--primary-soft);border-color:var(--bulk-line)}
+  .cmdk-item .ci-kind{flex:none;font-size:9.5px;line-height:1;color:var(--sub);background:var(--card-soft);
+    border:1px solid var(--line);border-radius:4px;padding:3px 5px;min-width:34px;text-align:center}
+  .cmdk-item.on .ci-kind{color:var(--primary);border-color:var(--bulk-line);background:var(--card)}
+  .cmdk-item .ci-main{flex:1;min-width:0}
+  .cmdk-item .ci-t{font-size:12.5px;color:var(--text);font-weight:550;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .cmdk-item .ci-s{font-size:10.5px;color:var(--sub);margin-top:2px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .cmdk-item .ci-enter{flex:none;font-size:10px;color:var(--sub);opacity:0}
+  .cmdk-item.on .ci-enter{opacity:1}
+  .cmdk-empty{padding:34px 16px;text-align:center;color:var(--sub);font-size:12px}
+  .cmdk footer{display:flex;gap:14px;padding:9px 14px;border-top:1px solid var(--line);
+    font-size:10.5px;color:var(--sub);background:var(--card-soft)}
+
   /* 材料模板配置 */
   .tpl-wrap{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;align-items:start}
   .tpl-list{padding:8px;display:flex;flex-direction:column;gap:3px}
@@ -650,6 +689,9 @@
     .role-select{flex:1 1 150px;margin-top:0}
     .theme-switch{flex:1 1 220px;margin-top:0}
     .applicant-id{flex:1 1 100%}
+    .cmdk-mask{padding:62px 10px 10px}
+    .cmdk{max-height:calc(100vh - 76px);border-radius:12px}
+    .cmdk-head input{font-size:14px}
   }
 
   /* 提交表单：桌面双列，窄屏回落单列，与桌面端骨架一致 */
@@ -748,7 +790,7 @@
     </div>
     <div class="statusbar">
       <span id="statusLeft">本地缓存模式 · 数据保存在本浏览器</span>
-      <span class="kbd-hint">Ctrl+K 搜索 · ↑↓ 选行 · Enter 打开详情</span>
+      <span class="kbd-hint">Ctrl+K 命令面板 · ↑↓ 选行 · Enter 打开详情</span>
       <span id="statusRight"></span>
     </div>
   </main>
@@ -764,6 +806,19 @@
   </header>
   <div class="rem-body" id="remBody"></div>
   <footer>仅汇总本机待办，不推送、不联网；处理后自动消失。</footer>
+</div>
+
+<div class="cmdk-mask" id="cmdkMask" aria-hidden="true">
+  <div class="cmdk" role="dialog" aria-modal="true" aria-label="命令面板">
+    <div class="cmdk-head">
+      <span class="cmdk-ico">⌘</span>
+      <input id="cmdkInput" type="text" autocomplete="off" spellcheck="false"
+        placeholder="搜索材料，或输入动作：模板 / 导出 / 提醒 / 主题" aria-label="命令面板搜索">
+      <kbd>ESC</kbd>
+    </div>
+    <div class="cmdk-list" id="cmdkList"></div>
+    <footer><span>↑↓ 选择</span><span>Enter 执行</span><span>Ctrl K 开关</span></footer>
+  </div>
 </div>
 
 <div class="mask" id="mask">
@@ -796,7 +851,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.15.0";
+var WEB_VERSION = "0.16.0";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -863,14 +918,14 @@ var TYPES = {
     label: "材料",
     searchKeys: ["name", "who", "sid"],
     columns: [
-      {key:"code",  label:"编号",     sortable:false},
-      {key:"name",  label:"材料名称", sortable:true, frozen:"l1"},
-      {key:"cat",   label:"类别",     sortable:false},
-      {key:"who",   label:"提交人",   sortable:true},
-      {key:"sid",   label:"学号",     sortable:true, num:true},
-      {key:"id",    label:"提交时间", sortable:true},
-      {key:"status",label:"状态",     sortable:true, tag:"status"},
-      {key:"file",  label:"附件",     sortable:false}
+      {key:"code",  label:"编号",     sortable:false, width:92},
+      {key:"name",  label:"材料名称", sortable:true, frozen:"l1", width:210},
+      {key:"cat",   label:"类别",     sortable:false, width:100},
+      {key:"who",   label:"提交人",   sortable:true, width:96},
+      {key:"sid",   label:"学号",     sortable:true, num:true, width:88},
+      {key:"id",    label:"提交时间", sortable:true, width:126},
+      {key:"status",label:"状态",     sortable:true, tag:"status", width:96},
+      {key:"file",  label:"附件",     sortable:false, width:120}
     ],
     fields: [
       {key:"name", label:"材料名称", type:"text",     required:true},
@@ -1836,6 +1891,69 @@ function hiddenCols(){ try { return JSON.parse(localStorage.getItem(COLS_KEY)) |
 function saveHiddenCols(arr){ try { localStorage.setItem(COLS_KEY, JSON.stringify(arr)); } catch(e){} }
 function visibleCols(){ var h = hiddenCols(); return DOC_COLS.filter(function(c){ return h.indexOf(c.key) < 0; }); }
 
+var WIDTH_KEY = "classconsole_web_col_widths";
+var COL_MIN_W = 60, COL_MAX_W = 520;
+function defaultColWidth(key){
+  var c = DOC_COLS.filter(function(x){ return x.key === key; })[0];
+  return (c && c.width) || 110;
+}
+function loadColWidths(){
+  var src = {};
+  try { src = JSON.parse(localStorage.getItem(WIDTH_KEY)) || {}; } catch(e){ src = {}; }
+  var out = {};
+  DOC_COLS.forEach(function(c){ out[c.key] = normalizeColWidth(src[c.key] || c.width || 110); });
+  return out;
+}
+function saveColWidths(){
+  try { localStorage.setItem(WIDTH_KEY, JSON.stringify(colWidths)); } catch(e){}
+}
+function normalizeColWidth(v){
+  var n = Number(v);
+  if (!isFinite(n)) n = 110;
+  return Math.max(COL_MIN_W, Math.min(COL_MAX_W, Math.round(n)));
+}
+function colWidth(key){ return colWidths[key] || defaultColWidth(key); }
+var colWidths = loadColWidths();
+
+function docsColgroupHtml(){
+  return '<colgroup><col style="width:36px">' +
+    visibleCols().map(function(c){ return '<col style="width:' + colWidth(c.key) + 'px">'; }).join("") +
+    "</colgroup>";
+}
+function resetColWidths(){
+  DOC_COLS.forEach(function(c){ colWidths[c.key] = normalizeColWidth(c.width || 110); });
+  saveColWidths();
+  renderDocs();
+}
+
+function docsTableWidth(){
+  var total = 36;
+  visibleCols().forEach(function(c){ total += colWidth(c.key); });
+  var wrap = document.getElementById("docsWrap");
+  var avail = wrap && wrap.clientWidth ? wrap.clientWidth : 0;
+  return Math.max(total, avail);
+}
+function applyColWidths(){
+  var table = document.querySelector("#docsWrap table");
+  if (!table) return;
+  var cols = table.querySelectorAll("col");
+  var vi = 1;
+  var vis = visibleCols();
+  if (cols[0]) cols[0].style.width = "36px";
+  vis.forEach(function(c){
+    if (cols[vi]) cols[vi].style.width = colWidth(c.key) + "px";
+    vi++;
+  });
+  table.style.width = docsTableWidth() + "px";
+}
+if (typeof window !== "undefined" && window.addEventListener) {
+  var _colResizeTimer = null;
+  window.addEventListener("resize", function(){
+    clearTimeout(_colResizeTimer);
+    _colResizeTimer = setTimeout(applyColWidths, 80);
+  });
+}
+
 var FILTER_KEY = "classconsole_web_prefs";
 var SIZE_OPTS = [10, 25, 50], DENS_OPTS = ["compact", "comfortable", "spacious"];
 function loadPrefs(){ try { return JSON.parse(localStorage.getItem(FILTER_KEY)) || {}; } catch(e){ return {}; } }
@@ -1910,11 +2028,12 @@ function buildDocs() {
           '<div class="vrow"><span>每页</span><select id="fSize">' + sizeOpts + '</select></div>' +
           '<div class="vrow"><span>密度</span><select id="fDensity">' + densOpts + '</select></div>' +
           '<div class="vrow"><span>列显示</span><div class="col-checks">' + colChecks + '</div></div>' +
+          '<div class="vrow"><span>列宽</span><button class="btn subtle mini" id="fResetCols" type="button">重置列宽</button></div>' +
         "</div></details>" +
       "</div></div>" +
     '<div class="chips" id="docChips"></div>' +
     '<div class="table-wrap" id="docsWrap"><table>' +
-      '<colgroup><col style="width:36px"></colgroup>' +
+      docsColgroupHtml() +
       '<thead id="docsHead"></thead>' +
       '<tbody id="docsBody"></tbody></table></div>' +
     '<div class="pager" id="docPager"></div>' +
@@ -1938,6 +2057,7 @@ function buildDocs() {
   document.getElementById("fStatus").onchange = function(e){ docsFilter.status = e.target.value; docsFilter.page = 1; renderDocs(); };
   document.getElementById("fSize").onchange = function(e){ docsFilter.pageSize = Number(e.target.value); docsFilter.page = 1; renderDocs(); };
   document.getElementById("fDensity").onchange = function(e){ docsFilter.density = e.target.value; renderDocs(); };
+  document.getElementById("fResetCols").onclick = resetColWidths;
   document.querySelectorAll(".col-cb").forEach(function(cb){
     cb.onchange = function(){
       var h = hiddenCols(), key = cb.dataset.key;
@@ -1973,9 +2093,12 @@ function renderHead() {
   var cols = visibleCols();
   var thHtml = cols.map(function(c){
     var sticky = c.frozen === "l1" ? " sticky-l1" : "";
-    if (!c.sortable) return "<th class='" + sticky.trim() + "'>" + esc(c.label) + "</th>";
-    var ind = docsFilter.sortKey === c.key ? '<span class="sort-ind">' + (docsFilter.sortDir === "asc" ? "▲" : "▼") + "</span>" : "";
-    return '<th class="sortable' + sticky + '" data-key="' + c.key + '">' + esc(c.label) + ind + "</th>";
+    var cls = c.sortable ? "sortable" : "";
+    var ind = c.sortable && docsFilter.sortKey === c.key
+      ? '<span class="sort-ind">' + (docsFilter.sortDir === "asc" ? "▲" : "▼") + "</span>" : "";
+    return "<th class='" + (cls + sticky).trim() + "' data-key='" + c.key + "'>" +
+      esc(c.label) + ind +
+      '<span class="col-resize" data-key="' + c.key + '" title="拖动调整列宽"></span></th>';
   }).join("");
   var headCb = '<th class="sticky-l0"><input type="checkbox" class="cb" id="cbAll" aria-label="全选本页"></th>';
   document.getElementById("docsHead").innerHTML = "<tr>" + headCb + thHtml + "</tr>";
@@ -1991,7 +2114,38 @@ function renderHead() {
       renderDocs();
     };
   });
+  bindColResize();
 }
+
+function bindColResize(){
+  document.querySelectorAll("#docsHead .col-resize").forEach(function(handle){
+    handle.onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); };
+    handle.onmousedown = function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var key = handle.dataset.key;
+      var th = handle.parentElement;
+      var startX = e.clientX;
+      var startW = th && th.getBoundingClientRect ? th.getBoundingClientRect().width : colWidth(key);
+      colWidths[key] = normalizeColWidth(startW);
+      applyColWidths();
+      if (document.body && document.body.classList) document.body.classList.add("col-resizing");
+      function move(ev){
+        colWidths[key] = normalizeColWidth(startW + ev.clientX - startX);
+        applyColWidths();
+      }
+      function up(){
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        if (document.body && document.body.classList) document.body.classList.remove("col-resizing");
+        saveColWidths();
+      }
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    };
+  });
+}
+
 
 function renderChips() {
   var chips = [];
@@ -2044,6 +2198,8 @@ function renderDocs() {
 
   var wrap = document.getElementById("docsWrap");
   wrap.className = "table-wrap density-" + docsFilter.density;
+  var cg = wrap.querySelector("colgroup");
+  if (cg) cg.innerHTML = docsColgroupHtml().replace(/^<colgroup>|<\/colgroup>$/g, "");
 
   var visCols = visibleCols();
   var trs = pageRows.map(function(d){
@@ -2160,6 +2316,7 @@ function renderDocs() {
   } else {
     bulk.classList.remove("show"); bulk.innerHTML = "";
   }
+  applyColWidths();
   savePrefs();
 }
 
@@ -3430,7 +3587,9 @@ document.getElementById("drawerClose").onclick = closeDrawer;
 document.getElementById("drawerMask").onclick = closeDrawer;
 document.addEventListener("keydown", function(e){
   if (e.key !== "Escape") return;
-  if (document.getElementById("reminderPop").classList.contains("show")) closeReminders();
+  var cm = document.getElementById("cmdkMask");
+  if (cm && cm.classList.contains("show")) closeCommandPalette();
+  else if (document.getElementById("reminderPop").classList.contains("show")) closeReminders();
   else if (document.getElementById("drawer").classList.contains("show")) closeDrawer();
 });
 
@@ -3457,12 +3616,168 @@ function bindGlobalSearch(){
   });
 }
 
-/* 快捷键：Ctrl/⌘ + K 聚焦顶栏全局搜索 */
+/* 快捷键：Ctrl/⌘ + K 打开命令面板（搜材料 / 跳视图 / 执行动作） */
+var cmdOpen = false, cmdResults = [], cmdSel = 0;
+
+function navGroupLabel(g){
+  return g === "main" ? "主流程" : (g === "follow" ? "跟进" : "辅助");
+}
+function docMatchesQuery(d, q){
+  if (!q) return true;
+  return [d.name, d.code, d.cat, d.who, d.sid, d.id, d.status, d.file, d.form_type]
+    .map(function(x){ return clean(x).toLowerCase(); }).join(" ").indexOf(q) >= 0;
+}
+function buildCommandResults(raw){
+  var q = clean(raw).toLowerCase();
+  var docs = visibleDocs(store.docs).slice().sort(function(a,b){ return b.id - a.id; })
+    .filter(function(d){ return docMatchesQuery(d, q); });
+  var views = NAV.filter(navVisible).map(function(n){
+    return { kind:"view", group:"跳转视图", title:n.title,
+      sub:"前往 · " + navGroupLabel(n.group), keywords:n.key,
+      run:function(){ switchView(n.key); } };
+  });
+  var acts = [
+    { kind:"act", group:"常用动作", title:"打开提醒中心", sub:"待审、已驳回、任务临期、名单未交", keywords:"提醒 待办 通知",
+      run:function(){ openReminders(); } }
+  ];
+  if (can("docs:create")) acts.push({ kind:"act", group:"常用动作", title:"提交新材料", sub:"跳到提交表单，按模板填字段", keywords:"提交 新建 材料",
+    run:function(){ switchView("submit"); } });
+  if (can("docs:export")) acts.push({ kind:"act", group:"常用动作", title:"导出当前台账 CSV", sub:"按当前筛选与排序导出", keywords:"导出 csv 表格",
+    run:function(){ switchView("docs"); exportCsv(); } });
+  acts.push({ kind:"act", group:"常用动作", title:"切换深浅色", sub:"在深色与浅色之间切换并记住", keywords:"主题 深色 浅色 外观",
+    run:function(){
+      var cur = document.documentElement.getAttribute && document.documentElement.getAttribute("data-theme");
+      var next = cur === "dark" ? "light" : "dark";
+      try { localStorage.setItem(THEME_KEY, next); } catch(e){}
+      applyTheme(next); syncThemeButtons(next);
+    } });
+  acts.push({ kind:"act", group:"常用动作", title:"重置台账列宽", sub:"恢复各列默认宽度，列显隐不变", keywords:"列宽 重置 表格",
+    run:function(){ switchView("docs"); resetColWidths(); } });
+  acts.push({ kind:"act", group:"常用动作", title:"清空台账筛选", sub:"关键词、类别、状态、类型全部复位", keywords:"筛选 清空 重置",
+    run:function(){
+      docsFilter.q = ""; docsFilter.cat = "全部"; docsFilter.type = "全部";
+      docsFilter.status = "全部"; docsFilter.page = 1;
+      switchView("docs");
+    } });
+
+  var docItems = docs.map(function(d){
+    return { kind:"doc", group:"材料", title:d.name,
+      sub:[d.code, d.cat, d.who, d.status].filter(Boolean).join(" · ") || ("编号 " + d.id),
+      run:function(){ jumpToDocFromPalette(d.id); } };
+  });
+  function hit(it){ if (!q) return true; return (it.title + " " + it.sub + " " + (it.keywords || ""))
+    .toLowerCase().indexOf(q) >= 0; }
+  var viewHits = views.filter(hit), actHits = acts.filter(hit);
+  var docHits = docItems.slice(0, q ? 12 : 4);
+  var out = q ? docHits.concat(viewHits, actHits) : actHits.concat(docHits, viewHits);
+  return out.slice(0, 22);
+}
+
+function renderCommandList(){
+  var list = document.getElementById("cmdkList");
+  if (!list) return;
+  if (!cmdResults.length) {
+    list.innerHTML = '<div class="cmdk-empty">没有匹配的命令或材料<br>试试“模板”“导出”“名单”或同学姓名</div>';
+    return;
+  }
+  if (cmdSel < 0) cmdSel = 0;
+  if (cmdSel >= cmdResults.length) cmdSel = cmdResults.length - 1;
+  var html = "", last = "";
+  cmdResults.forEach(function(it, i){
+    if (it.group !== last) { html += '<div class="cmdk-group">' + esc(it.group) + "</div>"; last = it.group; }
+    html += '<div class="cmdk-item' + (i === cmdSel ? " on" : "") + '" data-i="' + i + '">' +
+      '<span class="ci-kind">' + (it.kind === "doc" ? "材料" : (it.kind === "view" ? "视图" : "动作")) + "</span>" +
+      '<span class="ci-main"><div class="ci-t">' + esc(it.title) + '</div>' +
+      (it.sub ? '<div class="ci-s">' + esc(it.sub) + "</div>" : "") + "</span>" +
+      '<span class="ci-enter">Enter</span></div>';
+  });
+  list.innerHTML = html;
+  document.querySelectorAll("#cmdkList .cmdk-item").forEach(function(el){
+    el.onclick = function(){ activateCommand(Number(el.dataset.i)); };
+    el.onmouseenter = function(){ cmdSel = Number(el.dataset.i); paintCommandSelection(); };
+  });
+  var on = document.querySelector("#cmdkList .cmdk-item.on");
+  if (on && on.scrollIntoView) { try { on.scrollIntoView({ block:"nearest" }); } catch(e){} }
+}
+function paintCommandSelection(){
+  document.querySelectorAll("#cmdkList .cmdk-item").forEach(function(el){
+    el.classList.toggle("on", Number(el.dataset.i) === cmdSel);
+  });
+}
+function activateCommand(i){
+  var it = cmdResults[i];
+  if (!it) return;
+  closeCommandPalette();
+  if (it.run) it.run();
+}
+function openCommandPalette(){
+  var mask = document.getElementById("cmdkMask");
+  if (!mask) return;
+  mask.classList.add("show");
+  if (mask.setAttribute) mask.setAttribute("aria-hidden", "false");
+  cmdOpen = true; cmdSel = 0;
+  var input = document.getElementById("cmdkInput");
+  if (input) {
+    input.value = "";
+    if (input.focus) input.focus();
+    if (input.select) input.select();
+  }
+  cmdResults = buildCommandResults("");
+  renderCommandList();
+}
+function closeCommandPalette(){
+  var mask = document.getElementById("cmdkMask");
+  if (mask) {
+    mask.classList.remove("show");
+    if (mask.setAttribute) mask.setAttribute("aria-hidden", "true");
+  }
+  cmdOpen = false;
+  var input = document.getElementById("cmdkInput");
+  if (input && input.blur) input.blur();
+}
+function bindCommandPalette(){
+  var mask = document.getElementById("cmdkMask");
+  var input = document.getElementById("cmdkInput");
+  if (mask) mask.onclick = function(e){ if (e.target === mask) closeCommandPalette(); };
+  if (!input) return;
+  input.oninput = function(){
+    cmdSel = 0;
+    cmdResults = buildCommandResults(input.value);
+    renderCommandList();
+  };
+  input.onkeydown = function(e){
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!cmdResults.length) return;
+      cmdSel = e.key === "ArrowDown" ? Math.min(cmdResults.length - 1, cmdSel + 1) : Math.max(0, cmdSel - 1);
+      paintCommandSelection();
+      var on = document.querySelector("#cmdkList .cmdk-item.on");
+      if (on && on.scrollIntoView) { try { on.scrollIntoView({ block:"nearest" }); } catch(err){} }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      activateCommand(cmdSel);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeCommandPalette();
+    }
+  };
+}
+function jumpToDocFromPalette(id){
+  if (!findDoc(id)) return;
+  docsFilter.q = ""; docsFilter.cat = "全部"; docsFilter.type = "全部"; docsFilter.status = "全部";
+  var rows = filteredDocs();
+  var idx = rows.findIndex(function(d){ return d.id === id; });
+  if (idx >= 0) docsFilter.page = Math.floor(idx / docsFilter.pageSize) + 1;
+  state.selectedId = id;
+  switchView("docs");
+  openDoc(id);
+}
+
 document.addEventListener("keydown", function(e){
   if (!(e.ctrlKey || e.metaKey) || String(e.key || "").toLowerCase() !== "k") return;
   e.preventDefault();
-  var g = document.getElementById("globalSearch");
-  if (g && g.focus) { g.focus(); if (g.select) g.select(); }
+  if (cmdOpen) closeCommandPalette(); else openCommandPalette();
 });
 
 /* 台账键盘导航：上下移动选中行，回车打开详情；输入控件内不拦截 */
@@ -3492,6 +3807,7 @@ buildSubmit();
 buildCollect();
 bindRole();
 bindGlobalSearch();
+bindCommandPalette();
 bindReminders();
 initSidebar();
 initTheme();

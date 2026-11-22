@@ -306,5 +306,26 @@ sandbox.restore(bk.docs, bk.logs, bk.roster, bk.tasks);
 assert("恢复名单回填", sandbox.listRoster().length === 8);
 assert("恢复任务回填", sandbox.listTasks().length === 2);
 
+// 列宽记忆与命令面板
+assert("列宽下限收敛", sandbox.normalizeColWidth(10) === 60);
+assert("列宽上限收敛", sandbox.normalizeColWidth(9999) === 520);
+assert("列宽取整", sandbox.normalizeColWidth(137.6) === 138);
+sandbox.colWidths.name = 333;
+sandbox.saveColWidths();
+assert("列宽写入本机", sandbox.loadColWidths().name === 333);
+sandbox.colWidths.name = sandbox.defaultColWidth("name");
+sandbox.saveColWidths();
+assert("列宽恢复默认", sandbox.loadColWidths().name === 210);
+const cgEmpty = sandbox.docsColgroupHtml();
+assert("列组含复选框列", cgEmpty.indexOf('width:36px') >= 0);
+const cmdHome = sandbox.buildCommandResults("");
+const cmdGroups = cmdHome.map(function(x){ return x.group; });
+assert("命令面板含视图与动作", cmdGroups.indexOf("跳转视图") >= 0 && cmdGroups.indexOf("常用动作") >= 0);
+assert("命令面板首屏带最近材料", cmdGroups.indexOf("材料") >= 0);
+const cmdDoc = sandbox.buildCommandResults("奖学金");
+assert("命令面板可搜材料", cmdDoc.length === 1 && cmdDoc[0].kind === "doc");
+const cmdExp = sandbox.buildCommandResults("导出");
+assert("命令面板可搜动作", cmdExp.length === 1 && cmdExp[0].title.indexOf("导出") >= 0);
+
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);
