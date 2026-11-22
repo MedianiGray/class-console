@@ -58,6 +58,18 @@ assert("已归档 4", st.archived === 4);
 assert("已驳回 0", st.rejected === 0);
 assert("日志 6 条", sandbox.listLogs().length === 6);
 
+// 申请人学号隔离：只看本人；未填学号不展示任何人的材料
+sandbox.state.role = "applicant";
+sandbox.state.applicantSid = "250201";
+assert("申请人只看本人 2 条", sandbox.filteredDocs().length === 2);
+assert("申请人统计只算本人", sandbox.stats(sandbox.visibleDocs()).total === 2);
+sandbox.state.applicantSid = "";
+assert("未填学号不展示材料", sandbox.filteredDocs().length === 0);
+sandbox.state.role = "handler";
+sandbox.state.applicantSid = "250201";
+assert("经办人不受申请人学号影响", sandbox.filteredDocs().length === 7);
+sandbox.state.applicantSid = "";
+
 // 数据层回归
 assert("关键词检索命中", sandbox.listDocs("覃祖悦").length === 2);
 assert("类别筛选", sandbox.listDocs("", "宣传材料").length === 2);
@@ -172,6 +184,13 @@ assert("空学号拦截", emptyThrew);
 sandbox.removeRoster(newR.id);
 assert("移除名单", sandbox.findRosterBySid("250230") === null);
 
+// 已交口径：待审核/已归档算已交，只有已驳回进入需补交
+const rs = sandbox.addRoster("250299", "需补交生");
+const rc = sandbox.rosterCheck();
+assert("已驳回归入需补交", rc.resubmit.some(r => r.sid === "250299"));
+assert("需补交不计已交", rc.done === 6);
+sandbox.removeRoster(rs.id);
+
 const parsed = sandbox.parseRosterText("250231,钱七\n250232\t孙八\n\n250233，周九");
 assert("粘贴/CSV 解析三行", parsed.length === 3 && parsed[2].who === "周九");
 
@@ -188,6 +207,13 @@ let t1 = false; try { sandbox.addTask({ title:"", deadline:"2026-12-01" }); } ca
 assert("缺标题拦截", t1);
 let t2 = false; try { sandbox.addTask({ title:"x", deadline:"" }); } catch(e){ t2 = true; }
 assert("缺截止日期拦截", t2);
+let t3 = false; try { sandbox.addTask({ title:"x", deadline:"明天" }); } catch(e){ t3 = true; }
+assert("非法日期格式拦截", t3);
+const tf = sandbox.addTask({ title:"格式任务", deadline:"2026/12/01" });
+assert("日期归一为 YYYY-MM-DD", tf.deadline === "2026-12-01");
+sandbox.removeTask(tf.id);
+let t4 = false; try { sandbox.updateTask(nt.id, { deadline:"2026-02-30" }); } catch(e){ t4 = true; }
+assert("更新非法日期拦截", t4);
 sandbox.toggleTask(nt.id);
 assert("完成切换", sandbox.findTask(nt.id).done === true);
 sandbox.updateTask(nt.id, { title:"改名任务" });
