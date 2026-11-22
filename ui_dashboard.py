@@ -168,11 +168,15 @@ class DashboardView(ttk.Frame):
         can_task = self.window.can("task:manage")
         can_logs = self.window.can("logs:view")
         is_applicant = self.window.role == "applicant"
+        sid = str(getattr(self.window, "applicant_sid", "") or "").strip()
+        # 申请人只看本人材料；其余岗位看全量
+        display_docs = ([d for d in docs if sid and d.get("sid") == sid]
+                        if is_applicant else docs)
 
-        pending = [d for d in docs if d.get("status") == "待审核"]
-        archived = [d for d in docs if d.get("status") == "已归档"]
-        rejected = [d for d in docs if d.get("status") == "已驳回"]
-        counts = {"total": len(docs), "pending": len(pending),
+        pending = [d for d in display_docs if d.get("status") == "待审核"]
+        archived = [d for d in display_docs if d.get("status") == "已归档"]
+        rejected = [d for d in display_docs if d.get("status") == "已驳回"]
+        counts = {"total": len(display_docs), "pending": len(pending),
                   "archived": len(archived), "rejected": len(rejected)}
         for k, lbl in self.card_values.items():
             lbl.config(text=str(counts[k]))
@@ -180,10 +184,20 @@ class DashboardView(ttk.Frame):
         # 主视觉：数字 + 一句话说明 + 按钮文案
         if is_applicant:
             focus = pending + rejected
-            mine = [d for d in focus]
-            self.hero_num.config(text=str(len(mine)))
-            self.hero_hint.config(text="项材料等待处理或需补充" if mine else "暂无待处理材料")
-            self.btn_go.config(text="查看我的材料")
+            if not sid:
+                self.hero_num.config(text="0")
+                self.hero_hint.config(text="请先在设置里填写「申请人学号」")
+                self.btn_go.config(text="填写我的学号", command=self.window.open_settings)
+            elif focus:
+                self.hero_num.config(text=str(len(focus)))
+                self.hero_hint.config(text="项材料等待处理或需补充")
+                self.btn_go.config(text="查看我的材料",
+                                   command=lambda: self.window.switch("docs"))
+            else:
+                self.hero_num.config(text="0")
+                self.hero_hint.config(text="暂无待处理材料，提交后可在这里查看进度")
+                self.btn_go.config(text="提交材料",
+                                   command=lambda: self.window.switch("submit"))
         elif can_archive:
             focus = pending
             self.hero_num.config(text=str(len(pending)))
@@ -193,13 +207,15 @@ class DashboardView(ttk.Frame):
                                       (oldest.get("name", "")[:16], oldest.get("who", "")))
             else:
                 self.hero_hint.config(text="队列已清空，归档流程无积压")
-            self.btn_go.config(text="处理待审材料")
+            self.btn_go.config(text="处理待审材料",
+                               command=lambda: self.window.switch("docs"))
         else:
             focus = pending
             self.hero_num.config(text=str(len(pending)))
             self.hero_hint.config(text=("最近提交：%s" % pending[0].get("name", "")[:18])
                                   if pending else "暂无待审核材料")
-            self.btn_go.config(text="查看材料台账")
+            self.btn_go.config(text="查看材料台账",
+                               command=lambda: self.window.switch("docs"))
 
         # 待办表
         if is_applicant:
@@ -208,7 +224,8 @@ class DashboardView(ttk.Frame):
             tname = "待处理"
         else:
             tname = "待跟进"
-        self.bottom_title.config(text="%s %d 条 · 显示前 %d 条" % (tname, len(focus), min(len(focus), 4)))
+        self.bottom_title.config(text="%s %d 条 · 显示前 %d 条" %
+                                 (tname, len(focus), min(len(focus), 5)))
         self.doc_tree.delete(*self.doc_tree.get_children())
         for d in focus[:5]:
             self.doc_tree.insert("", "end", tags=(d.get("id"),), values=(
@@ -216,14 +233,20 @@ class DashboardView(ttk.Frame):
         if focus:
             self.doc_empty.pack_forget()
         else:
+            if is_applicant:
+                self.doc_empty.config(
+                    text=("填写学号后显示我的材料" if not sid
+                          else "暂无需要我关注的材料"))
+            else:
+                self.doc_empty.config(text="待办已清空，可以开始新的归档")
             self.doc_empty.pack(pady=(6, 0))
 
         # 类别分布：横条 + 百分比，数字右对齐
         for w in self.cat_box.winfo_children():
             w.destroy()
-        total = len(docs) or 1
+        total = len(display_docs) or 1
         for cat in self.CATS:
-            n = sum(1 for d in docs if d.get("cat") == cat)
+            n = sum(1 for d in display_docs if d.get("cat") == cat)
             row = tk.Frame(self.cat_box, bg=C["card"])
             row.pack(fill="x", pady=3)
             tk.Label(row, text=cat, width=9, anchor="w", bg=C["card"],
@@ -236,8 +259,8 @@ class DashboardView(ttk.Frame):
             tk.Label(row, text=str(n), width=3, anchor="e", bg=C["card"],
                      fg=C["text"], font=(FONT, 9)).pack(side="right")
         self.cat_total.config(text="共 %d 条 · 覆盖 %d 类" %
-                              (len(docs), len([c for c in self.CATS
-                                               if any(d.get("cat") == c for d in docs)])))
+                              (len(display_docs), len([c for c in self.CATS
+                                                       if any(d.get("cat") == c for d in display_docs)])))
 
         # 近期动态
         if can_logs:
