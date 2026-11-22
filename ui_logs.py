@@ -32,7 +32,7 @@ class LogsView(ttk.Frame):
         self.tree = ttk.Treeview(wrap, columns=self.COLS, show="headings",
                                  selectmode="browse")
         for c in self.COLS:
-            self.tree.heading(c, text=self.HEADS[c])
+            self.tree.heading(c, text=self.HEADS[c], anchor="w")
             self.tree.column(c, width=self.WIDTHS[c], anchor="w", stretch=True)
         self.tree.tag_configure("zebra", background=C["zebra"])
         self.tree.tag_configure("green", foreground=C["green"])
@@ -52,8 +52,10 @@ class LogsView(ttk.Frame):
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
-        self.btn_export = ttk.Button(bar, text="导出备份", command=self.export_backup)
-        self.btn_import = ttk.Button(bar, text="导入备份", command=self.import_backup)
+        self.btn_export = ttk.Button(bar, text="导出备份", style="Ghost.TButton",
+                                     command=self.export_backup)
+        self.btn_import = ttk.Button(bar, text="导入备份", style="Ghost.TButton",
+                                     command=self.import_backup)
         self.btn_export.pack(side="left")
 
     def refresh(self):
