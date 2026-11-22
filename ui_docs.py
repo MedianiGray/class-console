@@ -15,8 +15,8 @@ class DocsView(ttk.Frame):
     COLS = ("code", "name", "cat", "who", "sid", "time", "status", "file")
     HEADS = {"code": "编号", "name": "材料名称", "cat": "类别", "who": "提交人",
              "sid": "学号", "time": "提交时间", "status": "状态", "file": "附件"}
-    WIDTHS = {"code": 80, "name": 190, "cat": 88, "who": 78, "sid": 78,
-              "time": 112, "status": 80, "file": 112}
+    WIDTHS = {"code": 104, "name": 142, "cat": 64, "who": 56, "sid": 58,
+              "time": 84, "status": 62, "file": 60}
     CATS = ["全部", "团务材料", "奖助材料", "学分材料", "宣传材料", "班级事务"]
     TYPE_OPTIONS = [("全部", "全部"), ("general", "个人材料"), ("meeting", "主题班会记录"),
                     ("dorm", "宿舍走访记录"), ("pledg", "班级承诺书"),
@@ -29,6 +29,8 @@ class DocsView(ttk.Frame):
         super().__init__(master)
         self.repo = repo
         self.window = window
+        self._total = 0
+        self._row_iids = {}
         self._build()
 
     def _build(self):
@@ -65,14 +67,21 @@ class DocsView(ttk.Frame):
         sb.pack(side="left", padx=8)
         sb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
 
-        wrap = tk.Frame(self, bg=C["card"], highlightthickness=1,
+        body = ttk.Frame(self)
+        body.pack(fill="both", expand=True, padx=18)
+        # 先把右侧详情栏占住，再让左侧表格吃剩余宽度；反过来会把面板挤出窗口
+        self.detail = tk.Frame(body, bg=C["card"], width=284,
+                               highlightthickness=1, highlightbackground=C["line"])
+        self.detail.pack(side="right", fill="y", padx=(12, 0))
+        self.detail.pack_propagate(False)
+        wrap = tk.Frame(body, bg=C["card"], highlightthickness=1,
                         highlightbackground=C["line"])
-        wrap.pack(fill="both", expand=True, padx=18)
+        wrap.pack(side="left", fill="both", expand=True)
         self.tree = ttk.Treeview(wrap, columns=self.COLS, show="headings",
-                                 selectmode="browse")
+                                 selectmode="extended")
         for c in self.COLS:
             self.tree.heading(c, text=self.HEADS[c], anchor="w")
-            self.tree.column(c, width=self.WIDTHS[c], anchor="w", stretch=True)
+            self.tree.column(c, width=self.WIDTHS[c], minwidth=54, anchor="w", stretch=True)
         self.tree.tag_configure("zebra", background=C["zebra"])
         self.tree.tag_configure("pend", background=C["tag_orange"])
         self.tree.tag_configure("rej", background=C["tag_red"])
@@ -80,12 +89,15 @@ class DocsView(ttk.Frame):
         wrap.rowconfigure(0, weight=1)
         wrap.columnconfigure(0, weight=1)
         ysb = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=ysb.set)
+        hsb = ttk.Scrollbar(wrap, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=ysb.set, xscrollcommand=hsb.set)
         self.tree.grid(row=0, column=0, sticky="nsew", padx=(1, 0), pady=(1, 0))
         ysb.grid(row=0, column=1, sticky="ns", padx=(0, 1), pady=1)
+        hsb.grid(row=1, column=0, sticky="ew", padx=(1, 0), pady=(0, 1))
 
         self.empty = ttk.Label(wrap, text="暂无符合条件的材料，可到「提交材料」录入",
                                 style="Muted.TLabel")
+        self._build_detail()
 
         # 选中联动与快捷键
         self.tree.bind("<<TreeviewSelect>>", lambda e: self._update_actions())
@@ -117,27 +129,207 @@ class DocsView(ttk.Frame):
         self.hint = ttk.Label(bar, text="", style="Muted.TLabel")
         self.hint.pack(side="right")
 
+    def _build_detail(self):
+        """右侧常驻详情栏；列表上下文不丢，审批节点与附件集中在这里。"""
+        head = tk.Frame(self.detail, bg=C["card"])
+        head.pack(fill="x", padx=14, pady=(12, 4))
+        tk.Label(head, text="材料详情", bg=C["card"], fg=C["text"],
+                 font=(FONT, 11, "bold"), anchor="w").pack(side="left")
+        self.detail_count = tk.Label(head, text="", bg=C["card"], fg=C["sub"],
+                                     font=(FONT, 9), anchor="e")
+        self.detail_count.pack(side="right")
+        self.detail_text = tk.Text(
+            self.detail, width=29, height=1, wrap="word", bd=0, relief="flat",
+            bg=C["card"], fg=C["text"], insertbackground=C["card"],
+            font=(FONT, 9), padx=14, pady=4, cursor="arrow", state="disabled")
+        dsv = ttk.Scrollbar(self.detail, orient="vertical", command=self.detail_text.yview)
+        self.detail_text.configure(yscrollcommand=dsv.set)
+        self.detail_text.pack(side="left", fill="both", expand=True)
+        dsv.pack(side="right", fill="y", pady=(0, 10), padx=(0, 2))
+        self.detail_text.tag_configure("h1", font=(FONT, 13, "bold"), spacing3=2)
+        self.detail_text.tag_configure("meta", foreground=C["sub"], font=(FONT, 9))
+        self.detail_text.tag_configure("sec", font=(FONT, 9, "bold"), spacing1=12, spacing3=3)
+        self.detail_text.tag_configure("muted", foreground=C["sub"], font=(FONT, 9))
+        self.detail_text.tag_configure("accent", foreground=C["primary"], font=(FONT, 9, "bold"))
+        self.detail_text.tag_configure("ok", foreground=C["green"], font=(FONT, 9, "bold"))
+        self.detail_text.tag_configure("warn", foreground=C["orange"], font=(FONT, 9, "bold"))
+        self.detail_text.tag_configure("bad", foreground=C["red"], font=(FONT, 9, "bold"))
+        self.detail_text.tag_configure("line", foreground=C["line_strong"])
+        self.detail_text.tag_configure("node", foreground=C["primary"], font=(FONT, 10, "bold"))
+        self.detail_text.tag_configure("node_muted", foreground=C["sub"], font=(FONT, 10, "bold"))
+        self._render_detail()
+
+    def _detail_reset(self):
+        self.detail_text.config(state="normal")
+        self.detail_text.delete("1.0", "end")
+
+    def _write(self, text, tag=None):
+        self.detail_text.insert("end", text, tag or ())
+
+    def _render_detail(self):
+        ids = self._selected_ids()
+        self._detail_reset()
+        self.detail_count.config(text=(("%d 条" % len(ids)) if ids else ""))
+        if not ids:
+            self._write("未选择材料\n", "h1")
+            self._write("在左侧单击一行，这里会显示材料信息、审批节点和最近操作。\n"
+                        "Ctrl / Shift 可多选，批量归档或批量驳回。\n", "muted")
+            self.detail_text.config(state="disabled")
+            return
+        doc = self._find_doc(ids[0])
+        if not doc:
+            self._write("材料记录不存在，可能已被过滤或删除。\n", "muted")
+            self.detail_text.config(state="disabled")
+            return
+        if len(ids) > 1:
+            self._write("已选 %d 条材料\n" % len(ids), "warn")
+            self._write("批量归档 / 批量驳回会作用于全部已选材料；下方为第一条详情。\n", "muted")
+
+        name = doc.get("name") or "未命名"
+        status = doc.get("status") or ""
+        status_tag = {"已归档": "ok", "已驳回": "bad",
+                      "待审核": "warn", "待补材料": "warn"}.get(status, "muted")
+        self._write(name + "\n", "h1")
+        self._write("%s · %s · " % (doc.get("code") or "—", doc.get("cat") or "—"),
+                    "meta")
+        self._write(status, status_tag)
+        self._write("\n")
+
+        logs = [l for l in self.repo.list_logs() if l.get("obj") == name]
+        submit_log = next((l for l in logs if l.get("act") == "提交"), None)
+        audit_log = next((l for l in logs if l.get("act") in ("归档", "驳回")), None)
+
+        self._write("\n审批节点\n", "sec")
+        self._write("● ", "node")
+        self._write("提交  ", "accent")
+        submit_time = (submit_log or {}).get("time") or doc.get("time") or "—"
+        submit_who = (submit_log or {}).get("who") or doc.get("who") or "—"
+        self._write("%s  %s\n" % (submit_time, submit_who), "muted")
+        self._write("│\n", "line")
+
+        if status == "已归档":
+            self._write("● ", "node")
+            self._write("审核  ", "accent")
+            self._write("通过并归档\n", "ok")
+            if audit_log:
+                self._write("│  %s  %s（%s）\n" % (
+                    audit_log.get("time", ""), audit_log.get("who", ""),
+                    audit_log.get("role", "")), "muted")
+            reason = (doc.get("reason") or "").strip()
+            if reason:
+                self._write("│  意见：%s\n" % reason, "muted")
+            self._write("│\n", "line")
+            self._write("● ", "node")
+            self._write("归档  ", "accent")
+            self._write(doc.get("arch") or "已归档，路径未记录", "muted")
+            self._write("\n")
+        elif status in ("已驳回", "待补材料"):
+            self._write("● ", "node")
+            self._write("审核  ", "accent")
+            self._write("已驳回\n", "bad")
+            if audit_log:
+                self._write("│  %s  %s（%s）\n" % (
+                    audit_log.get("time", ""), audit_log.get("who", ""),
+                    audit_log.get("role", "")), "muted")
+            reason = (doc.get("reason") or "").strip()
+            if reason:
+                self._write("│  原因：%s\n" % reason, "muted")
+            self._write("│\n", "line")
+            self._write("○ ", "node_muted")
+            self._write("归档  ", "muted")
+            self._write("待补交后重新提交\n", "muted")
+        else:
+            self._write("○ ", "node_muted")
+            self._write("审核  ", "muted")
+            self._write("等待经办人处理\n", "warn")
+            self._write("│\n", "line")
+            self._write("○ ", "node_muted")
+            self._write("归档  ", "muted")
+            self._write("审核通过后落盘\n", "muted")
+
+        tpl = form_template(doc.get("form_type") or "general")
+        self._write("\n基本信息\n", "sec")
+        for label, value in (("编号", doc.get("code") or "—"), ("类型", tpl["label"]),
+                             ("类别", doc.get("cat") or "—"),
+                             ("提交人", "%s（%s）" % (doc.get("who") or "—",
+                                                      doc.get("sid") or "—")),
+                             ("提交时间", doc.get("time") or "—"),
+                             ("说明", doc.get("note") or "无")):
+            self._write("%s：%s\n" % (label, value), "muted")
+
+        extra = doc.get("extra") or {}
+        for f in tpl["fields"]:
+            val = ""
+            if isinstance(extra, dict):
+                val = (extra.get(f["key"]) or "").strip()
+            if val:
+                self._write("%s：%s\n" % (f["label"], val), "muted")
+
+        atts = doc.get("attachments") or []
+        self._write("\n附件\n", "sec")
+        if atts:
+            for a in atts:
+                line = "· %s" % (a.get("name") or "未命名")
+                if a.get("path"):
+                    line += "  %s" % a["path"]
+                self._write(line + "\n", "muted")
+        else:
+            self._write((doc.get("file") or "无附件") + "\n", "muted")
+
+        doc_path = doc.get("path") or ""
+        if doc_path:
+            self._write("\n本机路径\n", "sec")
+            self._write(doc_path + "\n", "muted")
+        if doc.get("arch"):
+            self._write("\n归档文件\n", "sec")
+            self._write(doc["arch"] + "\n", "muted")
+            self._write("目录：%s\n" % os.path.dirname(doc["arch"]), "muted")
+        reason = (doc.get("reason") or "").strip()
+        if reason:
+            self._write("\n审核备注\n", "sec")
+            self._write(reason + "\n", "muted")
+
+        if logs:
+            self._write("\n最近操作\n", "sec")
+            for l in logs[:5]:
+                self._write("%s  %s（%s）· %s\n" % (
+                    l.get("time", ""), l.get("who", ""), l.get("role", ""),
+                    l.get("act", "")), "muted")
+        self.detail_text.config(state="disabled")
+
     # ---------- 数据与状态 ----------
+    def _selected_ids(self):
+        ids = []
+        for iid in self.tree.selection():
+            try:
+                ids.append(int(self.tree.item(iid)["tags"][0]))
+            except (ValueError, IndexError, KeyError):
+                continue
+        return ids
+
     def _selected(self):
-        sel = self.tree.selection()
-        if not sel:
-            return None
-        try:
-            return int(self.tree.item(sel[0])["tags"][0])
-        except (ValueError, IndexError, KeyError):
-            return None
+        ids = self._selected_ids()
+        return ids[0] if ids else None
 
     def _find_doc(self, doc_id):
         return next((x for x in self.repo.list_docs() if x.get("id") == doc_id), None)
 
     def _update_actions(self):
-        has = self._selected() is not None
+        ids = self._selected_ids()
+        has = bool(ids)
         state = "normal" if has else "disabled"
         self.btn_view.config(state=state)
         if self.window.can("docs:archive"):
-            self.btn_archive.config(state=state)
+            self.btn_archive.config(
+                state=state,
+                text=("批量归档 (%d)" % len(ids)) if len(ids) > 1 else "归档")
         if self.window.can("docs:reject"):
-            self.btn_reject.config(state=state)
+            self.btn_reject.config(
+                state=state,
+                text=("批量驳回 (%d)" % len(ids)) if len(ids) > 1 else "驳回")
+        tail = (" · 已选 %d 条" % len(ids)) if ids else " · Ctrl/Shift 多选"
+        self.hint.config(text="共 %d 条%s" % (self._total, tail))
+        self._render_detail()
 
     def _filtered_rows(self):
         rows = self.repo.list_docs(self.q.get().strip(), self.cat.get())
@@ -156,7 +348,9 @@ class DocsView(ttk.Frame):
 
     def refresh(self):
         rows = self._filtered_rows()
+        keep = self._selected_ids()
         self.tree.delete(*self.tree.get_children())
+        self._row_iids = {}
         for i, d in enumerate(rows):
             status = d.get("status", "") or ""
             # 待审/驳回用极淡底色提示，其余走斑马纹；不给整行染字色，避免八列都变色
@@ -166,15 +360,24 @@ class DocsView(ttk.Frame):
             atts = d.get("attachments") or []
             file_disp = ("%d 个附件" % len(atts)) if atts else (
                 "已归位" if d.get("arch") else (d.get("file") or "无附件"))
-            self.tree.insert("", "end", tags=tags, values=(
+            iid = self.tree.insert("", "end", tags=tags, values=(
                 d.get("code", ""), d.get("name", ""), d.get("cat", ""), d.get("who", ""),
                 d.get("sid", ""), d.get("time", ""), status, file_disp))
-        self.hint.config(text="共 %d 条" % len(rows))
+            self._row_iids[d.get("id")] = iid
+        self._total = len(rows)
 
         if rows:
             self.empty.place_forget()
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
+
+        # 刷新后把原来选中的行重新定位；筛选或数据变化导致不在列表里时不强行保留
+        restored = [self._row_iids[i] for i in keep if i in self._row_iids]
+        if restored:
+            self.tree.selection_set(restored)
+            self.tree.focus(restored[0])
+            self.tree.see(restored[0])
+        self._update_actions()
 
         # 按权限点控制审核/归位/导出：无权限的入口不出现，方法内也再拦一次
         can_archive = self.window.can("docs:archive")
@@ -252,87 +455,62 @@ class DocsView(ttk.Frame):
             self.window.refresh_all()
         except Exception:
             pass
-
-        ftype = doc.get("form_type") or "general"
-        tpl = form_template(ftype)
-        extra = doc.get("extra") or {}
-        detail = ("编号：%s\n类型：%s\n名称：%s\n类别：%s\n提交人：%s（%s）\n提交时间：%s\n状态：%s\n说明：%s"
-                  % (doc.get("code") or "—", tpl["label"], name, doc.get("cat", ""),
-                     doc.get("who", ""), doc.get("sid", ""),
-                     doc.get("time", ""), doc.get("status", ""),
-                     doc.get("note") or "无"))
-
-        for f in tpl["fields"]:
-            val = ""
-            if isinstance(extra, dict):
-                val = (extra.get(f["key"]) or "").strip()
-            if val:
-                detail += "\n%s：%s" % (f["label"], val)
-
-        atts = doc.get("attachments") or []
-        if atts:
-            detail += "\n附件（%d）：" % len(atts)
-            for a in atts:
-                line = "\n  · %s" % (a.get("name") or "未命名")
-                if a.get("path"):
-                    line += "（%s）" % a["path"]
-                detail += line
-        elif doc.get("file"):
-            detail += "\n附件：%s" % doc.get("file")
-        else:
-            detail += "\n附件：无"
-
-        doc_path = doc.get("path") or ""
-        if doc_path:
-            detail += "\n本机路径：%s" % doc_path
-        if doc.get("arch"):
-            detail += "\n归档文件：%s" % doc["arch"]
-            detail += "\n归档目录：%s" % os.path.dirname(doc["arch"])
-        reason = doc.get("reason") or ""
-        if reason:
-            detail += "\n审核备注：%s" % reason
-
-        trace = [l for l in self.repo.list_logs() if l.get("obj") == name]
-        if trace:
-            lines = ["", "最近操作记录："]
-            for l in trace[:5]:
-                lines.append("  %s  %s（%s）· %s" % (
-                    l.get("time", ""), l.get("who", ""), l.get("role", ""), l.get("act", "")))
-            detail += "\n".join(lines)
-
-        messagebox.showinfo("材料详情", detail)
+        self._render_detail()
+        self.window.toast("详情已展开在右侧")
 
     def archive(self):
         if not self.window.can("docs:archive"):
             self.window.toast("当前视角无权归档")
             return
-        doc_id = self._selected()
-        if doc_id is None:
-            self.window.toast("请先选择一条材料")
+        ids = self._selected_ids()
+        if not ids:
+            self.window.toast("请先选择材料")
             return
-        doc = self._find_doc(doc_id)
-        if not doc:
+        docs = [d for d in (self._find_doc(i) for i in ids) if d]
+        if not docs:
             return
-        if doc["status"] == "已归档":
-            self.window.toast("该材料已是已归档状态")
+        todo = [d for d in docs if d.get("status") != "已归档"]
+        if not todo:
+            self.window.toast("所选材料均已归档")
             return
-        dlg = self._reason_dialog("归档确认", "归档「%s」，可补充归档备注（可选）：" % doc["name"])
+        if len(todo) == 1:
+            prompt = "归档「%s」，可补充归档备注（可选）：" % todo[0].get("name", "")
+        else:
+            prompt = ("将归档选中的 %d 条材料（已归档的会自动跳过）。\n"
+                      "归档备注会写入全部选中材料，可留空：" % len(todo))
+        dlg = self._reason_dialog("批量归档确认" if len(todo) > 1 else "归档确认", prompt)
         if dlg is None:
             return
-        try:
-            saved = self.repo.archive_doc(doc_id, dlg["reason"])
-        except Exception as e:
-            messagebox.showerror("归档失败", str(e))
-            return
-        if saved:
+        ok = skip = 0
+        fail = []
+        note = ""
+        for doc in docs:
+            if doc.get("status") == "已归档":
+                skip += 1
+                continue
             try:
-                self.repo.add_log("归档", saved.get("name", ""), self.window.operator_name,
-                                  self.window.role_label())
-            except Exception:
-                pass
-            note = self._place_one(doc_id, dict(saved, status="已归档"), quiet=True)
-            self.window.refresh_all()
-            self.window.toast(("已归档，并写入操作日志" + note)[:60])
+                saved = self.repo.archive_doc(doc.get("id"), dlg["reason"])
+            except Exception as e:
+                fail.append("%s：%s" % (doc.get("name") or "未命名", e))
+                continue
+            if saved:
+                try:
+                    self.repo.add_log("归档", saved.get("name", ""),
+                                      self.window.operator_name, self.window.role_label())
+                except Exception:
+                    pass
+                note = self._place_one(saved.get("id"), dict(saved, status="已归档"),
+                                      quiet=True)
+                ok += 1
+        self.window.refresh_all()
+        msg = "已归档 %d 条，并写入操作日志" % ok
+        if skip:
+            msg += "，跳过已归档 %d 条" % skip
+        if fail:
+            msg += "，失败 %d 条：%s" % (len(fail), "；".join(fail[:2]))
+        if len(todo) == 1 and not fail:
+            msg += note
+        self.window.toast(msg[:120])
 
     def _place_one(self, doc_id, doc, quiet=False):
         """复制到归档根并按目录归位，返回一句提示。"""
@@ -389,32 +567,51 @@ class DocsView(ttk.Frame):
         if not self.window.can("docs:reject"):
             self.window.toast("当前视角无权驳回")
             return
-        doc_id = self._selected()
-        if doc_id is None:
-            self.window.toast("请先选择一条材料")
+        ids = self._selected_ids()
+        if not ids:
+            self.window.toast("请先选择材料")
             return
-        doc = self._find_doc(doc_id)
-        if not doc:
+        docs = [d for d in (self._find_doc(i) for i in ids) if d]
+        if not docs:
             return
-        if doc["status"] == "已驳回":
-            self.window.toast("该材料已是已驳回状态")
+        todo = [d for d in docs
+                if d.get("status") not in ("已驳回", "已归档")]
+        if not todo:
+            self.window.toast("所选材料已驳回或已归档，无需再驳回")
             return
-        dlg = self._reason_dialog("驳回确认", "驳回「%s」，请填写驳回原因（可选）：" % doc["name"])
+        if len(todo) == 1:
+            prompt = "驳回「%s」，请填写驳回原因（可选）：" % todo[0].get("name", "")
+        else:
+            prompt = ("将驳回选中的 %d 条材料（已驳回/已归档的会自动跳过）。\n"
+                      "驳回原因会写入全部选中材料，可留空：" % len(todo))
+        dlg = self._reason_dialog("批量驳回确认" if len(todo) > 1 else "驳回确认", prompt)
         if dlg is None:
             return
-        try:
-            saved = self.repo.reject_doc(doc_id, dlg["reason"])
-        except Exception as e:
-            messagebox.showerror("驳回失败", str(e))
-            return
-        if saved:
+        ok = skip = 0
+        fail = []
+        for doc in docs:
+            if doc.get("status") in ("已驳回", "已归档"):
+                skip += 1
+                continue
             try:
-                self.repo.add_log("驳回", saved.get("name", ""), self.window.operator_name,
-                                  self.window.role_label())
-            except Exception:
-                pass
-            self.window.refresh_all()
-            self.window.toast("已驳回，并写入操作日志")
+                saved = self.repo.reject_doc(doc.get("id"), dlg["reason"])
+            except Exception as e:
+                fail.append("%s：%s" % (doc.get("name") or "未命名", e))
+                continue
+            if saved:
+                try:
+                    self.repo.add_log("驳回", saved.get("name", ""),
+                                      self.window.operator_name, self.window.role_label())
+                except Exception:
+                    pass
+                ok += 1
+        self.window.refresh_all()
+        msg = "已驳回 %d 条，并写入操作日志" % ok
+        if skip:
+            msg += "，跳过 %d 条" % skip
+        if fail:
+            msg += "，失败 %d 条：%s" % (len(fail), "；".join(fail[:2]))
+        self.window.toast(msg[:120])
 
     def export_csv(self):
         if not self.window.can("docs:export"):

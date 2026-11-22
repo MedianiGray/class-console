@@ -87,6 +87,39 @@ def main():
     assert str(dv.btn_view.cget("state")) == "disabled"
     print("归档驳回/禁用 OK")
 
+    # 桌面台账 0.14.2：多选批量与右侧审批节点详情
+    dv.refresh(); root.update()
+    ids_a = repo.add_doc({"name": "批量归档甲", "cat": "学分材料", "who": "甲",
+                          "sid": "250211", "status": "待审核"})
+    ids_b = repo.add_doc({"name": "批量归档乙", "cat": "奖助材料", "who": "乙",
+                          "sid": "250212", "status": "待审核"})
+    dv.refresh(); root.update()
+    rows = [dv._row_iids[i] for i in (ids_a, ids_b) if i in dv._row_iids]
+    assert len(rows) == 2, "批量测试材料未进入台账"
+    dv.tree.selection_set(rows)
+    dv._update_actions(); root.update()
+    assert len(dv._selected_ids()) == 2
+    assert "批量归档 (2)" in dv.btn_archive.cget("text")
+    detail = dv.detail_text.get("1.0", "end")
+    assert "审批节点" in detail and "提交" in detail and "批量" in detail
+    dv.archive(); root.update()
+    by_id = {d["id"]: d for d in repo.list_docs()}
+    assert all(by_id[i]["status"] == "已归档" for i in (ids_a, ids_b))
+
+    ids_c = repo.add_doc({"name": "批量驳回丙", "cat": "学分材料", "who": "丙",
+                          "sid": "250213", "status": "待审核"})
+    ids_d = repo.add_doc({"name": "批量驳回丁", "cat": "学分材料", "who": "丁",
+                          "sid": "250214", "status": "待审核"})
+    dv.refresh(); root.update()
+    rows = [dv._row_iids[i] for i in (ids_c, ids_d) if i in dv._row_iids]
+    dv.tree.selection_set(rows)
+    dv._update_actions()
+    assert "批量驳回 (2)" in dv.btn_reject.cget("text")
+    dv.reject(); root.update()
+    by_id = {d["id"]: d for d in repo.list_docs()}
+    assert all(by_id[i]["status"] == "已驳回" for i in (ids_c, ids_d))
+    print("多选批量/审批节点 OK")
+
     # 看板岗位显隐：申请人隐藏名单/任务 chip 与近期动态，审核者恢复
     dash = app.views["dashboard"]
     app.applicant_sid = "250203"
@@ -128,7 +161,7 @@ def main():
     print("日志备份附件恢复 OK")
 
     app.role_var.set("reviewer"); app._toggle_role(); root.update()
-    app.switch("dashboard"); root.update_idletasks()
+    app.switch("dashboard"); root.update()
     assert dash.roster_hint.winfo_ismapped(), "审核者应显示名单提示"
     assert dash.task_hint.winfo_ismapped(), "审核者应显示任务提示"
     assert dash.log_card.winfo_ismapped(), "审核者应显示近期动态"
