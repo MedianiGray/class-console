@@ -179,8 +179,21 @@ class SettingsDialog:
         combo.pack(side="left")
         combo.bind("<<ComboboxSelected>>", self._pick_start_view)
 
+        row4 = tk.Frame(card2, bg=C["card"])
+        row4.pack(fill="x", padx=14, pady=(0, 12))
+        tk.Label(row4, text="申请人学号", bg=C["card"], fg=C["text"],
+                 font=(FONT, 10)).pack(side="left", padx=(0, 10))
+        self.applicant_var = tk.StringVar(
+            value=str(getattr(self.window, "applicant_sid", "") or ""))
+        ent = ttk.Entry(row4, textvariable=self.applicant_var, width=16)
+        ent.pack(side="left")
+        ent.bind("<FocusOut>", self._save_applicant_sid)
+        ent.bind("<Return>", self._save_applicant_sid)
+        tk.Label(row4, text="用于「申请人」视角只显示本人材料", bg=C["card"],
+                 fg=C["sub"], font=(FONT, 8)).pack(side="left", padx=(8, 0))
+
         # 归档
-        card5 = self._section(wrap, "归档（评审材料落盘）")
+        card5 = self._section(wrap, "材料归档")
         apath = str(archive.root())
         tk.Label(card5, text=apath, bg=C["card"], fg=C["muted"], font=(FONT, 9),
                  anchor="w", wraplength=470, justify="left").pack(fill="x", padx=14,
@@ -301,6 +314,16 @@ class SettingsDialog:
         theme.save_ui("start_view", key)
         self.window.show_status("下次启动将打开「%s」" % label, temp=True)
 
+    def _save_applicant_sid(self, _e=None):
+        val = "".join(c for c in (self.applicant_var.get() or "") if c.isdigit())[:20]
+        if val != (self.applicant_var.get() or ""):
+            self.applicant_var.set(val)
+        if val == str(getattr(self.window, "applicant_sid", "") or ""):
+            return
+        theme.save_ui("applicant_sid", val)
+        self.window.applicant_sid = val
+        self.window.refresh_all()
+
     # ---------- 归档 ----------
     def _pick_archive_root(self):
         cur = str(archive.root())
@@ -385,6 +408,7 @@ class SettingsDialog:
         self.window.toast("备份已恢复")
 
     def close(self):
+        self._save_applicant_sid()
         try:
             self.top.grab_release()
         except tk.TclError:
