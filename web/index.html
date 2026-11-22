@@ -647,6 +647,25 @@
     background:var(--card);color:var(--text);font-size:12.5px}
   .tpl-note{margin-top:10px;font-size:11px;color:var(--sub);line-height:1.55}
   .tpl-empty{padding:24px 10px;text-align:center;color:var(--sub);font-size:12px}
+  .tpl-right{display:flex;flex-direction:column;gap:16px;min-width:0}
+  /* 归档规则：网页端只做设计与试算，不落盘 */
+  .arch-rule{padding:16px 18px}
+  .arch-rule .ar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .arch-rule h3{font-size:15px;font-weight:650;margin:0}
+  .arch-rule p{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .ar-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ar-field label{display:block;font-size:10.5px;color:var(--sub);margin-bottom:5px}
+  .ar-field input,.ar-field textarea{width:100%;border:1px solid var(--line);border-radius:7px;
+    background:var(--card);color:var(--text);font-size:12px;padding:8px 10px;font-family:inherit}
+  .ar-field textarea{min-height:78px;resize:vertical;line-height:1.55}
+  .ar-field.wide{grid-column:1 / -1}
+  .ar-vars{margin-top:8px;font-size:10.5px;color:var(--sub);line-height:1.7}
+  .ar-vars code{background:var(--bg-soft);border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)}
+  .ar-actions{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .ar-preview{margin-top:10px;padding:9px 11px;border:1px dashed var(--line);border-radius:7px;
+    background:var(--card-soft);font-size:11.5px;color:var(--muted);word-break:break-all;line-height:1.55}
+  .ar-preview b{color:var(--text);font-weight:600}
+  @media (max-width:760px){.ar-grid{grid-template-columns:1fr}}
 
   @media (max-width:1100px){
     .id-chip .ic-t{display:none}
@@ -3229,6 +3248,207 @@ function taskModal(editId) {
   }
 }
 
+/* ============ 归档规则：与桌面端同口径的目录/文件名模板 ============ */
+var ARCHIVE_RULE_KEY = "classconsole_web_archive_rule";
+var ARCHIVE_VARS = ["category","cat","student","sid","who","code","name","status","date","ext"];
+function archiveDefaultRule(){
+  return { dir_template:"{category}/{student}", file_template:"{code}_{name}", category_map:{} };
+}
+function archiveRuleClean(raw){
+  var src = (raw && typeof raw === "object") ? raw : {};
+  var map = {};
+  if (src.category_map && typeof src.category_map === "object") {
+    Object.keys(src.category_map).forEach(function(k){
+      var key = clean(k), val = clean(src.category_map[k]);
+      if (key && val) map[key] = val;
+    });
+  }
+  return {
+    dir_template: Object.prototype.hasOwnProperty.call(src, "dir_template")
+      ? clean(src.dir_template) : "{category}/{student}",
+    file_template: Object.prototype.hasOwnProperty.call(src, "file_template")
+      ? clean(src.file_template) : "{code}_{name}",
+    category_map: map
+  };
+}
+function loadArchiveRule(){
+  try { return archiveRuleClean(JSON.parse(localStorage.getItem(ARCHIVE_RULE_KEY))); }
+  catch(e){ return archiveDefaultRule(); }
+}
+function saveArchiveRule(rule){
+  var next = validateArchiveRule(rule);
+  try { localStorage.setItem(ARCHIVE_RULE_KEY, JSON.stringify(next)); }
+  catch(e){ throw new Error("本机缓存不可用，规则未能保存"); }
+  return next;
+}
+function archiveTplCheck(tpl, label, isFile){
+  tpl = clean(tpl);
+  if (!tpl) throw new Error(label + "不能为空");
+  if (isFile && /[\\/]/.test(tpl)) throw new Error("文件名模板不能带目录分隔符");
+  if (!isFile && (/^[A-Za-z]:/.test(tpl) || /^[\\/]/.test(tpl) ||
+      tpl.split(/[\\/]/).some(function(seg){ return seg === ".."; }))) {
+    throw new Error("目录模板不能是绝对路径或包含 ..");
+  }
+  var rest = tpl.replace(/\{([a-z]+)\}/g, function(all, key){
+    if (ARCHIVE_VARS.indexOf(key) < 0) throw new Error("未知变量 {" + key + "}");
+    return "";
+  });
+  if (/[{}]/.test(rest)) throw new Error("模板里有未闭合或写法错误的花括号");
+}
+function validateArchiveRule(raw){
+  var rule = archiveRuleClean(raw);
+  archiveTplCheck(rule.dir_template, "目录模板", false);
+  archiveTplCheck(rule.file_template, "文件名模板", true);
+  Object.keys(rule.category_map).forEach(function(k){
+    var v = clean(rule.category_map[k]);
+    if (!v) throw new Error("类别映射的目录不能为空：" + k);
+    if (/^[A-Za-z]:/.test(v) || /^[\\/]/.test(v) ||
+        v.split(/[\\/]/).some(function(seg){ return seg === ".."; })) {
+      throw new Error("类别映射不能是绝对路径或包含 ..：" + k);
+    }
+  });
+  return rule;
+}
+function archiveSafe(s, fallback, max){
+  s = clean(s).replace(/[\\/:*?"<>|]/g, "_").replace(/[\x00-\x1f]/g, "_").replace(/[. ]+$/g, "");
+  return (s || fallback).slice(0, max || 80);
+}
+function archiveExt(ext){
+  ext = clean(ext);
+  if (!ext) return "";
+  if (ext.charAt(0) !== ".") ext = "." + ext;
+  return archiveSafe(ext.replace(/^\./, ""), "", 8) ? ext.toLowerCase() : "";
+}
+function archiveSubdir(v){
+  v = clean(v).replace(/\\/g, "/");
+  var parts = v.split("/").map(function(seg){ return archiveSafe(seg, "", 60); })
+    .filter(function(seg){ return seg && seg !== "." && seg !== ".."; });
+  return parts.length ? parts.join("/") : "未分类";
+}
+function archiveVars(doc, rule, ext){
+  rule = rule || loadArchiveRule();
+  var cat = clean(doc.cat) || "未分类";
+  var sid = clean(doc.sid), who = clean(doc.who);
+  var student = sid && who ? sid + "-" + who : (who || sid || "待补学号");
+  var d = new Date();
+  var date = d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate());
+  return {
+    category: archiveSubdir(rule.category_map[cat] || cat),
+    cat: archiveSafe(cat, "未分类", 60),
+    student: archiveSafe(student, "待补学号", 60),
+    sid: archiveSafe(sid, "", 32),
+    who: archiveSafe(who, "", 40),
+    code: archiveSafe(doc.code, "", 40),
+    name: archiveSafe(doc.name, "材料", 80),
+    status: archiveSafe(doc.status, "", 40),
+    date: date,
+    ext: archiveExt(ext)
+  };
+}
+function archiveApplyTpl(tpl, vars){
+  return clean(tpl).replace(/\{([a-z]+)\}/g, function(all, key){
+    if (ARCHIVE_VARS.indexOf(key) < 0) throw new Error("未知变量 {" + key + "}");
+    return vars[key];
+  });
+}
+function archiveFileName(doc, rule, ext){
+  rule = validateArchiveRule(rule || loadArchiveRule());
+  var vars = archiveVars(doc, rule, ext || ".pdf");
+  var usesExt = /\{ext\}/.test(rule.file_template);
+  var name = archiveApplyTpl(rule.file_template, vars);
+  if (!vars.code && /\{code\}/.test(rule.file_template)) name = name.replace(/^[_\-]+/, "");
+  name = archiveSafe(name, vars.name, 120);
+  return usesExt ? name : name + vars.ext;
+}
+function archivePreviewPath(doc, rule, ext){
+  rule = validateArchiveRule(rule || loadArchiveRule());
+  var vars = archiveVars(doc, rule, ext || ".pdf");
+  var dir = archiveApplyTpl(rule.dir_template, vars).split(/[\\/]/).filter(Boolean).join("/");
+  return "归档根/" + (dir ? dir + "/" : "") + archiveFileName(doc, rule, ext || ".pdf");
+}
+function archiveSampleDoc(rule){
+  rule = rule || loadArchiveRule();
+  var docs = listDocs();
+  var mapped = Object.keys(rule.category_map || {});
+  function complete(d) { return clean(d.sid) && clean(d.who) && clean(d.code); }
+  for (var i = 0; i < docs.length; i++) {
+    if (complete(docs[i]) && mapped.indexOf(clean(docs[i].cat)) >= 0) return docs[i];
+  }
+  for (var j = 0; j < docs.length; j++) {
+    if (complete(docs[j])) return docs[j];
+  }
+  return docs[0] || {name:"体测成绩统计表", cat:"班级事务", who:"刘一帆", sid:"250222",
+                     code:"事务-002", status:"已归档"};
+}
+function archiveRuleHtml(){
+  var rule = loadArchiveRule();
+  var mapText = Object.keys(rule.category_map).sort().map(function(k){
+    return k + "=" + rule.category_map[k];
+  }).join("\n");
+  if (!mapText) mapText = "# 例：团务材料=01-团务/证明材料\n# 例：学分材料=02-学分";
+  var preview = archivePreviewPath(archiveSampleDoc(rule), rule);
+  return '<div class="card panel arch-rule">' +
+    '<div class="ar-head"><div><h3>归档规则</h3>' +
+      '<p>决定桌面端归位时的子目录与文件名。网页端只做规则设计与路径试算，不写入本机磁盘；实际落盘由桌面端执行。</p></div>' +
+      '<span class="tag muted">规则设计器</span></div>' +
+    '<div class="ar-grid">' +
+      '<div class="ar-field"><label>目录模板</label><input id="arDir" type="text" maxlength="120" value="' + esc(rule.dir_template) + '" autocomplete="off"></div>' +
+      '<div class="ar-field"><label>文件名模板（扩展名自动补）</label><input id="arFile" type="text" maxlength="120" value="' + esc(rule.file_template) + '" autocomplete="off"></div>' +
+      '<div class="ar-field wide"><label>类别映射（每行一条：类别=子目录）</label><textarea id="arMap" spellcheck="false">' + esc(mapText) + "</textarea></div>" +
+    "</div>" +
+    '<div class="ar-vars">可用变量：' + ARCHIVE_VARS.map(function(v){ return "<code>{" + v + "}</code>"; }).join(" ") +
+      "<br>未命中映射时沿用原类别；缺学号或姓名时用「待补学号」兜底。默认规则与桌面端一致。</div>" +
+    '<div class="ar-actions"><button class="btn primary" id="arSave">保存规则</button>' +
+      '<button class="btn" id="arPreview">试算路径</button>' +
+      '<button class="btn subtle" id="arReset">恢复默认</button>' +
+      '<span class="hint" id="arErr" style="color:var(--red);margin-left:0"></span></div>' +
+    '<div class="ar-preview" id="arPreviewBox"><b>试算：</b>' + esc(preview) + "</div></div>";
+}
+function archiveRuleFromForm(){
+  var map = {};
+  clean(document.getElementById("arMap").value).split(/\r?\n/).forEach(function(line){
+    line = line.trim();
+    if (!line || line.charAt(0) === "#") return;
+    var at = line.indexOf("=");
+    if (at < 0) throw new Error("类别映射格式应为 类别=子目录：" + line);
+    var k = line.slice(0, at).trim(), v = line.slice(at + 1).trim();
+    if (!k || !v) throw new Error("类别映射两侧都不能为空：" + line);
+    map[k] = v;
+  });
+  return { dir_template:document.getElementById("arDir").value,
+           file_template:document.getElementById("arFile").value,
+           category_map:map };
+}
+function bindArchiveRule(){
+  var save = document.getElementById("arSave");
+  if (save) save.onclick = function(){
+    var err = document.getElementById("arErr");
+    try { saveArchiveRule(archiveRuleFromForm()); }
+    catch(e){ if (err) err.textContent = e.message; return; }
+    if (err) err.textContent = "";
+    renderTemplates();
+    toast("归档规则已保存到本机网页偏好");
+  };
+  var calc = document.getElementById("arPreview");
+  if (calc) calc.onclick = function(){
+    var err = document.getElementById("arErr"), box = document.getElementById("arPreviewBox");
+    try {
+      var rule = validateArchiveRule(archiveRuleFromForm());
+      var path = archivePreviewPath(archiveSampleDoc(rule), rule);
+      if (box) box.innerHTML = "<b>试算：</b>" + esc(path);
+      if (err) err.textContent = "";
+    } catch(e){ if (err) err.textContent = e.message; if (box) box.innerHTML = "<b>试算失败：</b>" + esc(e.message); }
+  };
+  var reset = document.getElementById("arReset");
+  if (reset) reset.onclick = function(){
+    confirmModal("恢复默认归档规则", "目录与文件名模板将恢复为默认；已保存的类别映射会清空。", function(){
+      saveArchiveRule(archiveDefaultRule());
+      renderTemplates();
+      toast("归档规则已恢复默认");
+    });
+  };
+}
+
 /* ============ 材料模板：内置字段只读，附加字段可增删 ============ */
 function renderTemplates() {
   var kind = clean(state.tplType) || "general";
@@ -3270,6 +3490,7 @@ function renderTemplates() {
   document.getElementById("view-templates").innerHTML =
     '<div class="tpl-wrap">' +
       '<div class="card tpl-list">' + left + "</div>" +
+      '<div class="tpl-right">' +
       '<div class="card panel tpl-main">' +
         '<div class="tpl-head"><div><h3>' + esc(base.label) + " · 字段配置</h3>" +
           "<p>共 " + (base.fields.length + extras.length) + " 个字段，其中附加 " + extras.length + " 个；提交表单与详情共用同一份配置。</p></div>" +
@@ -3278,13 +3499,14 @@ function renderTemplates() {
         "<thead><tr><th>字段</th><th>类型</th><th>必填</th><th>来源 / 操作</th></tr></thead>" +
         "<tbody>" + (rows || '<tr><td colspan="4" class="tpl-empty">暂无字段</td></tr>') + "</tbody></table>" +
         addHtml +
-      "</div></div>";
+      "</div>" + archiveRuleHtml() + "</div></div>";
 
   document.querySelectorAll(".tpl-kind").forEach(function(b){
     b.onclick = function(){ state.tplType = b.dataset.kind; renderTemplates(); };
   });
   var toSubmit = document.getElementById("tplToSubmit");
   if (toSubmit) toSubmit.onclick = function(){ switchView("submit"); };
+  bindArchiveRule();
   var addBtn = document.getElementById("tplAdd");
   if (addBtn) addBtn.onclick = function(){
     var err = document.getElementById("tplErr");

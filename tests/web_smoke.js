@@ -327,5 +327,34 @@ assert("命令面板可搜材料", cmdDoc.length === 1 && cmdDoc[0].kind === "do
 const cmdExp = sandbox.buildCommandResults("导出");
 assert("命令面板可搜动作", cmdExp.length === 1 && cmdExp[0].title.indexOf("导出") >= 0);
 
+// 归档规则设计器：默认兼容、映射、变量与非法拦截
+const arDoc = { name:"体测成绩统计表", cat:"团务材料", who:"刘一帆", sid:"250222", code:"团务-007" };
+const arDefault = sandbox.archiveDefaultRule();
+const arPath = sandbox.archivePreviewPath(arDoc, arDefault);
+assert("默认规则路径沿用类别/学号姓名", arPath.indexOf("团务材料/250222-刘一帆") >= 0);
+assert("默认文件名编号_材料名", arPath.endsWith("团务-007_体测成绩统计表.pdf"));
+const arMap = sandbox.validateArchiveRule({
+  dir_template:"{category}/{student}", file_template:"{sid}-{name}{ext}",
+  category_map:{ "团务材料":"01-团务/证明材料" }
+});
+const arMapPath = sandbox.archivePreviewPath(arDoc, arMap);
+assert("类别映射支持多级子目录", arMapPath.indexOf("01-团务/证明材料/250222-刘一帆") >= 0);
+assert("文件名模板可改序并复用扩展名", arMapPath.endsWith("250222-体测成绩统计表.pdf"));
+sandbox.saveArchiveRule(arMap);
+assert("归档规则写入本机", sandbox.loadArchiveRule().category_map["团务材料"] === "01-团务/证明材料");
+sandbox.saveArchiveRule(arDefault);
+assert("归档规则恢复默认", Object.keys(sandbox.loadArchiveRule().category_map).length === 0);
+function arReject(rule) {
+  try { sandbox.validateArchiveRule(rule); return false; } catch(e){ return true; }
+}
+assert("拒绝绝对目录", arReject({ dir_template:"C:/越界" }));
+assert("拒绝空目录模板", arReject({ dir_template:"" }));
+assert("拒绝空文件名模板", arReject({ file_template:"" }));
+assert("拒绝目录穿越", arReject({ dir_template:"../越界" }));
+assert("拒绝文件名带目录", arReject({ file_template:"{name}/子目录" }));
+assert("拒绝未知变量", arReject({ file_template:"{unknown}" }));
+assert("拒绝映射穿越", arReject({ category_map:{ "团务材料":"../../越界" } }));
+assert("空编号不留前导下划线", sandbox.archiveFileName({ name:"材料", cat:"团务材料" }, arDefault).indexOf("_材料") < 0);
+
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);

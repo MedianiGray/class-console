@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# 设置文件改到临时目录，避免测试读写本机真实偏好
+os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-appdata-")
 from database import LocalRepository, RepositoryError, date_today  # noqa: E402
 
 
@@ -287,7 +289,43 @@ def main():
     assert open(res["path"], "r", encoding="utf-8").read() == before
     print("24. 归档冲突不覆盖 OK")
 
-    # 25. 模板附加字段：只增删附加，内置保留，随备份往返
+    # 25. 归档规则：类别映射、目录/文件模板、预览与非法拦截
+    default_preview = archive.preview_path(doc, base=base)
+    assert default_preview.endswith(os.path.join("团务材料", "250222-刘一帆",
+                                                  "团务-007_体测成绩统计表.pdf")), default_preview
+    rule = archive.validate_rule({
+        "dir_template": "{category}/{student}",
+        "file_template": "{sid}-{name}{ext}",
+        "category_map": {"团务材料": "01-团务/证明材料"},
+    })
+    custom_preview = archive.preview_path(doc, base=base, rules=rule)
+    assert os.path.join("01-团务", "证明材料", "250222-刘一帆") in custom_preview, custom_preview
+    assert custom_preview.endswith("250222-体测成绩统计表.pdf"), custom_preview
+    archive.save_rule(rule)
+    assert archive.load_rule() == rule
+    mapped_place = archive.place(doc, base=base)
+    assert mapped_place["copied"] is True, mapped_place
+    assert os.path.join("01-团务", "证明材料", "250222-刘一帆") in mapped_place["path"], mapped_place
+    assert os.path.basename(mapped_place["path"]) == "250222-体测成绩统计表.pdf", mapped_place
+    archive.save_rule(archive.default_rule())
+    assert archive.load_rule() == archive.default_rule()
+    for bad in (
+        {"dir_template": ""},
+        {"file_template": ""},
+        {"dir_template": "../越界"},
+        {"dir_template": "C:\\abs"},
+        {"file_template": "{name}/子目录"},
+        {"file_template": "{unknown}"},
+        {"category_map": {"团务材料": "../../越界"}},
+    ):
+        try:
+            archive.validate_rule(bad)
+            raise SystemExit("应拦截非法归档规则：%s" % bad)
+        except ValueError:
+            pass
+    print("25. 归档规则/映射/非法拦截 OK")
+
+    # 26. 模板附加字段：只增删附加，内置保留，随备份往返
     r.restore([], [], templates=[])
     base_meeting = len(r.form_template("meeting")["fields"])
     r.add_template_field("custom", "审核人", "text", True)
@@ -311,7 +349,7 @@ def main():
     assert len(rows) == 1 and rows[0]["label"] == "审核人"
     r.remove_template_field(rows[0]["id"])
     assert r.template_custom("custom") == []
-    print("25. 模板附加字段/备份往返 OK")
+    print("26. 模板附加字段/备份往返 OK")
 
     print("SELFTEST OK")
 

@@ -74,6 +74,14 @@ class SettingsDialog:
             btn.pack(side="left", padx=(0, 6))
         return box
 
+    def _rule_field(self, parent, label, var):
+        row = tk.Frame(parent, bg=C["card"])
+        row.pack(fill="x", padx=14, pady=(4, 0))
+        tk.Label(row, text=label, bg=C["card"], fg=C["sub"],
+                 font=(FONT, 8), width=10, anchor="w").pack(side="left")
+        ttk.Entry(row, textvariable=var).pack(side="left", fill="x", expand=True)
+        return row
+
     def _build(self):
         for ch in self.top.winfo_children():
             ch.destroy()
@@ -219,6 +227,42 @@ class SettingsDialog:
         self._seg(arow, [("copy", "复制文件"), ("mkdir", "仅建目录")],
                   "copy" if archive.auto_copy() else "mkdir",
                   self._pick_archive_copy).pack(side="left")
+
+        # 归档规则：目录模板 + 文件名模板 + 类别映射
+        rule = archive.load_rule()
+        tk.Label(card5, text="规则模板", bg=C["card"], fg=C["text"],
+                 font=(FONT, 10, "bold"), anchor="w").pack(fill="x", padx=14, pady=(2, 4))
+        self.rule_dir_var = tk.StringVar(value=rule["dir_template"])
+        self.rule_file_var = tk.StringVar(value=rule["file_template"])
+        self._rule_field(card5, "目录模板", self.rule_dir_var)
+        self._rule_field(card5, "文件名模板", self.rule_file_var)
+        maprow = tk.Frame(card5, bg=C["card"])
+        maprow.pack(fill="x", padx=14, pady=(4, 0))
+        tk.Label(maprow, text="类别映射（每行 类别=子目录）", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 8)).pack(anchor="w")
+        self.rule_map_text = tk.Text(maprow, height=4, wrap="word",
+                                     bg=C["surface_alt"], fg=C["text"], insertbackground=C["text"],
+                                     relief="flat", highlightthickness=1,
+                                     highlightbackground=C["line"], font=(FONT, 9))
+        self.rule_map_text.pack(fill="x", pady=(4, 0))
+        maps = "\n".join("%s=%s" % (k, v) for k, v in sorted(rule["category_map"].items()))
+        if not maps:
+            maps = "# 例：团务材料=01-团务/证明材料\n# 例：学分材料=02-学分"
+        self.rule_map_text.insert("1.0", maps)
+        tk.Label(card5, text="变量：" + "  ".join("{%s}" % k for k in
+                 ("category", "student", "code", "name", "cat", "sid", "who", "status", "date", "ext")),
+                 bg=C["card"], fg=C["sub"], font=(FONT, 8), wraplength=470,
+                 justify="left").pack(fill="x", padx=14, pady=(4, 0))
+        rbtns = tk.Frame(card5, bg=C["card"])
+        rbtns.pack(fill="x", padx=14, pady=(8, 4))
+        ttk.Button(rbtns, text="保存规则", command=self._save_archive_rule,
+                   style="Accent.TButton").pack(side="left")
+        ttk.Button(rbtns, text="试算路径", command=self._preview_archive_rule).pack(side="left", padx=8)
+        ttk.Button(rbtns, text="恢复默认", command=self._reset_archive_rule).pack(side="left")
+        self.rule_preview_var = tk.StringVar(value=archive.preview_path(self._sample_doc()))
+        tk.Label(card5, textvariable=self.rule_preview_var, bg=C["card"], fg=C["muted"],
+                 font=(FONT, 8), wraplength=470, justify="left", anchor="w").pack(
+            fill="x", padx=14, pady=(0, 12))
 
         # 材料模板：内置字段保留，只增删附加字段；弱实现但常驻
         card5b = self._section(wrap, "材料模板")
@@ -508,6 +552,66 @@ class SettingsDialog:
     def _pick_archive_copy(self, value):
         archive.set_auto_copy(value == "copy")
         self._redraw()
+
+    def _sample_doc(self, rules=None):
+        rules = rules or archive.load_rule()
+        docs = self.window.repo.list_docs()
+        mapped = set(rules.get("category_map") or {})
+        for d in docs:
+            if d.get("cat") in mapped and d.get("sid") and d.get("who") and d.get("code"):
+                return d
+        for d in docs:
+            if d.get("sid") and d.get("who") and d.get("code"):
+                return d
+        if docs:
+            return docs[0]
+        return {"name": "体测成绩统计表", "cat": "班级事务", "who": "刘一帆",
+                "sid": "250222", "code": "事务-002", "status": "已归档"}
+
+    def _archive_rule_from_form(self):
+        raw_map = self.rule_map_text.get("1.0", "end")
+        mapping = {}
+        for line in raw_map.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                raise ValueError("类别映射格式应为 类别=子目录：%s" % line)
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if not k or not v:
+                raise ValueError("类别映射两侧都不能为空：%s" % line)
+            mapping[k] = v
+        return {"dir_template": self.rule_dir_var.get().strip(),
+                "file_template": self.rule_file_var.get().strip(),
+                "category_map": mapping}
+
+    def _save_archive_rule(self):
+        try:
+            rule = archive.save_rule(self._archive_rule_from_form())
+        except ValueError as e:
+            messagebox.showwarning("规则不合法", str(e), parent=self.top)
+            return
+        self._redraw()
+        self.window.show_status("归档规则已保存", temp=True)
+        self.window.toast("归档规则已保存")
+
+    def _preview_archive_rule(self):
+        try:
+            rule = archive.validate_rule(self._archive_rule_from_form())
+            path = archive.preview_path(self._sample_doc(rule), rules=rule)
+        except ValueError as e:
+            self.rule_preview_var.set("试算失败：%s" % e)
+            return
+        self.rule_preview_var.set("试算：" + path)
+
+    def _reset_archive_rule(self):
+        if not messagebox.askyesno("恢复默认规则", "目录与文件名模板将恢复为默认，确定吗？",
+                                   parent=self.top):
+            return
+        archive.save_rule(archive.default_rule())
+        self._redraw()
+        self.window.show_status("归档规则已恢复默认", temp=True)
 
     def _open_dir(self):
         try:

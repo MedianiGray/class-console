@@ -7,10 +7,13 @@
 """
 import sys
 import json
+import os
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# 设置文件走临时目录，避免测试改写本机真实偏好
+os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-gui-appdata-")
 import tkinter as tk  # noqa: E402
 import ui_logs  # noqa: E402
 from database import LocalRepository  # noqa: E402
@@ -145,6 +148,27 @@ def main():
     assert any(k.startswith("cf_") for k in sv.extra_vars), "提交表单未重建附加字段"
     sd.close(); root.update()
     print("模板字段配置 OK")
+
+    # 归档规则：设置页保存、映射生效、恢复默认
+    import archive
+    import ui_settings
+    ui_settings.messagebox.showwarning = lambda *a, **k: None
+    sd2 = SettingsDialog(app); root.update()
+    sd2.rule_dir_var.set("{category}/{student}")
+    sd2.rule_file_var.set("{sid}-{name}")
+    sd2.rule_map_text.delete("1.0", "end")
+    sd2.rule_map_text.insert("1.0", "学分材料=01-学分")
+    sd2._save_archive_rule(); root.update()
+    saved = archive.load_rule()
+    assert saved["file_template"] == "{sid}-{name}", saved
+    assert saved["category_map"].get("学分材料") == "01-学分", saved
+    assert "01-学分" in sd2.rule_preview_var.get(), sd2.rule_preview_var.get()
+    sd2.rule_dir_var.set("")
+    sd2._preview_archive_rule(); root.update()
+    assert sd2.rule_preview_var.get().startswith("试算失败"), sd2.rule_preview_var.get()
+    archive.save_rule(archive.default_rule())
+    sd2.close(); root.update()
+    print("归档规则配置 OK")
 
     # 看板岗位显隐：申请人隐藏名单/任务 chip 与近期动态，审核者恢复
     dash = app.views["dashboard"]
