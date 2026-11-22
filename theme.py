@@ -466,7 +466,8 @@ def setup_ttk(root):
     # 表格：表头融入表面，不压深底色；行高留白给呼吸感
     style.configure("Treeview", rowheight=row_height(), background=C["card"],
                     fieldbackground=C["card"], foreground=C["text"],
-                    bordercolor=C["line"], borderwidth=0, font=(FONT, 10))
+                    bordercolor=C["card"], borderwidth=0, relief="flat",
+                    lightcolor=C["card"], darkcolor=C["card"], font=(FONT, 10))
     style.map("Treeview",
               background=[("selected", C["select"])],
               foreground=[("selected", C["text"])])
