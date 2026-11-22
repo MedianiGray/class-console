@@ -60,6 +60,7 @@ class MainWindow(ttk.Frame):
         super().__init__(master)
         self.repo = repo
         self.role = "handler"
+        self.applicant_sid = str(theme.load_ui("applicant_sid", "") or "").strip()
         self.current = theme.load_ui("start_view", "dashboard")
         self.operator_name = ROLES[self.role]["operator"]
         self._status_default = "本地模式 · 数据保存在本机"
