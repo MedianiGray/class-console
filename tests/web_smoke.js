@@ -58,6 +58,27 @@ assert("已归档 4", st.archived === 4);
 assert("已驳回 0", st.rejected === 0);
 assert("日志 6 条", sandbox.listLogs().length === 6);
 
+// 提醒中心快照：按岗位裁剪任务与名单，不做跨端推送
+const remH = sandbox.reminderSnapshot();
+assert("提醒快照含待审", remH.pending.length === 3);
+assert("经办人提醒可含任务与名单", remH.canTask && remH.canRoster);
+sandbox.state.role = "applicant";
+sandbox.state.applicantSid = "250201";
+const remA = sandbox.reminderSnapshot();
+assert("申请人提醒不含任务", !remA.canTask && remA.tasks.length === 0);
+assert("申请人提醒不含名单", !remA.canRoster && remA.absent.length === 0);
+sandbox.state.role = "handler";
+sandbox.state.applicantSid = "";
+
+// 审批节点：提交 → 审核 → 归档，已归档节点带经办人与时间
+const arcDoc = sandbox.listDocs().find(function(d){ return d.name === "反诈舞台剧剧照素材包"; });
+const arcHtml = sandbox.approvalNodesHtml(arcDoc);
+assert("已归档节点含归档动作", arcHtml.indexOf("通过并归档") >= 0 && arcHtml.indexOf("已登记") >= 0);
+assert("归档节点带经办人", arcHtml.indexOf("覃祖悦") >= 0);
+const pendDoc = sandbox.listDocs().find(function(d){ return d.status === "待审核"; });
+const pendHtml = sandbox.approvalNodesHtml(pendDoc);
+assert("待审节点提示等待处理", pendHtml.indexOf("等待经办人处理") >= 0);
+
 // 申请人学号隔离：只看本人；未填学号不展示任何人的材料
 sandbox.state.role = "applicant";
 sandbox.state.applicantSid = "250201";
@@ -102,6 +123,27 @@ const bakT = sandbox.backup();
 sandbox.restore(bakT.docs, bakT.logs, bakT.roster, bakT.tasks);
 const mt2 = sandbox.listDocs().find(d => d.name === "学风建设班会");
 assert("模板备份往返", mt2.form_type === "meeting" && mt2.extra.topic === "学风建设" && mt2.attachments.length === 1);
+
+// 模板附加字段：新增 / 合并进表单 / 备份往返 / 旧备份保留现有配置
+const cf = sandbox.addTemplateField("custom", { label:"佐证材料", type:"text", required:true });
+const cfForm = sandbox.formTemplate("custom");
+assert("附加字段写入模板", cfForm.fields.some(f => f.key === cf.key && f.label === "佐证材料" && f.required));
+assert("附加字段 key 前缀", /^cf_/.test(cf.key));
+let tplDup = false;
+try { sandbox.addTemplateField("custom", { label:"佐证材料", type:"text" }); } catch (e) { tplDup = true; }
+assert("同模板重名字段拦截", tplDup);
+let tplSel = false;
+try { sandbox.addTemplateField("custom", { label:"选项不足", type:"select", options:["A"] }); } catch (e) { tplSel = true; }
+assert("下拉少于两项拦截", tplSel);
+const tplBk = sandbox.backup();
+assert("备份含模板字段", tplBk.templates.custom.some(f => f.label === "佐证材料"));
+sandbox.restore(tplBk.docs, tplBk.logs, tplBk.roster, tplBk.tasks);
+assert("旧备份缺模板保留现有配置", sandbox.templateCustom("custom").some(f => f.label === "佐证材料"));
+sandbox.removeTemplateField("custom", cf.key);
+assert("附加字段可删除", sandbox.templateCustom("custom").length === 0);
+let builtinDel = false;
+try { sandbox.removeTemplateField("custom", "name"); } catch (e) { builtinDel = true; }
+assert("内置字段禁止删除", builtinDel);
 
 // CSV 转义
 assert("CSV 纯文本原样", sandbox.csvCell("普通文本") === "普通文本");

@@ -3,34 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>班级材料操作台 · 浏览器本地版</title>
+<title>班级材料操作台 · 浏览器本地版 v0.15.0</title>
 <style>
   :root{
     color-scheme:light;
-    --bg:#F4F6F9; --card:#FFFFFF; --line:#E5EAF1; --line-strong:#CFD8E4;
-    --text:#171E29; --muted:#65707E; --sub:#98A3B0; --bg-soft:#EFF2F7;
-    --primary:#3A58D8; --primary-hover:#2C46BE; --primary-soft:#EAEFFD;
+    --bg:#F1F4F9; --content:#F1F4F9; --sidebar:#FBFCFE; --card:#FFFFFF; --card-soft:#F6F8FC;
+    --line:#E3E8F0; --line-strong:#CBD4E1;
+    --text:#151C28; --muted:#5F6B7B; --sub:#8B96A6; --bg-soft:#F5F7FB;
+    --primary:#4F63EE; --primary-hover:#3D50D8; --primary-soft:#EDF0FE;
     --green:#128B4C; --orange:#C87A08; --red:#D23235; --zebra:#FAFBFD;
-    --th-bg:#F6F8FB; --row-hover:#F2F5F9; --tag-green:#E8F6EE; --tag-orange:#FDF2E1;
+    --th-bg:#F7F9FC; --row-hover:#F2F5FA; --tag-green:#E8F6EE; --tag-orange:#FDF2E1;
     --tag-red:#FDEDED; --tag-muted:#F0F2F6; --danger-line:#EFBABA; --danger-bg:#FDF0F0;
     --bulk-line:#D5DDFA; --row-removed:#F9FAFC; --scroll:#C3CEDB;
-    --radius:8px; --radius-sm:6px;
-    --shadow:0 1px 2px rgba(16,24,40,.04);
-    --shadow-lg:0 8px 28px rgba(16,24,40,.12);
+    --radius:10px; --radius-sm:7px;
+    --shadow:0 1px 2px rgba(16,24,40,.04),0 1px 1px rgba(16,24,40,.02);
+    --shadow-lg:0 10px 34px rgba(16,24,40,.14);
     --fs-xs:12px; --fs-sm:12.5px; --fs-base:13.5px; --fs-md:14px; --fs-lg:16px; --fs-xl:20px;
   }
   /* 深色主题：同一套 token 换值，组件样式不改 */
   html[data-theme="dark"]{
     color-scheme:dark;
-    --bg:#14161A; --card:#1B1E24; --line:#282C34; --line-strong:#3A404B;
-    --text:#E7EAF0; --muted:#98A2B1; --sub:#6C7583; --bg-soft:#22262F;
-    --primary:#7B93FF; --primary-hover:#93A8FF; --primary-soft:#232B44;
-    --green:#4CBE86; --orange:#DFA24B; --red:#EF6E6E; --zebra:#1E2128;
-    --th-bg:#1D2027; --row-hover:#232733; --tag-green:#16332A; --tag-orange:#332A19;
-    --tag-red:#392326; --tag-muted:#23272E; --danger-line:#482B2E; --danger-bg:#2C2022;
+    --bg:#0F1115; --content:#101318; --sidebar:#12151B; --card:#171A22; --card-soft:#1C2029;
+    --line:#252A34; --line-strong:#363D4A;
+    --text:#E8ECF4; --muted:#9AA4B4; --sub:#6C7685; --bg-soft:#1D222B;
+    --primary:#7D93FF; --primary-hover:#93A7FF; --primary-soft:#232B46;
+    --green:#4CBE86; --orange:#DFA24B; --red:#EF6E6E; --zebra:#1B1F27;
+    --th-bg:#1A1E26; --row-hover:#202530; --tag-green:#16332A; --tag-orange:#332A19;
+    --tag-red:#392326; --tag-muted:#222833; --danger-line:#482B2E; --danger-bg:#2C2022;
     --bulk-line:#2B3450; --row-removed:#181B21; --scroll:#3A4049;
     --shadow:0 1px 2px rgba(0,0,0,.35);
-    --shadow-lg:0 10px 34px rgba(0,0,0,.5);
+    --shadow-lg:0 12px 38px rgba(0,0,0,.52);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -451,6 +453,211 @@
     .identity{display:none}
     .topbar{height:48px;padding:0 16px}
   }
+
+  /* ===== v0.15 骨架：顶栏搜索 / 页头 / 分层卡片 / 提醒与模板 ===== */
+  body{background:var(--content)}
+  .sidebar{width:236px;background:var(--sidebar)}
+  .brand{height:64px;padding:0 16px 0 18px;border-bottom:1px solid var(--line);gap:10px}
+  .brand .logo{width:30px;height:30px;border-radius:8px}
+  .brand .logo svg{width:17px;height:17px}
+  .brand h1{font-size:14.5px;font-weight:650}
+  .brand p{font-size:11.5px}
+  .nav{padding:10px 10px;gap:2px}
+  .nav-group-label{padding:13px 12px 5px;font-size:10.5px;letter-spacing:.07em;color:var(--sub)}
+  .nav button{min-height:37px;padding:7px 10px;border-radius:7px;font-size:13.5px;border:1px solid transparent}
+  .nav button.active{background:var(--primary-soft);color:var(--primary);border-color:var(--bulk-line);font-weight:600}
+  .nav button:hover:not(.active){background:var(--bg-soft);color:var(--text)}
+  .side-bottom{padding:12px 14px;border-top:1px solid var(--line)}
+  .identity{padding:2px 2px 10px;gap:9px}
+  .identity .avatar{width:30px;height:30px;font-size:13px}
+  .role-select{margin-top:8px;background:var(--card);border-color:var(--line);min-height:33px;font-size:12.5px}
+  .theme-switch{margin-top:8px;background:var(--card-soft)}
+
+  .topbar{height:64px;padding:0 24px;background:var(--card);border-bottom:1px solid var(--line);gap:18px}
+  .topbar .tb-left{display:none}
+  .tb-search{flex:1;max-width:520px;min-width:0;position:relative;display:flex;align-items:center}
+  .tb-search > svg{position:absolute;left:12px;width:15px;height:15px;color:var(--sub);pointer-events:none}
+  .tb-search input{width:100%;height:38px;border:1px solid transparent;border-radius:8px;background:var(--bg-soft);
+    color:var(--text);padding:0 74px 0 35px;font-size:13px;transition:border-color .15s,box-shadow .15s}
+  .tb-search input::placeholder{color:var(--sub)}
+  .tb-search input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,99,238,.14);outline:none}
+  .tb-search kbd{position:absolute;right:9px;font-family:inherit;font-size:10.5px;color:var(--sub);
+    background:var(--card);border:1px solid var(--line);border-radius:5px;padding:2px 6px;pointer-events:none}
+  .topbar-right{display:flex;align-items:center;gap:9px;min-width:0}
+  .id-chip{display:flex;align-items:center;gap:9px;padding:4px 8px 4px 4px;border:1px solid var(--line);
+    border-radius:8px;background:var(--card-soft);min-width:0}
+  .id-chip .ic-avatar{width:27px;height:27px;border-radius:50%;background:var(--primary-soft);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0}
+  .id-chip .ic-t{display:flex;flex-direction:column;line-height:1.25;min-width:0}
+  .id-chip .ic-name{font-size:12.5px;font-weight:600;white-space:nowrap}
+  .id-chip .ic-role{font-size:10.5px;color:var(--sub);white-space:nowrap}
+  .icon-btn{position:relative;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;
+    border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--muted);cursor:pointer}
+  .icon-btn:hover{background:var(--bg-soft);color:var(--text);border-color:var(--line-strong)}
+  .icon-btn svg{width:17px;height:17px}
+  .icon-btn .badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;
+    background:var(--primary);color:#fff;font-size:10px;font-weight:600;display:none;align-items:center;justify-content:center;
+    line-height:1;box-shadow:0 0 0 2px var(--card)}
+  .icon-btn .badge.show{display:inline-flex}
+  .topbar-action{display:flex;align-items:center;gap:8px}
+
+  .content{padding:22px 28px 28px;min-width:0}
+  .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 18px}
+  .page-head .ph-main{min-width:0}
+  .page-head .eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.09em;color:var(--sub);text-transform:none}
+  .page-head h1{font-size:24px;line-height:1.25;font-weight:700;letter-spacing:-.025em;margin-top:4px}
+  .page-head .ph-sub{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .page-head .ph-side{display:flex;align-items:center;gap:8px;flex-shrink:0}
+
+  .card{box-shadow:var(--shadow)}
+  .panel{padding:18px 20px}
+  .panel h3{font-size:13.5px;margin-bottom:13px}
+  .hero{padding:0 0 18px;margin:0 0 18px}
+  .hero h2{font-size:20px;letter-spacing:-.02em}
+  .hero p{font-size:13px;color:var(--muted);max-width:720px}
+  .action-bar{padding:14px 18px;border:1px solid var(--bulk-line)}
+  .action-bar .ab-k{font-size:10.5px;letter-spacing:.08em}
+  .kpi{padding:14px 18px}
+  .kpi .num{font-size:23px}
+  .stat-card{padding:15px 18px}
+  .stat-card .num{font-size:21px}
+  .btn{min-height:34px;padding:0 14px;font-size:13px}
+  .btn.mini{min-height:28px;padding:3px 10px;font-size:12px}
+  .toolbar{padding:12px 0 10px}
+  .table-wrap{border:1px solid var(--line);border-radius:9px;background:var(--card);box-shadow:var(--shadow)}
+  th,td{padding:10px 13px;font-size:13px}
+  th{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.02em;background:var(--th-bg)}
+  tbody tr{height:42px}
+  tbody tr.clickable:active{background:var(--bg-soft)}
+  .tag{font-size:11.5px;padding:2px 8px;border-radius:5px}
+  .drawer{width:460px;box-shadow:-14px 0 40px rgba(0,0,0,.2)}
+  .drawer header{padding:18px 22px 13px}
+  .drawer header h3{font-size:15.5px}
+  .drawer-body{padding:18px 22px 24px}
+  .drawer footer{padding:13px 22px}
+  .drawer-section{padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--line)}
+  .drawer-section:last-child{border-bottom:0;margin-bottom:0}
+  .drawer-section h4{font-size:10.5px;letter-spacing:.08em;color:var(--sub);font-weight:600}
+  .kv{font-size:12.5px;grid-template-columns:80px 1fr}
+  .drawer .empty{padding:10px 0}
+  .nodes{position:relative;padding-left:18px;margin:2px 0 0 3px;border-left:1px solid var(--line)}
+  .node{position:relative;padding-bottom:15px}
+  .node:last-child{padding-bottom:0}
+  .node .nd-dot{position:absolute;left:-23px;top:3px;width:9px;height:9px;border-radius:50%;
+    background:var(--card);border:2px solid var(--primary)}
+  .node.off .nd-dot{border-color:var(--line-strong);background:var(--card-soft)}
+  .node.bad .nd-dot{border-color:var(--red)}
+  .node .nd-t{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .node .nd-time{font-size:10.5px;color:var(--sub);font-weight:400}
+  .node .nd-d{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.55;word-break:break-word}
+  .node.off .nd-t{color:var(--muted);font-weight:500}
+
+  /* 提醒中心：顶栏入口 + 四卡弹层 */
+  .reminder-pop{position:fixed;top:72px;right:24px;width:382px;max-width:calc(100vw - 24px);
+    max-height:calc(100vh - 88px);background:var(--card);border:1px solid var(--line);border-radius:12px;
+    box-shadow:var(--shadow-lg);display:none;flex-direction:column;z-index:29;overflow:hidden}
+  .reminder-pop.show{display:flex}
+  .reminder-pop header{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:14px 16px;border-bottom:1px solid var(--line)}
+  .reminder-pop header .rh-t{font-size:13.5px;font-weight:650}
+  .reminder-pop header .rh-s{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .reminder-pop .rh-close{border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;
+    padding:4px 6px;border-radius:6px;cursor:pointer}
+  .reminder-pop .rh-close:hover{background:var(--bg-soft);color:var(--text)}
+  .reminder-pop .rem-body{padding:12px;overflow:auto;display:flex;flex-direction:column;gap:9px}
+  .rem-card{border:1px solid var(--line);border-radius:9px;background:var(--card-soft);padding:11px 12px}
+  .rem-card .rc-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .rem-card .rc-title{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .rem-card .rc-title .dot{width:6px;height:6px;border-radius:50%;background:var(--primary)}
+  .rem-card .rc-count{font-size:16px;font-weight:700;line-height:1}
+  .rem-card .rc-list{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+  .rem-card .rc-row{font-size:11.5px;color:var(--muted);line-height:1.45;display:flex;gap:6px;min-width:0}
+  .rem-card .rc-row b{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rem-card .rc-row span{white-space:nowrap;color:var(--sub)}
+  .rem-card .rc-more{font-size:10.5px;color:var(--sub);margin-top:5px}
+  .rem-card .rc-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;
+    padding-top:7px;border-top:1px solid var(--line)}
+  .rem-card .rc-denied{font-size:11px;color:var(--sub);margin-top:6px}
+  .rem-card .rc-go{border:0;background:transparent;color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;padding:0}
+  .rem-card .rc-go:hover{text-decoration:underline}
+  .reminder-pop footer{padding:9px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--sub)}
+
+  /* 材料模板配置 */
+  .tpl-wrap{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;align-items:start}
+  .tpl-list{padding:8px;display:flex;flex-direction:column;gap:3px}
+  .tpl-kind{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid transparent;
+    background:transparent;border-radius:7px;padding:9px 10px;text-align:left;color:var(--muted);font-size:12.5px;cursor:pointer}
+  .tpl-kind:hover{background:var(--bg-soft);color:var(--text)}
+  .tpl-kind.on{background:var(--primary-soft);color:var(--primary);border-color:var(--bulk-line);font-weight:600}
+  .tpl-kind .tk-n{font-size:10.5px;color:var(--sub);font-weight:400}
+  .tpl-main{min-width:0}
+  .tpl-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .tpl-head h3{font-size:15px;font-weight:650;margin:0}
+  .tpl-head p{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .tpl-table{width:100%;border-collapse:collapse}
+  .tpl-table th,.tpl-table td{padding:9px 10px;border-bottom:1px solid var(--line);font-size:12.5px;text-align:left}
+  .tpl-table th{font-size:10.5px;color:var(--sub);font-weight:600;background:var(--th-bg)}
+  .tpl-table td .tpl-builtin{font-size:10.5px;color:var(--sub);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+  .tpl-add{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+  .tpl-add-grid{display:grid;grid-template-columns:minmax(0,1fr) 130px 76px auto;gap:8px;align-items:center}
+  .tpl-add-grid input,.tpl-add-grid select{border:1px solid var(--line);border-radius:7px;min-height:34px;padding:0 10px;
+    background:var(--card);color:var(--text);font-size:12.5px;width:100%;min-width:0}
+  .tpl-add-grid .tpl-req{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .tpl-add-sub{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:8px}
+  .tpl-add-sub input{border:1px solid var(--line);border-radius:7px;min-height:34px;padding:0 10px;
+    background:var(--card);color:var(--text);font-size:12.5px}
+  .tpl-note{margin-top:10px;font-size:11px;color:var(--sub);line-height:1.55}
+  .tpl-empty{padding:24px 10px;text-align:center;color:var(--sub);font-size:12px}
+
+  @media (max-width:1100px){
+    .id-chip .ic-t{display:none}
+    .content{padding:20px 20px 24px}
+    .tpl-wrap{grid-template-columns:1fr}
+    .tpl-list{flex-direction:row;flex-wrap:wrap;border-bottom:1px solid var(--line);border-radius:0}
+  }
+  @media (max-width:768px){
+    .sidebar{width:210px}
+    .topbar{height:56px;padding:0 14px}
+    .tb-search{max-width:none}
+    .tb-search kbd{display:none}
+    .tb-search input{padding-right:12px}
+    .topbar-action .btn{min-height:32px;padding:0 10px;font-size:12px}
+    .content{padding:16px 14px 20px}
+    .page-head h1{font-size:20px}
+    .page-head{align-items:flex-start;flex-direction:column;gap:8px}
+    .page-head .ph-side{width:100%}
+    .reminder-pop{top:60px;right:10px;width:calc(100vw - 20px)}
+    .tpl-add-grid{grid-template-columns:1fr 1fr;gap:6px}
+    .tpl-add-grid .tpl-req{grid-column:1}
+    .tpl-add-grid .btn{grid-column:1 / -1}
+    .tpl-add-sub{grid-template-columns:1fr}
+  }
+  @media (max-width:600px){
+    .sidebar{width:100%}
+    .sidebar.collapsed{width:100%}
+    .nav{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;padding:4px 12px}
+    .nav button{flex:0 0 auto;justify-content:center;min-height:38px}
+    .brand{height:auto;padding:12px 16px 8px;border-bottom:0}
+    .brand p{display:none}
+    .topbar{height:52px;padding:0 12px;gap:10px}
+    .id-chip{display:none}
+    .content{padding:14px 12px 18px}
+    .page-head{margin-bottom:12px}
+    .reminder-pop{top:56px}
+    .topbar-action .btn{display:none}
+  }
+
+  /* 提交表单：桌面双列，窄屏回落单列，与桌面端骨架一致 */
+  .form-card{max-width:860px;padding:24px 26px}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:24px}
+  .form-grid .field{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:9px 0}
+  .form-grid .field.wide{grid-column:1 / -1}
+  .form-grid #sExtra{display:contents}
+  .form-grid .field textarea{min-height:84px}
+  @media (max-width:768px){
+    .form-grid{grid-template-columns:1fr}
+    .form-grid .field.wide{grid-column:1}
+  }
 </style>
 </head>
 <body>
@@ -464,7 +671,7 @@
       </div>
       <div class="bt">
         <h1>班级操作台</h1>
-        <p>材料流转 · 本地闭环 · 不上云</p>
+        <p>材料流转 · 本地闭环</p>
       </div>
       <button class="collapse-btn" id="collapseBtn" aria-label="折叠侧栏" title="折叠侧栏"></button>
     </div>
@@ -498,18 +705,39 @@
 
   <main class="main">
     <div class="topbar">
-      <div class="tb-left">
-        <h2 id="viewTitle">工作台概览</h2>
-        <div class="tb-sub" id="viewSub"></div>
+      <div class="tb-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
+        </svg>
+        <input id="globalSearch" type="search" placeholder="搜索材料、学号、编号..." autocomplete="off" aria-label="全局搜索">
+        <kbd>Ctrl K</kbd>
       </div>
-      <div class="topbar-right" id="topbarRight"></div>
+      <div class="topbar-right" id="topbarRight">
+        <div class="topbar-action" id="topbarAction"></div>
+        <div class="id-chip" title="当前岗位视角">
+          <span class="ic-avatar" id="topAvatar">学</span>
+          <span class="ic-t">
+            <span class="ic-name" id="topName">学委 · 经办人</span>
+            <span class="ic-role" id="topRole">本地模式</span>
+          </span>
+        </div>
+        <button class="icon-btn" id="reminderBtn" aria-label="提醒中心" title="提醒中心">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+            <path d="M10 21h4"/>
+          </svg>
+          <span class="badge" id="reminderBadge"></span>
+        </button>
+      </div>
     </div>
     <div class="content">
+      <div class="page-head" id="pageHead"></div>
       <section class="view" id="view-dashboard"></section>
       <section class="view" id="view-docs"></section>
       <section class="view" id="view-roster"></section>
       <section class="view" id="view-tasks"></section>
       <section class="view" id="view-submit"></section>
+      <section class="view" id="view-templates"></section>
       <section class="view" id="view-collect"></section>
       <section class="view" id="view-logs"></section>
     </div>
@@ -519,6 +747,18 @@
       <span id="statusRight"></span>
     </div>
   </main>
+</div>
+
+<div class="reminder-pop" id="reminderPop" aria-label="提醒中心" aria-hidden="true">
+  <header>
+    <div>
+      <div class="rh-t">提醒中心</div>
+      <div class="rh-s" id="remSub">按当前岗位与待办汇总</div>
+    </div>
+    <button class="rh-close" id="remClose" aria-label="关闭提醒">×</button>
+  </header>
+  <div class="rem-body" id="remBody"></div>
+  <footer>仅汇总本机待办，不推送、不联网；处理后自动消失。</footer>
 </div>
 
 <div class="mask" id="mask">
@@ -551,6 +791,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
+var WEB_VERSION = "0.15.0";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -595,7 +836,20 @@ var FORM_TEMPLATES = {
 };
 var FORM_PREFIX = {};
 Object.keys(FORM_TEMPLATES).forEach(function(k){ FORM_PREFIX[k] = FORM_TEMPLATES[k].prefix; });
-function formTemplate(t){ return FORM_TEMPLATES[clean(t)] || FORM_TEMPLATES.custom; }
+/* 附加字段：内置字段固定保留，附加字段按模板单独存、随备份导出 */
+var TPL_TYPES = [["text","单行文本"],["textarea","多行文本"],["date","日期"],["select","下拉"]];
+var TPL_TYPE_LABEL = {}; TPL_TYPES.forEach(function(t){ TPL_TYPE_LABEL[t[0]] = t[1]; });
+var TPL_KINDS = [["general","个人材料"],["meeting","主题班会记录"],["dorm","宿舍走访记录"],
+  ["pledg","班级承诺书"],["talk","违纪约谈记录"],["custom","自定义材料"]];
+var TPL_KIND_LABEL = {}; TPL_KINDS.forEach(function(k){ TPL_KIND_LABEL[k[0]] = k[1]; });
+function templateCustom(t){
+  var key = clean(t), map = (store && store.templates && typeof store.templates === "object") ? store.templates : {};
+  return Array.isArray(map[key]) ? map[key] : [];
+}
+function formTemplate(t){
+  var key = clean(t), base = FORM_TEMPLATES[key] || FORM_TEMPLATES.custom;
+  return { label:base.label, prefix:base.prefix, fields:base.fields.concat(templateCustom(key)) };
+}
 
 /* ============ 类型配置（schema 驱动：列 / 字段 / 校验 / 动作 / 导出共用一份定义） ============ */
 /* 新增一类业务时，在此追加一段类型配置即可；列表、表单、校验、动作管线按配置渲染。 */
@@ -674,7 +928,7 @@ var SEED_TASKS = [
 ];
 
 /* ============ 本地缓存存储层（对齐仓库契约） ============ */
-var store = { docs: [], logs: [], roster: [], tasks: [], seq: { doc: 0, log: 0 } };
+var store = { docs: [], logs: [], roster: [], tasks: [], templates: {}, seq: { doc: 0, log: 0 } };
 var APPLICANT_KEY = "classconsole_web_applicant_sid";
 function loadApplicantSid(){
   try { return clean(localStorage.getItem(APPLICANT_KEY)); } catch(e){ return ""; }
@@ -690,6 +944,62 @@ function nowStr() {
 }
 function clean(v){ return v == null ? "" : String(v).trim(); }
 
+/* 模板附加字段：仅接受 text/textarea/date/select，key 统一 cf_ 前缀，内置字段不受影响 */
+function normalizeTemplateField(raw){
+  if (!raw || typeof raw !== "object") return null;
+  var type = clean(raw.type);
+  if (TPL_TYPES.map(function(t){ return t[0]; }).indexOf(type) < 0) return null;
+  var label = clean(raw.label), key = clean(raw.key);
+  if (!label || !key) return null;
+  var options = Array.isArray(raw.options) ? raw.options.map(clean).filter(Boolean) : [];
+  if (type === "select" && options.length < 2) return null;
+  return { key:key, label:label, type:type, required:!!raw.required, options:type === "select" ? options : [] };
+}
+function normalizeTemplates(src){
+  var out = {};
+  Object.keys(src || {}).forEach(function(k){
+    if (!FORM_TEMPLATES[k] || !Array.isArray(src[k])) return;
+    var fields = src[k].map(normalizeTemplateField).filter(Boolean);
+    if (fields.length) out[k] = fields;
+  });
+  return out;
+}
+function addTemplateField(formType, data){
+  var type = clean(formType), def = FORM_TEMPLATES[type];
+  var label = clean(data && data.label);
+  if (!def) throw new Error("未知模板类型");
+  if (!label) throw new Error("请填写字段名称");
+  if (label.length > 16) throw new Error("字段名称最多 16 个字");
+  var kind = clean(data && data.type) || "text";
+  if (TPL_TYPES.map(function(t){ return t[0]; }).indexOf(kind) < 0) throw new Error("未知字段类型");
+  var options = Array.isArray(data.options) ? data.options.map(clean).filter(Boolean) : [];
+  if (kind === "select" && options.length < 2) throw new Error("下拉字段至少需要两个选项");
+  var exists = templateCustom(type).some(function(f){ return f.label === label; }) ||
+    def.fields.some(function(f){ return f.label === label; });
+  if (exists) throw new Error("该模板已有同名字段");
+  store.templates = store.templates || {};
+  store.templates[type] = templateCustom(type);
+  store.templates[type].push({
+    key:"cf_" + Math.random().toString(36).slice(2, 8),
+    label:label, type:kind, required:!!(data && data.required),
+    options:kind === "select" ? options : []
+  });
+  saveStore();
+  return store.templates[type][store.templates[type].length - 1];
+}
+function removeTemplateField(formType, key){
+  var type = clean(formType);
+  key = clean(key);
+  if (key.indexOf("cf_") !== 0) throw new Error("内置字段不能删除");
+  var before = templateCustom(type);
+  var after = before.filter(function(f){ return f.key !== key; });
+  if (before.length === after.length) return false;
+  store.templates = store.templates || {};
+  if (after.length) store.templates[type] = after; else delete store.templates[type];
+  saveStore();
+  return true;
+}
+
 function loadStore() {
   try {
     var raw = localStorage.getItem(STORE_KEY);
@@ -700,6 +1010,7 @@ function loadStore() {
         store.logs = data.logs.filter(function(l){ return l && typeof l === "object"; });
         store.roster = Array.isArray(data.roster) ? data.roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
         store.tasks = Array.isArray(data.tasks) ? data.tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
+        store.templates = (data.templates && typeof data.templates === "object") ? normalizeTemplates(data.templates) : {};
         store.seq = data.seq || { doc: store.docs.length, log: store.logs.length };
         backfillCodes();
         saveStore();
@@ -716,6 +1027,7 @@ function loadStore() {
     var ds = d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
     return { id: i+1, title:t.title, cat:t.cat, scope:t.scope, note:t.note, done:t.done, deadline:ds };
   });
+  store.templates = {};
   store.seq = { doc: store.docs.length, log: store.logs.length };
   backfillCodes();
   saveStore();
@@ -992,8 +1304,8 @@ function stats(docs) {
     rejected: docs.filter(function(d){ return d.status === "已驳回"; }).length
   };
 }
-function backup(){ return { docs: store.docs, logs: store.logs, roster: store.roster, tasks: store.tasks }; }
-function restore(docs, logs, roster, tasks) {
+function backup(){ return { docs: store.docs, logs: store.logs, roster: store.roster, tasks: store.tasks, templates: store.templates }; }
+function restore(docs, logs, roster, tasks, templates) {
   if (!Array.isArray(docs) || !Array.isArray(logs)) throw new Error("备份数据结构不正确");
   store.docs = docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
   store.logs = logs.filter(function(l){ return l && typeof l === "object"; }).map(function(l,i){
@@ -1002,6 +1314,8 @@ function restore(docs, logs, roster, tasks) {
   });
   store.roster = Array.isArray(roster) ? roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
   store.tasks = Array.isArray(tasks) ? tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
+  if (templates && typeof templates === "object") store.templates = normalizeTemplates(templates);
+  else if (!store.templates || typeof store.templates !== "object") store.templates = {};
   store.seq = { doc: store.docs.length, log: store.logs.length };
   backfillCodes();
   saveStore();
@@ -1011,7 +1325,8 @@ function restore(docs, logs, roster, tasks) {
 var state = {
   role: "handler", current: "dashboard", operatorName: "学委",
   applicantSid: loadApplicantSid(),
-  selectedId: null, persist: true, drawerId: null, selected: {}
+  selectedId: null, persist: true, drawerId: null, selected: {},
+  tplType: "general", tplDirty: false
 };
 var docsFilter = { q: "", cat: "全部", type: "全部", status: "全部", sortKey: "id", sortDir: "desc",
   page: 1, pageSize: 10, density: "comfortable" };
@@ -1045,6 +1360,7 @@ var NAV = [
   {key:"submit",    title:"提交材料",   ico:"submit",    perm:"docs:create", group:"main"},
   {key:"roster",    title:"名单核对",   ico:"roster",    perm:"roster:manage", group:"follow"},
   {key:"tasks",     title:"任务跟踪",   ico:"tasks",      perm:"task:manage", group:"follow"},
+  {key:"templates", title:"材料模板",   ico:"sliders",    perm:"template:config", group:"follow"},
   {key:"collect",   title:"文件夹收集", ico:"folder",    perm:"docs:collect", group:"aux", tier:"aux"},
   {key:"logs",      title:"操作日志",   ico:"logs",      perm:"logs:view",   group:"aux", tier:"aux"}
 ];
@@ -1060,8 +1376,8 @@ var ROLES = {
   applicant: { label:"申请人", operator:"同学" }
 };
 var PERMISSIONS = {
-  handler:   ["docs:create","docs:edit","docs:import","docs:collect","docs:reject","docs:export","roster:manage","task:manage","logs:view"],
-  reviewer:  ["docs:create","docs:edit","docs:import","docs:collect","docs:archive","docs:reject","docs:export","roster:manage","task:manage","backup:restore","logs:view"],
+  handler:   ["docs:create","docs:edit","docs:import","docs:collect","docs:reject","docs:export","roster:manage","task:manage","template:config","logs:view"],
+  reviewer:  ["docs:create","docs:edit","docs:import","docs:collect","docs:archive","docs:reject","docs:export","roster:manage","task:manage","template:config","backup:restore","logs:view"],
   manager:   ["docs:collect","docs:archive","docs:reject","docs:export","roster:manage","task:manage","template:config","backup:restore","logs:view","config:manage"],
   applicant: ["docs:create","docs:edit"]
 };
@@ -1128,6 +1444,25 @@ function buildNav() {
     });
   });
 }
+var VIEW_META = {
+  dashboard:{eyebrow:"工作台 · 今日概览", sub:"从提交到归档全程留痕；数据只在本机浏览器，不上云"},
+  docs:     {eyebrow:"工作台 · 材料流程", sub:"提交、审核、归档与留痕在同一张台账里"},
+  roster:   {eyebrow:"协同跟进 · 名单", sub:"应交、已交、未交与需补交分开核对"},
+  tasks:    {eyebrow:"协同跟进 · 任务", sub:"截止日期、临期与逾期跟踪"},
+  submit:   {eyebrow:"材料流程 · 提交", sub:"登记材料，审核通过后归档"},
+  templates:{eyebrow:"协同跟进 · 模板", sub:"内置字段固定保留，附加字段可按需增删"},
+  collect:  {eyebrow:"辅助工具 · 文件夹", sub:"比对目录变化，勾选后登记入账"},
+  logs:     {eyebrow:"辅助工具 · 留痕", sub:"提交、审核与导入导出的本机记录"}
+};
+function renderPageHead(target){
+  var head = document.getElementById("pageHead");
+  if (!head || !target) return;
+  var meta = VIEW_META[target.key] || {};
+  head.innerHTML = '<div class="ph-main"><div class="eyebrow">' + esc(meta.eyebrow || "工作台") + '</div>' +
+    '<h1>' + esc(target.title) + '</h1>' +
+    '<div class="ph-sub" id="pageSub">' + esc(meta.sub || "当前岗位 · " + roleLabel() + " · 数据只在本机") + '</div></div>' +
+    '<div class="ph-side" id="pageSide"></div>';
+}
 function switchView(key) {
   var target = NAV.find(function(n){ return n.key === key; });
   if (!target || !navVisible(target)) {
@@ -1140,29 +1475,151 @@ function switchView(key) {
     var btn = document.querySelector('.nav button[data-key="' + n.key + '"]');
     if (btn) btn.classList.toggle("active", n.key === key);
   });
-  document.getElementById("viewTitle").textContent = target.title;
+  var vt = document.getElementById("viewTitle");
+  if (vt) vt.textContent = target.title;
+  renderPageHead(target);
+  if (key === "submit" && state.tplDirty) { buildSubmit(); state.tplDirty = false; }
   refreshAll();
 }
 function refreshAll() {
   var s = stats(visibleDocs());
   document.getElementById("statusRight").textContent = "材料 " + s.total + " 条 · 日志 " + store.logs.length + " 条";
   var persistTip = state.persist === false ? " · 存储不可用(仅本次会话)" : "";
-  document.getElementById("statusLeft").textContent = "本地缓存 · " + roleLabel() + persistTip;
-  var sub = document.getElementById("viewSub");
-  if (sub) sub.textContent = "当前岗位 · " + roleLabel() + " · 数据只在本机";
-  var tr = document.getElementById("topbarRight");
-  if (state.current === "dashboard" && can("docs:create")) {
-    tr.innerHTML = '<button class="btn primary" id="dashNew">提交新材料</button>';
-    document.getElementById("dashNew").onclick = function(){ switchView("submit"); };
-  } else {
-    tr.innerHTML = "";
+  document.getElementById("statusLeft").textContent = "网页版 v" + WEB_VERSION + " · 本地缓存 · " + roleLabel() + persistTip;
+  var tr = document.getElementById("topbarAction");
+  if (tr) {
+    if (state.current === "dashboard" && can("docs:create")) {
+      tr.innerHTML = '<button class="btn primary" id="dashNew">提交新材料</button>';
+      document.getElementById("dashNew").onclick = function(){ switchView("submit"); };
+    } else {
+      tr.innerHTML = "";
+    }
   }
+  refreshReminders();
   if (state.current === "dashboard") renderDashboard();
   else if (state.current === "docs") renderDocs();
   else if (state.current === "roster") renderRoster();
   else if (state.current === "tasks") renderTasks();
+  else if (state.current === "templates") renderTemplates();
   else if (state.current === "collect") renderCollect();
   else if (state.current === "logs") renderLogs();
+}
+
+/* ============ 提醒中心（按岗位汇总待办，不联网） ============ */
+var REM_LIMIT = 3;
+function reminderSnapshot(){
+  var docs = visibleDocs(store.docs);
+  var pending = docs.filter(function(d){ return d.status === "待审核"; });
+  var rejected = docs.filter(function(d){ return d.status === "已驳回"; });
+  var canTask = can("task:manage"), canRoster = can("roster:manage");
+  var taskAlerts = canTask ? listTasks().filter(function(t){
+    if (t.done) return false;
+    var left = daysUntil(t.deadline);
+    return left != null && left <= 2;
+  }) : [];
+  var absent = canRoster ? rosterCheck().absent : [];
+  return {
+    pending: pending, rejected: rejected, tasks: taskAlerts, absent: absent,
+    canTask: canTask, canRoster: canRoster,
+    total: pending.length + rejected.length + taskAlerts.length + absent.length
+  };
+}
+function refreshReminders(){
+  var snap = reminderSnapshot();
+  var badge = document.getElementById("reminderBadge");
+  if (badge) {
+    badge.textContent = snap.total > 99 ? "99+" : String(snap.total);
+    badge.classList.toggle("show", snap.total > 0);
+  }
+  var btn = document.getElementById("reminderBtn");
+  if (btn) btn.title = snap.total ? "提醒中心 · " + snap.total + " 项待办" : "提醒中心 · 暂无待办";
+  var pop = document.getElementById("reminderPop");
+  if (pop && pop.classList.contains("show")) renderReminders();
+}
+function remCardHtml(o){
+  var rows = "", foot = "";
+  if (o.denied) {
+    rows = '<div class="rc-denied">' + esc(o.denied) + "</div>";
+  } else if (!o.items.length) {
+    rows = '<div class="rc-denied">' + esc(o.empty) + "</div>";
+  } else {
+    rows = o.items.slice(0, REM_LIMIT).map(function(it){
+      return '<div class="rc-row"><b>' + esc(it.title) + "</b><span>" + esc(it.meta) + "</span></div>";
+    }).join("");
+    if (o.items.length > REM_LIMIT) rows += '<div class="rc-more">还有 ' + (o.items.length - REM_LIMIT) + " 项</div>";
+    foot = '<div class="rc-foot"><span class="rc-more" style="margin:0">' +
+      (o.denied ? "" : "处理后自动更新") + '</span><button class="rc-go" data-go="' + o.go + '"' +
+      (o.filter ? ' data-filter="' + esc(o.filter) + '"' : "") + ">去" + esc(o.goLabel) + " →</button></div>";
+  }
+  return '<div class="rem-card"><div class="rc-head"><div class="rc-title">' +
+    '<span class="dot" style="background:' + o.color + '"></span>' + esc(o.title) + "</div>" +
+    '<span class="rc-count" style="color:' + o.color + '">' + (o.denied ? "—" : o.items.length) + "</span></div>" +
+    '<div class="rc-list">' + rows + "</div>" + foot + "</div>";
+}
+function renderReminders(){
+  var snap = reminderSnapshot();
+  var body = document.getElementById("remBody");
+  if (!body) return;
+  var cards = [];
+  cards.push(remCardHtml({
+    title:"待审材料", color:"var(--orange)", items:snap.pending.map(function(d){
+      return {title:d.name, meta:(d.who || "—") + " · " + (d.time || "时间未记")};
+    }), empty:"没有待审材料", go:"docs", filter:"待审核", goLabel:"台账"
+  }));
+  cards.push(remCardHtml({
+    title:"已驳回 · 需补交", color:"var(--red)", items:snap.rejected.map(function(d){
+      return {title:d.name, meta:(d.who || "—") + " · " + (d.reason || "未填原因")};
+    }), empty:"没有被驳回的材料", go:"docs", filter:"已驳回", goLabel:"台账"
+  }));
+  cards.push(remCardHtml({
+    title:"任务临期 / 逾期", color:"var(--primary)", denied:snap.canTask ? "" : "当前视角不显示任务提醒",
+    items:snap.tasks.map(function(t){
+      var left = daysUntil(t.deadline);
+      return {title:t.title, meta:left < 0 ? "逾期 " + (-left) + " 天 · " + t.deadline :
+        (left === 0 ? "今天截止 · " + t.deadline : "剩 " + left + " 天 · " + t.deadline)};
+    }), empty:"没有临期或逾期任务", go:"tasks", goLabel:"任务"
+  }));
+  cards.push(remCardHtml({
+    title:"名单未交", color:"var(--green)", denied:snap.canRoster ? "" : "当前视角不显示名单核对",
+    items:snap.absent.map(function(r){ return {title:r.who, meta:r.sid}; }),
+    empty:"名单内成员均已交", go:"roster", goLabel:"名单"
+  }));
+  body.innerHTML = cards.join("");
+  var sub = document.getElementById("remSub");
+  if (sub) sub.textContent = "当前岗位 · " + roleLabel() + " · 共 " + snap.total + " 项待办";
+  body.querySelectorAll(".rc-go").forEach(function(b){
+    b.onclick = function(){
+      if (b.dataset.filter) { docsFilter.status = b.dataset.filter; docsFilter.page = 1; }
+      switchView(b.dataset.go);
+      closeReminders();
+    };
+  });
+}
+function openReminders(){
+  var pop = document.getElementById("reminderPop");
+  if (!pop) return;
+  if (pop.classList.contains("show")) { closeReminders(); return; }
+  renderReminders();
+  pop.classList.add("show");
+  pop.setAttribute("aria-hidden", "false");
+}
+function closeReminders(){
+  var pop = document.getElementById("reminderPop");
+  if (!pop) return;
+  pop.classList.remove("show");
+  pop.setAttribute("aria-hidden", "true");
+}
+function bindReminders(){
+  var btn = document.getElementById("reminderBtn");
+  if (btn) btn.onclick = function(e){ if (e && e.stopPropagation) e.stopPropagation(); openReminders(); };
+  var close = document.getElementById("remClose");
+  if (close) close.onclick = closeReminders;
+  document.addEventListener("click", function(e){
+    var pop = document.getElementById("reminderPop"), b = document.getElementById("reminderBtn");
+    if (!pop || !pop.classList.contains("show")) return;
+    if ((pop.contains && pop.contains(e.target)) || (b && b.contains && b.contains(e.target))) return;
+    closeReminders();
+  });
 }
 
 /* ============ 看板（待办优先 + 卡片下钻） ============ */
@@ -1271,10 +1728,7 @@ function renderDashboard() {
 
   var sellTags = '<div class="sell-tags"><span>闭环留痕</span><span>本地离线</span><span>文件夹收集</span></div>';
 
-  var heroHtml =
-    '<div class="hero"><h2>班级材料，从提交到归档留痕一站闭环</h2>' +
-    "<p>数据只存本机浏览器，不上云；选定文件夹可自动识别新增、修改与删除并登记留痕。</p>" +
-    sellTags + sellHtml + "</div>";
+  var heroHtml = "";
 
   /* 下一步重点：按岗位与待办给出唯一主动作 */
   var abTitle, abDesc, abGo, abFilter = "", abLabel, abFocus = "";
@@ -1560,6 +2014,8 @@ function syncFilterControls() {
   var c = document.getElementById("fCat"); if (c) c.value = docsFilter.cat;
   var t = document.getElementById("fType"); if (t) t.value = docsFilter.type;
   var s = document.getElementById("fStatus"); if (s) s.value = docsFilter.status;
+  var g = document.getElementById("globalSearch");
+  if (g && g !== document.activeElement) g.value = docsFilter.q;
 }
 
 function renderDocs() {
@@ -1616,12 +2072,16 @@ function renderDocs() {
   }
 
   document.querySelectorAll("#docsBody tr.clickable").forEach(function(tr){
-    tr.onclick = function(){ state.selectedId = Number(tr.dataset.id); renderDocs(); };
+    tr.onclick = function(e){
+      if (e.target && e.target.tagName === "INPUT") return;
+      state.selectedId = Number(tr.dataset.id); renderDocs();
+    };
     tr.ondblclick = function(){ openDoc(state.selectedId); };
   });
 
   /* 行复选框 + 表头全选三态 */
   document.querySelectorAll("#docsBody .cb").forEach(function(cb){
+    cb.onclick = function(e){ e.stopPropagation(); };
     cb.onchange = function(e){
       e.stopPropagation();
       var id = Number(cb.dataset.id);
@@ -1653,13 +2113,16 @@ function renderDocs() {
   document.getElementById("pgNext").onclick = function(){ if (docsFilter.page < pages) { docsFilter.page += 1; renderDocs(); } };
 
   /* 操作条：行级主操作居左，导入导出等次级操作居右弱化 */
+  var pickedIds = Object.keys(state.selected).map(Number).filter(function(id){ return findDoc(id); });
+  if (state.selectedId != null && findDoc(state.selectedId) && pickedIds.indexOf(state.selectedId) < 0) pickedIds.push(state.selectedId);
+  var pickedCount = pickedIds.length;
   var actions = '<button class="btn" id="btnView">查看详情</button>' +
     (canArchive ? '<button class="btn primary" id="btnArchive">归档</button>' : "") +
     (canReject ? '<button class="btn danger" id="btnReject">驳回</button>' : "") +
     '<span class="spacer"></span>' +
     (canExport ? '<button class="btn subtle mini" id="btnCsv">导出 CSV</button>' : "") +
     (canImport ? '<button class="btn subtle mini" id="btnCsvImport">导入 CSV</button>' : "") +
-    '<span class="hint">已选 ' + (state.selectedId != null && findDoc(state.selectedId) ? "1 条" : "0 条") + "</span>";
+    '<span class="hint">已选 ' + pickedCount + " 条</span>";
   document.getElementById("docsActions").innerHTML = actions;
 
   var has = state.selectedId != null && findDoc(state.selectedId);
@@ -1731,6 +2194,51 @@ function closeDrawer() {
   state.drawerId = null;
 }
 
+function latestDocLog(act, name){
+  var rows = listLogs();
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].act === act && rows[i].obj === name) return rows[i];
+  }
+  return null;
+}
+function approvalNodesHtml(d){
+  var submitLog = latestDocLog("提交", d.name);
+  var archiveLog = latestDocLog("归档", d.name);
+  var rejectLog = latestDocLog("驳回", d.name);
+  var submitMeta = submitLog
+    ? submitLog.time + " · " + submitLog.who + "（" + submitLog.role + "）"
+    : (d.time || "时间未记录") + " · " + (d.who || "提交人");
+  var html = '<div class="node"><span class="nd-dot"></span><div class="nd-main">' +
+    '<div class="nd-t">提交 <span class="nd-time">' + esc(submitMeta) + "</span></div>" +
+    '<div class="nd-d">' + esc(d.name) + " · " + esc(d.form_type ? formTemplate(d.form_type).label : "材料") + "</div></div></div>";
+
+  if (d.status === "已归档") {
+    var rMeta = archiveLog ? archiveLog.time + " · " + archiveLog.who + "（" + archiveLog.role + "）" : "时间与经办人未记录";
+    html += '<div class="node"><span class="nd-dot"></span><div class="nd-main">' +
+      '<div class="nd-t">审核 · 通过并归档 <span class="nd-time">' + esc(rMeta) + "</span></div>" +
+      '<div class="nd-d">' + esc(d.reason || "经办人确认材料齐全，已归档。") + "</div></div></div>" +
+      '<div class="node"><span class="nd-dot"></span><div class="nd-main">' +
+      '<div class="nd-t">归档 · 已登记</div>' +
+      '<div class="nd-d">本机浏览器已登记归档状态；文件本身仍留在原目录，路径未记录。</div></div></div>';
+  } else if (d.status === "已驳回") {
+    var jMeta = rejectLog ? rejectLog.time + " · " + rejectLog.who + "（" + rejectLog.role + "）" : "时间与经办人未记录";
+    html += '<div class="node bad"><span class="nd-dot"></span><div class="nd-main">' +
+      '<div class="nd-t">审核 · 已驳回 <span class="nd-time">' + esc(jMeta) + "</span></div>" +
+      '<div class="nd-d">' + esc(d.reason || "未填写驳回原因。") + "</div></div></div>" +
+      '<div class="node off"><span class="nd-dot"></span><div class="nd-main">' +
+      '<div class="nd-t">归档 · 审核通过后登记</div>' +
+      '<div class="nd-d">当前为驳回状态，补交并审核通过后才会归档。</div></div></div>';
+  } else {
+    html += '<div class="node off"><span class="nd-dot"></span><div class="nd-main">' +
+      '<div class="nd-t">审核 · 等待经办人处理</div>' +
+      '<div class="nd-d">通过后归档，驳回需填写补交原因，两种处理都会写入留痕。</div></div></div>' +
+      '<div class="node off"><span class="nd-dot"></span><div class="nd-main">' +
+      '<div class="nd-t">归档 · 审核通过后登记</div>' +
+      '<div class="nd-d">待审核材料尚未进入归档节点。</div></div></div>';
+  }
+  return '<div class="nodes">' + html + "</div>";
+}
+
 function renderDrawer(d) {
   var tag = STATUS_TAG[d.status] || "orange";
   document.getElementById("drawerTitle").textContent = d.name;
@@ -1740,7 +2248,7 @@ function renderDrawer(d) {
   var traceHtml = trace.length ? '<div class="trace"><h4>操作留痕</h4><ul>' +
     trace.map(function(l){ return "<li><span class='t-time'>" + esc(l.time) + "</span>" +
       esc(l.who) + "（" + esc(l.role) + "）· " + esc(l.act) + "</li>"; }).join("") +
-    "</ul></div>" : '<div class="empty" style="padding:14px 0">暂无该材料的操作记录</div>';
+    "</ul></div>" : '<div class="empty">暂无该材料的操作记录</div>';
 
   var tpl = formTemplate(d.form_type);
   var extra = d.extra || {};
@@ -1754,7 +2262,9 @@ function renderDrawer(d) {
     : (d.file || "无附件");
 
   document.getElementById("drawerBody").innerHTML =
+    '<div class="drawer-section"><h4>审批节点</h4>' + approvalNodesHtml(d) + "</div>" +
     '<div class="drawer-section"><h4>基本信息</h4><div class="kv">' +
+      '<span class="k">编号</span><span class="v">' + esc(d.code || "—") + "</span>" +
       '<span class="k">类型</span><span class="v">' + esc(tpl.label) + "</span>" +
       '<span class="k">类别</span><span class="v">' + esc(d.cat) + "</span>" +
       '<span class="k">提交人</span><span class="v">' + esc(d.who) + "（" + esc(d.sid) + "）</span>" +
@@ -1917,19 +2427,21 @@ function buildSubmit() {
     '<div class="card form-card">' +
       "<h3>提交班级材料</h3>" +
       '<p class="sub">带 * 为必填项，提交后进入待审核列表并生成操作记录</p>' +
+      '<div class="form-grid">' +
       '<div class="field"><label>材料类型</label><select id="sType">' + typeOptions + "</select></div>" +
-      '<div class="field"><label>材料名称 <span class="req">*</span></label><input id="sName" type="text" autocomplete="off"><div class="ferr" id="eName"></div></div>' +
+      '<div class="field"><label>材料类别 <span class="req">*</span></label><select id="sCat"><option value="">请选择类别</option>' + catOptions + "</select><div class=\"ferr\" id=\"eCat\"></div></div>" +
+      '<div class="field wide"><label>材料名称 <span class="req">*</span></label><input id="sName" type="text" autocomplete="off"><div class="ferr" id="eName"></div></div>' +
       '<div class="field"><label>姓名 / 记录人</label><input id="sWho" type="text" autocomplete="off"><div class="ferr" id="eWho"></div><div class="hint" id="sWhoWarn" style="color:var(--orange);min-height:16px"></div></div>' +
       '<div class="field"><label>学号</label><input id="sSid" type="text" inputmode="numeric" autocomplete="off"><div class="ferr" id="eSid"></div></div>' +
-      '<div class="field"><label>材料类别 <span class="req">*</span></label><select id="sCat"><option value="">请选择类别</option>' + catOptions + "</select><div class=\"ferr\" id=\"eCat\"></div></div>" +
       '<div class="field"><label>材料编号</label><input id="sCode" type="text" autocomplete="off" placeholder="留空按模板/类别自动生成，可手动修改"></div>' +
       '<div id="sExtra"></div>' +
-      '<div class="field"><label>材料说明</label><textarea id="sNote"></textarea></div>' +
-      '<div class="field"><label>附件</label><div class="file-line">' +
+      '<div class="field wide"><label>材料说明</label><textarea id="sNote"></textarea></div>' +
+      '<div class="field wide"><label>附件</label><div class="file-line">' +
         '<input type="file" id="sFile" style="display:none">' +
         '<button class="btn subtle" id="btnPick">选择文件</button>' +
         '<span class="fname" id="fileName">未选择文件</span>' +
         '<button class="btn subtle" id="btnRemoveFile" style="display:none">移除</button></div></div>' +
+      "</div>" +
       '<div class="err" id="sErr"></div>' +
       '<div class="form-actions"><button class="btn subtle" id="btnClear">清空</button>' +
       '<button class="btn primary" id="btnSubmit">提交材料</button></div>' +
@@ -2555,6 +3067,94 @@ function taskModal(editId) {
   }
 }
 
+/* ============ 材料模板：内置字段只读，附加字段可增删 ============ */
+function renderTemplates() {
+  var kind = clean(state.tplType) || "general";
+  if (!FORM_TEMPLATES[kind]) kind = "general";
+  state.tplType = kind;
+  var base = FORM_TEMPLATES[kind];
+  var extras = templateCustom(kind);
+  var canCfg = can("template:config");
+
+  var left = TPL_KINDS.map(function(k){
+    var n = FORM_TEMPLATES[k[0]].fields.length + templateCustom(k[0]).length;
+    return '<button class="tpl-kind' + (k[0] === kind ? " on" : "") + '" data-kind="' + k[0] + '">' +
+      "<span>" + esc(k[1]) + "</span><span class=\"tk-n\">" + n + " 字段</span></button>";
+  }).join("");
+
+  var builtinRows = base.fields.map(function(f){
+    return "<tr><td>" + esc(f.label) + "</td><td>" + esc(TPL_TYPE_LABEL[f.type] || (f.type === "sid" ? "学号" : f.type)) +
+      "</td><td>" + (f.required ? "是" : "—") + '</td><td><span class="tpl-builtin">内置 · 固定</span></td></tr>';
+  }).join("");
+  var extraRows = extras.map(function(f){
+    return "<tr><td>" + esc(f.label) + "</td><td>" + esc(TPL_TYPE_LABEL[f.type] || f.type) + "</td><td>" +
+      (f.required ? "是" : "—") + "</td><td><span class=\"tpl-builtin\">附加</span>" +
+      (canCfg ? ' <button class="btn danger mini tpl-del" data-key="' + esc(f.key) + '">删除</button>' : "") + "</td></tr>";
+  }).join("");
+  var rows = builtinRows + extraRows;
+
+  var addHtml = canCfg
+    ? '<div class="tpl-add"><div class="tpl-add-grid">' +
+        '<input id="tplFieldLabel" type="text" maxlength="16" placeholder="字段名称，例如 佐证材料" autocomplete="off">' +
+        '<select id="tplFieldType">' + TPL_TYPES.map(function(t){ return '<option value="' + t[0] + '">' + esc(t[1]) + "</option>"; }).join("") + "</select>" +
+        '<label class="tpl-req"><input type="checkbox" id="tplFieldReq"> 必填</label>' +
+        '<button class="btn primary" id="tplAdd">添加字段</button>' +
+      "</div>" +
+      '<div class="tpl-add-sub"><input id="tplFieldOptions" type="text" placeholder="下拉选项，用逗号分隔；仅下拉类型需要" autocomplete="off">' +
+      '<span class="hint" id="tplErr" style="color:var(--red);min-width:0"></span></div>' +
+      '<div class="tpl-note">附加字段只影响「' + esc(base.label) + '」的表单与详情；已填过的历史内容不会被清除。内置字段固定保留，不能删除或改名。</div></div>'
+    : '<div class="tpl-note">当前视角可查看模板字段；修改需经办人、审核者或汇总者岗位。</div>';
+
+  document.getElementById("view-templates").innerHTML =
+    '<div class="tpl-wrap">' +
+      '<div class="card tpl-list">' + left + "</div>" +
+      '<div class="card panel tpl-main">' +
+        '<div class="tpl-head"><div><h3>' + esc(base.label) + " · 字段配置</h3>" +
+          "<p>共 " + (base.fields.length + extras.length) + " 个字段，其中附加 " + extras.length + " 个；提交表单与详情共用同一份配置。</p></div>" +
+          '<div class="ph-side"><button class="btn subtle mini" id="tplToSubmit">去提交表单</button></div></div>' +
+        '<table class="tpl-table"><colgroup><col style="width:34%"><col style="width:20%"><col style="width:12%"><col></colgroup>' +
+        "<thead><tr><th>字段</th><th>类型</th><th>必填</th><th>来源 / 操作</th></tr></thead>" +
+        "<tbody>" + (rows || '<tr><td colspan="4" class="tpl-empty">暂无字段</td></tr>') + "</tbody></table>" +
+        addHtml +
+      "</div></div>";
+
+  document.querySelectorAll(".tpl-kind").forEach(function(b){
+    b.onclick = function(){ state.tplType = b.dataset.kind; renderTemplates(); };
+  });
+  var toSubmit = document.getElementById("tplToSubmit");
+  if (toSubmit) toSubmit.onclick = function(){ switchView("submit"); };
+  var addBtn = document.getElementById("tplAdd");
+  if (addBtn) addBtn.onclick = function(){
+    var err = document.getElementById("tplErr");
+    try {
+      addTemplateField(kind, {
+        label: document.getElementById("tplFieldLabel").value,
+        type: document.getElementById("tplFieldType").value,
+        required: document.getElementById("tplFieldReq").checked,
+        options: clean(document.getElementById("tplFieldOptions").value).split(/[,，]/)
+      });
+    } catch(e) {
+      if (err) err.textContent = e.message;
+      return;
+    }
+    state.tplDirty = true;
+    refreshAll();
+    toast("已添加字段，提交表单与详情立即生效");
+  };
+  document.querySelectorAll(".tpl-del").forEach(function(b){
+    b.onclick = function(){
+      var key = b.dataset.key;
+      confirmModal("删除字段", "删除后该字段不再出现在表单和详情中；已填过的历史内容仍保留在数据里。确定删除吗？", function(){
+        try { removeTemplateField(kind, key); }
+        catch(e) { toast(e.message); return; }
+        state.tplDirty = true;
+        refreshAll();
+        toast("字段已删除");
+      });
+    };
+  });
+}
+
 /* ============ 操作日志与备份恢复 ============ */
 var ACT_TAG = { "提交":"green", "归档":"green", "驳回":"red", "查看":"muted", "修改":"orange" };
 
@@ -2700,9 +3300,10 @@ function importBackup(e) {
       toast("导入失败：备份结构不正确，docs / logs 应为列表"); return;
     }
     confirmModal("导入确认", "导入将覆盖本浏览器当前全部材料与操作日志，且不可撤销。确定继续导入吗？", function(){
-      try { restore(data.docs, data.logs, data.roster, data.tasks); }
+      try { restore(data.docs, data.logs, data.roster, data.tasks, data.templates); }
       catch (err) { toast("导入失败：" + err.message); return; }
       state.selected = {}; state.selectedId = null;
+      state.tplDirty = true;
       closeDrawer();
       refreshAll(); toast("备份数据已导入");
     });
@@ -2732,6 +3333,11 @@ function bindRole() {
     if (nameEl) nameEl.textContent = displayName;
     if (roleEl) roleEl.textContent = displayRole;
     if (avatarEl) avatarEl.textContent = operatorName.charAt(0);
+    var tName = document.getElementById("topName"), tRole = document.getElementById("topRole"),
+        tAvatar = document.getElementById("topAvatar");
+    if (tName) tName.textContent = state.role === "applicant" ? displayName + " · 申请人" : displayRole + " · " + displayName;
+    if (tRole) tRole.textContent = state.role === "applicant" && state.applicantSid ? "学号 " + state.applicantSid : "本地模式";
+    if (tAvatar) tAvatar.textContent = operatorName.charAt(0);
     if (sidWrap) sidWrap.style.display = state.role === "applicant" ? "block" : "none";
     if (sidEl && document.activeElement !== sidEl) sidEl.value = state.applicantSid;
   }
@@ -2818,16 +3424,40 @@ function initSidebar() {
 document.getElementById("drawerClose").onclick = closeDrawer;
 document.getElementById("drawerMask").onclick = closeDrawer;
 document.addEventListener("keydown", function(e){
-  if (e.key === "Escape" && document.getElementById("drawer").classList.contains("show")) closeDrawer();
+  if (e.key !== "Escape") return;
+  if (document.getElementById("reminderPop").classList.contains("show")) closeReminders();
+  else if (document.getElementById("drawer").classList.contains("show")) closeDrawer();
 });
 
-/* 快捷键：Ctrl/⌘ + K 直接聚焦台账搜索（在其他视图时先切回台账） */
+/* 顶栏全局搜索：输入即切到台账并按关键词过滤，Enter 直接定位 */
+function bindGlobalSearch(){
+  var input = document.getElementById("globalSearch");
+  if (!input) return;
+  var timer = null;
+  input.addEventListener("input", function(){
+    var v = input.value;
+    clearTimeout(timer);
+    timer = setTimeout(function(){
+      docsFilter.q = clean(v); docsFilter.page = 1;
+      if (state.current !== "docs") switchView("docs"); else { syncFilterControls(); renderDocs(); }
+    }, 260);
+  });
+  input.addEventListener("keydown", function(e){
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    docsFilter.q = clean(input.value); docsFilter.page = 1;
+    switchView("docs");
+    var q = document.getElementById("fQ");
+    if (q && q.focus) q.focus();
+  });
+}
+
+/* 快捷键：Ctrl/⌘ + K 聚焦顶栏全局搜索 */
 document.addEventListener("keydown", function(e){
   if (!(e.ctrlKey || e.metaKey) || String(e.key || "").toLowerCase() !== "k") return;
   e.preventDefault();
-  if (state.current !== "docs") switchView("docs");
-  var q = document.getElementById("fQ");
-  if (q && q.focus) { q.focus(); if (q.select) q.select(); }
+  var g = document.getElementById("globalSearch");
+  if (g && g.focus) { g.focus(); if (g.select) g.select(); }
 });
 
 /* 台账键盘导航：上下移动选中行，回车打开详情；输入控件内不拦截 */
@@ -2856,6 +3486,8 @@ buildDocs();
 buildSubmit();
 buildCollect();
 bindRole();
+bindGlobalSearch();
+bindReminders();
 initSidebar();
 initTheme();
 applyRoleDefaults();
