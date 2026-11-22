@@ -2732,7 +2732,7 @@ function bindRole() {
     if (nameEl) nameEl.textContent = displayName;
     if (roleEl) roleEl.textContent = displayRole;
     if (avatarEl) avatarEl.textContent = operatorName.charAt(0);
-    if (sidWrap) sidWrap.style.display = state.role === "applicant" ? "" : "none";
+    if (sidWrap) sidWrap.style.display = state.role === "applicant" ? "block" : "none";
     if (sidEl && document.activeElement !== sidEl) sidEl.value = state.applicantSid;
   }
   sel.onchange = function(){
