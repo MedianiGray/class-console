@@ -15,6 +15,7 @@ import os
 import json
 import sqlite3
 import datetime
+import uuid
 from pathlib import Path
 
 from seed import SEED_DOCS, SEED_LOGS, SEED_ROSTER, SEED_TASKS
@@ -162,6 +163,8 @@ FORM_TEMPLATES = {
 }
 
 FORM_PREFIX = {k: v["prefix"] for k, v in FORM_TEMPLATES.items()}
+FORM_TYPES = ("general",) + tuple(FORM_TEMPLATES)
+TEMPLATE_FIELD_TYPES = ("text", "textarea", "date", "select")
 
 
 def form_template(form_type: str) -> dict:
@@ -212,6 +215,13 @@ class LocalRepository:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id INTEGER, name TEXT, path TEXT, kind TEXT, time TEXT
             )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS template_fields (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                form_type TEXT, key TEXT, label TEXT, type TEXT,
+                required INTEGER, options TEXT,
+                UNIQUE(form_type, key)
+            )""")
         # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
         cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
         for miss in ("reason", "code", "path", "form_type", "extra", "arch"):
@@ -237,6 +247,80 @@ class LocalRepository:
                     (title, cat, scope, _deadline(offset), note, done))
         conn.commit()
         conn.close()
+
+    # ---------- 模板附加字段 ----------
+    def template_custom(self, form_type: str) -> list:
+        """返回某模板的用户附加字段；内置字段仍在 FORM_TEMPLATES。"""
+        form_type = _clean(form_type) or "custom"
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM template_fields WHERE form_type=? ORDER BY id",
+                (form_type,)).fetchall()
+            out = []
+            for r in rows:
+                d = dict(r)
+                d["required"] = bool(d.get("required"))
+                try:
+                    d["options"] = json.loads(d.get("options") or "[]")
+                except (ValueError, TypeError):
+                    d["options"] = []
+                out.append(d)
+            return out
+        except sqlite3.Error as e:
+            raise RepositoryError("读取模板字段失败：%s" % e)
+        finally:
+            conn.close()
+
+    def add_template_field(self, form_type: str, label: str, ftype="text",
+                           required=False, options=None):
+        form_type = _clean(form_type)
+        label = _clean(label)
+        ftype = _clean(ftype) or "text"
+        if form_type not in FORM_TYPES:
+            raise RepositoryError("未知模板类型")
+        if not label:
+            raise RepositoryError("字段名称不能为空")
+        if ftype not in TEMPLATE_FIELD_TYPES:
+            raise RepositoryError("未知字段类型")
+        opts = options if isinstance(options, list) else []
+        opts = [_clean(x) for x in opts if _clean(x)]
+        if ftype == "select" and not opts:
+            raise RepositoryError("下拉字段至少需要一个选项")
+        key = "cf_" + uuid.uuid4().hex[:8]
+        conn = self._conn()
+        try:
+            cur = conn.execute(
+                """INSERT INTO template_fields
+                   (form_type,key,label,type,required,options) VALUES (?,?,?,?,?,?)""",
+                (form_type, key, label, ftype, 1 if required else 0,
+                 json.dumps(opts, ensure_ascii=False)))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("写入模板字段失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_template_field(self, field_id: int):
+        conn = self._conn()
+        try:
+            conn.execute("DELETE FROM template_fields WHERE id=?", (field_id,))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除模板字段失败：%s" % e)
+        finally:
+            conn.close()
+
+    def form_template(self, form_type: str) -> dict:
+        """内置模板 + 用户附加字段；不改动全局 FORM_TEMPLATES。"""
+        form_type = _clean(form_type) or "custom"
+        base = FORM_TEMPLATES.get(form_type, FORM_TEMPLATES["custom"])
+        return {
+            "label": base["label"],
+            "prefix": base["prefix"],
+            "fields": list(base["fields"]) + self.template_custom(form_type),
+        }
 
     # ---------- 材料 ----------
     def list_docs(self, q: str = "", cat: str = "全部") -> list:
@@ -626,11 +710,15 @@ class LocalRepository:
         atts = []
         for d in docs:
             atts.extend(d.get("attachments") or [])
+        templates = []
+        for ft in FORM_TYPES:
+            templates.extend(self.template_custom(ft))
         return {"docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
-                "attachments": atts}
+                "attachments": atts, "templates": templates}
 
-    def restore(self, docs: list, logs: list, roster=None, tasks=None, attachments=None):
+    def restore(self, docs: list, logs: list, roster=None, tasks=None,
+                attachments=None, templates=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
@@ -643,6 +731,24 @@ class LocalRepository:
             conn.execute("DELETE FROM roster")
             conn.execute("DELETE FROM tasks")
             conn.execute("DELETE FROM attachments")
+            if isinstance(templates, list):
+                conn.execute("DELETE FROM template_fields")
+                for tf in templates:
+                    if not isinstance(tf, dict):
+                        continue
+                    ft = _clean(tf.get("form_type"))
+                    if ft not in FORM_TYPES:
+                        continue
+                    key = _clean(tf.get("key")) or ("cf_" + uuid.uuid4().hex[:8])
+                    label = _clean(tf.get("label"))
+                    if not label:
+                        continue
+                    opts = tf.get("options") if isinstance(tf.get("options"), list) else []
+                    conn.execute("""INSERT OR IGNORE INTO template_fields
+                        (form_type,key,label,type,required,options) VALUES (?,?,?,?,?,?)""",
+                        (ft, key, label, _clean(tf.get("type")) or "text",
+                         1 if tf.get("required") else 0,
+                         json.dumps(opts, ensure_ascii=False)))
             id_map = {}
             for d in docs:
                 if not isinstance(d, dict):

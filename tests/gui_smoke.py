@@ -120,6 +120,32 @@ def main():
     assert all(by_id[i]["status"] == "已驳回" for i in (ids_c, ids_d))
     print("多选批量/审批节点 OK")
 
+    # 提醒中心：顶栏常驻入口、角标按待办计数、对话框可打开
+    snap = app.reminder_snapshot()
+    assert snap["total"] > 0
+    app.refresh_reminders(); root.update()
+    assert app.reminder_btn.winfo_ismapped(), "顶栏提醒入口应常驻"
+    assert app.reminder_badge.cget("text") == str(snap["total"])
+    dlg = app._open_reminders(); root.update()
+    assert dlg.top.winfo_exists() and dlg.top.title() == "提醒中心"
+    dlg.close(); root.update()
+    print("提醒中心 OK")
+
+    # 模板字段最小配置：设置里增删，提交表单即时重建
+    from ui_settings import SettingsDialog
+    sd = SettingsDialog(app); root.update()
+    assert sd.tpl_tree.winfo_exists(), "设置里应有材料模板分区"
+    sd.tpl_type_var.set("自定义材料"); sd._reload_template_fields()
+    sd.tpl_label_var.set("抽检备注"); sd.tpl_kind_var.set("下拉")
+    sd.tpl_opts_var.set("合格,待补"); sd.tpl_req_var.set(True)
+    sd._add_template_field(); root.update()
+    assert any(f["label"] == "抽检备注"
+               for f in repo.template_custom("custom")), "设置添加字段未入库"
+    sv.var_type.set("自定义材料"); sv._on_type(); root.update()
+    assert any(k.startswith("cf_") for k in sv.extra_vars), "提交表单未重建附加字段"
+    sd.close(); root.update()
+    print("模板字段配置 OK")
+
     # 看板岗位显隐：申请人隐藏名单/任务 chip 与近期动态，审核者恢复
     dash = app.views["dashboard"]
     app.applicant_sid = "250203"

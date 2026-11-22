@@ -31,9 +31,9 @@ ROLES = {
 }
 PERMISSIONS = {
     "handler":   ["docs:create", "docs:edit", "docs:import", "docs:archive", "docs:reject",
-                  "docs:export", "roster:manage", "task:manage", "logs:view"],
+                  "docs:export", "roster:manage", "task:manage", "template:config", "logs:view"],
     "reviewer":  ["docs:create", "docs:edit", "docs:import", "docs:archive", "docs:reject", "docs:export",
-                  "roster:manage", "task:manage", "backup:restore", "logs:view"],
+                  "roster:manage", "task:manage", "template:config", "backup:restore", "logs:view"],
     "manager":   ["docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "template:config",
                   "backup:restore", "logs:view", "config:manage"],
@@ -200,6 +200,20 @@ class MainWindow(ttk.Frame):
                          cursor="hand2", command=self.open_settings)
         gear.pack(side="right", padx=(0, 14))
 
+        # 提醒中心：常驻入口 + 未读角标；弱实现，不做推送
+        rem = tk.Frame(bar, bg=C["topbar"])
+        rem.pack(side="right", padx=(0, 6), pady=12)
+        self.reminder_btn = tk.Button(rem, text="提醒", relief="flat", bd=0,
+                                      bg=C["topbar"], fg=C["muted"],
+                                      activebackground=C["bg_soft"],
+                                      activeforeground=C["text"], font=(FONT, 9),
+                                      padx=8, pady=3, cursor="hand2",
+                                      command=self._open_reminders)
+        self.reminder_btn.pack(side="left")
+        self.reminder_badge = tk.Label(rem, text="", bg=C["primary"], fg=C["on_primary"],
+                                       font=(FONT, 8, "bold"), padx=5, pady=0)
+        self.reminder_badge.bind("<Button-1>", lambda e: self._open_reminders())
+
         # 身份卡：头像 + 岗位 · 角色，点击切换视角
         chip = tk.Frame(bar, bg=C["surface_alt"], highlightthickness=1,
                         highlightbackground=C["line"], cursor="hand2")
@@ -222,6 +236,36 @@ class MainWindow(ttk.Frame):
         self.role_disp = tk.StringVar(value=self.role_label())
         for w in (chip, av, self.role_avatar, self.role_name):
             w.bind("<Button-1>", self._role_menu)
+
+    def reminder_snapshot(self):
+        from ui_reminders import snapshot
+        return snapshot(self.repo, self)
+
+    def refresh_reminders(self):
+        if not hasattr(self, "reminder_badge"):
+            return
+        try:
+            total = self.reminder_snapshot()["total"]
+        except Exception:
+            total = 0
+        if total > 0:
+            self.reminder_badge.config(text=str(total))
+            if not self.reminder_badge.winfo_ismapped():
+                self.reminder_badge.pack(side="left", padx=(4, 0))
+        else:
+            self.reminder_badge.pack_forget()
+
+    def _open_reminders(self):
+        from ui_reminders import open_reminders
+        old = getattr(self, "reminder_dialog", None)
+        if old is not None:
+            try:
+                if old.top.winfo_exists():
+                    old.close()
+            except Exception:
+                pass
+        self.reminder_dialog = open_reminders(self, self.reminder_btn)
+        return self.reminder_dialog
 
     def _role_menu(self, event=None):
         m = tk.Menu(self, tearoff=0, bg=C["card"], fg=C["text"],
@@ -527,5 +571,6 @@ class MainWindow(ttk.Frame):
             for v in self.views.values():
                 if hasattr(v, "refresh"):
                     v.refresh()
+            self.refresh_reminders()
         except Exception as e:
             self.status_left.config(text="数据刷新失败：%s" % e)

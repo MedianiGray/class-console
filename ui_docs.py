@@ -8,7 +8,6 @@ from tkinter import ttk, messagebox, filedialog
 
 import archive
 from theme import FONT, C
-from database import form_template
 
 
 class DocsView(ttk.Frame):
@@ -247,7 +246,7 @@ class DocsView(ttk.Frame):
             self._write("归档  ", "muted")
             self._write("审核通过后落盘\n", "muted")
 
-        tpl = form_template(doc.get("form_type") or "general")
+        tpl = self.repo.form_template(doc.get("form_type") or "general")
         self._write("\n基本信息\n", "sec")
         for label, value in (("编号", doc.get("code") or "—"), ("类型", tpl["label"]),
                              ("类别", doc.get("cat") or "—"),
@@ -635,7 +634,7 @@ class DocsView(ttk.Frame):
                 for d in rows:
                     atts = d.get("attachments") or []
                     att_names = "; ".join(a.get("name", "") for a in atts) or d.get("file") or ""
-                    tpl = form_template(d.get("form_type") or "general")
+                    tpl = self.repo.form_template(d.get("form_type") or "general")
                     w.writerow([d.get("code", ""), tpl["label"], d.get("name", ""),
                                 d.get("cat", ""), d.get("who", ""), d.get("sid", ""),
                                 d.get("time", ""), d.get("status", ""), att_names,
