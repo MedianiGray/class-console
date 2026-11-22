@@ -336,6 +336,8 @@ class SubmitView(ttk.Frame):
                 "note": note, "file": first.get("name", ""), "path": first.get("path", ""),
                 "code": self.var_code.get().strip(), "scope": "全员",
                 "form_type": ftype, "extra": extra, "attachments": self.attachments,
+                "actor": self.window.operator_name,
+                "actor_role": self.window.role_label(),
             })
             # 提交只登记，不提前复制；文件统一由「归档」落盘，
             # 避免待审/驳回材料进入归档目录，也避免同一份材料被复制两次。

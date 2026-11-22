@@ -452,57 +452,36 @@ class DocsView(ttk.Frame):
         self._write(status, status_tag)
         self._write("\n")
 
-        logs = [l for l in self.repo.list_logs() if l.get("obj") == name]
-        submit_log = next((l for l in logs if l.get("act") == "提交"), None)
-        audit_log = next((l for l in logs if l.get("act") in ("归档", "驳回")), None)
-
-        self._write("\n审批节点\n", "sec")
-        self._write("● ", "node")
-        self._write("提交  ", "accent")
-        submit_time = (submit_log or {}).get("time") or doc.get("time") or "—"
-        submit_who = (submit_log or {}).get("who") or doc.get("who") or "—"
-        self._write("%s  %s\n" % (submit_time, submit_who), "muted")
-        self._write("│\n", "line")
+        events = self.repo.doc_timeline(doc)
+        self._write("\n流转时间线\n", "sec")
+        self._write("共 %d 个节点，提交、审核、归档与归位均可回放。\n" % len(events),
+                    "muted")
+        act_tags = {"提交": "accent", "归档": "ok", "驳回": "bad", "归位": "muted"}
+        for ev in events:
+            act = ev.get("act") or "记录"
+            self._write("● ", "node")
+            self._write("%s  " % act, act_tags.get(act, "accent"))
+            self._write("%s  %s（%s）\n" % (
+                ev.get("time") or "—", ev.get("who") or "—",
+                ev.get("role") or "—"), "muted")
+            detail = (ev.get("detail") or "").strip()
+            if detail:
+                self._write("│  %s\n" % detail, "muted")
+            self._write("│\n", "line")
 
         if status == "已归档":
-            self._write("● ", "node")
-            self._write("审核  ", "accent")
-            self._write("通过并归档\n", "ok")
-            if audit_log:
-                self._write("│  %s  %s（%s）\n" % (
-                    audit_log.get("time", ""), audit_log.get("who", ""),
-                    audit_log.get("role", "")), "muted")
-            reason = (doc.get("reason") or "").strip()
-            if reason:
-                self._write("│  意见：%s\n" % reason, "muted")
-            self._write("│\n", "line")
-            self._write("● ", "node")
-            self._write("归档  ", "accent")
-            self._write(doc.get("arch") or "已归档，路径未记录", "muted")
-            self._write("\n")
+            if not any((e.get("act") or "") == "归位" for e in events):
+                self._write("○ ", "node_muted")
+                self._write("归位  ", "muted")
+                self._write("已归档，等待写入文件路径\n", "warn")
         elif status in ("已驳回", "待补材料"):
-            self._write("● ", "node")
-            self._write("审核  ", "accent")
-            self._write("已驳回\n", "bad")
-            if audit_log:
-                self._write("│  %s  %s（%s）\n" % (
-                    audit_log.get("time", ""), audit_log.get("who", ""),
-                    audit_log.get("role", "")), "muted")
-            reason = (doc.get("reason") or "").strip()
-            if reason:
-                self._write("│  原因：%s\n" % reason, "muted")
-            self._write("│\n", "line")
             self._write("○ ", "node_muted")
-            self._write("归档  ", "muted")
-            self._write("待补交后重新提交\n", "muted")
+            self._write("补交  ", "muted")
+            self._write("申请人重新提交后可再次审核\n", "muted")
         else:
             self._write("○ ", "node_muted")
             self._write("审核  ", "muted")
             self._write("等待经办人处理\n", "warn")
-            self._write("│\n", "line")
-            self._write("○ ", "node_muted")
-            self._write("归档  ", "muted")
-            self._write("审核通过后落盘\n", "muted")
 
         tpl = self.repo.form_template(doc.get("form_type") or "general")
         self._write("\n基本信息\n", "sec")
@@ -546,12 +525,6 @@ class DocsView(ttk.Frame):
             self._write("\n审核备注\n", "sec")
             self._write(reason + "\n", "muted")
 
-        if logs:
-            self._write("\n最近操作\n", "sec")
-            for l in logs[:5]:
-                self._write("%s  %s（%s）· %s\n" % (
-                    l.get("time", ""), l.get("who", ""), l.get("role", ""),
-                    l.get("act", "")), "muted")
         self.detail_text.config(state="disabled")
 
     # ---------- 数据与状态 ----------
@@ -748,7 +721,9 @@ class DocsView(ttk.Frame):
                 skip += 1
                 continue
             try:
-                saved = self.repo.archive_doc(doc.get("id"), dlg["reason"])
+                saved = self.repo.archive_doc(doc.get("id"), dlg["reason"],
+                                              self.window.operator_name,
+                                              self.window.role_label())
             except Exception as e:
                 fail.append("%s：%s" % (doc.get("name") or "未命名", e))
                 continue
@@ -775,7 +750,8 @@ class DocsView(ttk.Frame):
         """复制到归档根并按目录归位，返回一句提示。"""
         res = archive.place(doc)
         if res.get("path"):
-            self.repo.set_arch(doc_id, res["path"])
+            self.repo.set_arch(doc_id, res["path"], self.window.operator_name,
+                               self.window.role_label())
         archive.write_index(self.repo.list_docs())
         if quiet:
             return " · " + res.get("note", "")
@@ -817,7 +793,9 @@ class DocsView(ttk.Frame):
             if res.get("copied"):
                 copied += 1
             if res.get("path"):
-                self.repo.set_arch(d.get("id"), res["path"])
+                self.repo.set_arch(d.get("id"), res["path"],
+                                   self.window.operator_name,
+                                   self.window.role_label())
         archive.write_index(self.repo.list_docs())
         self.window.refresh_all()
         self.window.toast("已处理 %d 条，复制 %d 个文件到归档目录" % (len(target), copied))
@@ -853,7 +831,9 @@ class DocsView(ttk.Frame):
                 skip += 1
                 continue
             try:
-                saved = self.repo.reject_doc(doc.get("id"), dlg["reason"])
+                saved = self.repo.reject_doc(doc.get("id"), dlg["reason"],
+                                             self.window.operator_name,
+                                             self.window.role_label())
             except Exception as e:
                 fail.append("%s：%s" % (doc.get("name") or "未命名", e))
                 continue

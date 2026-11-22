@@ -10,9 +10,11 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 import archive
+import audit
 import theme
 from theme import FONT, C
 from database import app_data_dir, FORM_TEMPLATES
+from ui_audit import open_integrity
 from version import VERSION, VERSION_LABEL
 
 REPO_URL = "https://github.com/MedianiGray/class-console"
@@ -220,6 +222,8 @@ class SettingsDialog:
         ttk.Button(abtns, text="更换目录", command=self._pick_archive_root).pack(side="left")
         ttk.Button(abtns, text="打开目录", command=self._open_archive).pack(side="left", padx=8)
         ttk.Button(abtns, text="归位全部", command=self._place_all).pack(side="left")
+        ttk.Button(abtns, text="完整性检查", style="Ghost.TButton",
+                   command=self._check_integrity).pack(side="left", padx=8)
         arow = tk.Frame(card5, bg=C["card"])
         arow.pack(fill="x", padx=14, pady=(0, 12))
         tk.Label(arow, text="归档时", bg=C["card"], fg=C["text"],
@@ -533,6 +537,9 @@ class SettingsDialog:
         if not archive.open_folder(base):
             messagebox.showerror("打开失败", "无法打开 %s" % base, parent=self.top)
 
+    def _check_integrity(self):
+        open_integrity(self.top, self.window.repo, self.window)
+
     def _place_all(self):
         docs = [d for d in self.window.repo.list_docs() if d.get("status") == "已归档"]
         if not docs:
@@ -544,7 +551,9 @@ class SettingsDialog:
             if res.get("copied"):
                 copied += 1
             if res.get("path"):
-                self.window.repo.set_arch(d.get("id"), res["path"])
+                self.window.repo.set_arch(d.get("id"), res["path"],
+                                          self.window.operator_name,
+                                          self.window.role_label())
         archive.write_index(self.window.repo.list_docs())
         self.window.refresh_all()
         self.window.toast("归位 %d 条，复制 %d 个文件" % (len(docs), copied))
@@ -641,15 +650,24 @@ class SettingsDialog:
             filetypes=[("JSON 备份", "*.json")])
         if not path:
             return
-        if not messagebox.askyesno("恢复确认", "将用备份覆盖当前数据，确定继续吗？",
-                                   parent=self.top):
-            return
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            messagebox.showerror("恢复失败", "备份文件无法读取，或不是有效的 JSON 文件",
+                                 parent=self.top)
+            return
+        preview = audit.backup_preview(data, self.window.repo)
+        if not preview["ok"]:
+            messagebox.showerror("恢复失败", preview["text"], parent=self.top)
+            return
+        if not messagebox.askyesno("恢复确认", preview["text"], parent=self.top):
+            return
+        try:
             self.window.repo.restore(data.get("docs", []), data.get("logs", []),
                                      data.get("roster"), data.get("tasks"),
-                                     data.get("attachments"), data.get("templates"))
+                                     data.get("attachments"), data.get("templates"),
+                                     data.get("events", []))
         except Exception as e:
             messagebox.showerror("恢复失败", str(e), parent=self.top)
             return

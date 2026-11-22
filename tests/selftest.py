@@ -351,6 +351,137 @@ def main():
     assert r.template_custom("custom") == []
     print("26. 模板附加字段/备份往返 OK")
 
+    # 27. 单据流转链：提交 / 归档 / 归位 / 驳回逐节点可回放，随备份往返
+    r.restore([], [], templates=[])
+    did = r.add_doc({"name": "流转证明", "cat": "学分材料", "who": "张三",
+                     "sid": "250201", "note": "n", "actor": "李四",
+                     "actor_role": "经办人"})
+    doc = next(d for d in r.list_docs() if d["id"] == did)
+    assert [e["act"] for e in r.doc_timeline(doc)] == ["提交"]
+    assert r.doc_timeline(doc)[0]["who"] == "李四"
+    r.archive_doc(did, "材料齐全", "王五", "审核人")
+    arch_file = Path(tempfile.mkdtemp()) / "流转证明.pdf"
+    arch_file.write_text("x", encoding="utf-8")
+    r.set_arch(did, str(arch_file), "王五", "审核人")
+    doc = next(d for d in r.list_docs() if d["id"] == did)
+    acts = [e["act"] for e in r.doc_timeline(doc)]
+    assert acts == ["提交", "归档", "归位"], acts
+    assert r.doc_timeline(doc)[2]["detail"] == str(arch_file)
+    rid = r.add_doc({"name": "驳回证明", "cat": "学分材料", "who": "张三",
+                     "sid": "250201", "note": "n", "actor": "张三",
+                     "actor_role": "申请人"})
+    r.reject_doc(rid, "缺盖章", "王五", "审核人")
+    rejected = next(d for d in r.list_docs() if d["id"] == rid)
+    assert [e["act"] for e in r.doc_timeline(rejected)] == ["提交", "驳回"]
+    bak = r.backup()
+    assert bak.get("events") and len(bak["events"]) >= 5
+    r.restore([], [], templates=[])
+    assert r.list_all_events() == []
+    r.restore(bak["docs"], bak["logs"], bak["roster"], bak["tasks"],
+              bak["attachments"], bak["templates"], bak["events"])
+    assert [e["act"] for e in r.doc_timeline(
+        next(d for d in r.list_docs() if d.get("name") == "流转证明"))] == acts
+    print("27. 单据流转链/备份往返 OK")
+
+    # 28. 操作日志按关键词 / 动作 / 操作人筛选
+    r.restore([], [])
+    r.add_log("提交", "学分证明", "张三", "申请人")
+    r.add_log("归档", "学分证明", "王五", "审核人")
+    r.add_log("驳回", "志愿时长", "王五", "审核人")
+    assert len(r.list_logs(q="证明")) == 2
+    assert len(r.list_logs(act="驳回")) == 1
+    assert len(r.list_logs(who="王五")) == 2
+    assert len(r.list_logs(q="证明", act="归档", who="王五")) == 1
+    assert len(r.list_logs(q="%")) == 0
+    print("28. 日志筛选 OK")
+
+    # 29. 完整性检查：缺文件 / 索引不一致 / 索引孤儿 / 磁盘孤儿，重建后收敛
+    import archive
+    import audit
+    base = Path(tempfile.mkdtemp())
+    f1 = base / "甲.pdf"
+    f1.write_text("x", encoding="utf-8")
+    docs = [{"id": 901, "code": "事务-901", "name": "甲", "cat": "团务材料",
+             "who": "张三", "sid": "250201", "time": "2026-11-23 10:00",
+             "status": "已归档", "arch": str(f1)}]
+    audit.rebuild_index(docs, base=base)
+    res = audit.check_integrity(docs, base=base)
+    assert res["ok"], res["counts"]
+    f1.unlink()
+    res = audit.check_integrity(docs, base=base)
+    assert len(res["missing_file"]) == 1 and not res["ok"]
+    (base / "多出来的.txt").write_text("y", encoding="utf-8")
+    res = audit.check_integrity(docs, base=base)
+    assert len(res["orphan_file"]) == 1
+    f1.write_text("x", encoding="utf-8")
+    audit.rebuild_index([], base=base)
+    res = audit.check_integrity(docs, base=base)
+    assert len(res["index_missing"]) == 1
+    audit.rebuild_index(docs, base=base)
+    res = audit.check_integrity(docs, base=base)
+    assert len(res["index_missing"]) == 0
+    print("29. 完整性检查/索引重建 OK")
+
+    # 30. 证据包：脱离软件可读，可选附带归档文件
+    import zipfile
+    archive.save_root(str(base))
+    f1.write_text("x", encoding="utf-8")
+    edid = r.add_doc({"name": "甲", "cat": "团务材料", "who": "张三",
+                      "sid": "250201", "note": "证据", "path": str(f1)})
+    r.archive_doc(edid, "通过", "王五", "审核人")
+    r.set_arch(edid, str(f1), "王五", "审核人")
+    audit.rebuild_index(r.list_docs(), base=base)
+    zpath = base / "evidence.zip"
+    exp = audit.export_evidence(r, str(zpath), include_files=True)
+    assert zpath.exists() and exp["docs"] >= 1
+    with zipfile.ZipFile(zpath) as z:
+        names = z.namelist()
+        for need in ("材料清单.csv", "归档索引.csv", "操作日志.csv",
+                     "文件树.txt", "README.txt", "manifest.json"):
+            assert need in names, need
+        assert "归档文件/甲.pdf" in names
+        readme = z.read("README.txt").decode("utf-8")
+        assert "班级材料证据包" in readme
+        rows = z.read("材料清单.csv").decode("utf-8-sig")
+        assert "编号" in rows and "甲" in rows
+        assert z.read("manifest.json").decode("utf-8").startswith("{")
+    print("30. 证据包导出 OK")
+
+    # 30b. 日期筛选容错与非法日期拦截
+    assert audit._doc_day({"time": "2026-11-23 09:00"}, []) is not None
+    assert audit._doc_day({"time": "11-23 09:00"}, []) is not None
+    try:
+        audit.export_evidence(r, str(base / "bad.zip"), start="2026-13-01")
+        raise SystemExit("应拦截非法日期")
+    except ValueError:
+        pass
+    print("30b. 证据包日期口径 OK")
+
+    # 30c. 缺归档但源文件仍在：重新归位并补事件
+    src = Path(tempfile.mkdtemp()) / "乙.pdf"
+    src.write_text("y", encoding="utf-8")
+    pid = r.add_doc({"name": "乙", "cat": "团务材料", "who": "张三",
+                     "sid": "250201", "path": str(src)})
+    r.archive_doc(pid, "通过", "王五", "审核人")
+    missing = base / "资料" / "乙.pdf"
+    r.set_arch(pid, str(missing), "王五", "审核人")
+    assert not missing.exists()
+    rr = audit.repair_placements(r, base=base)
+    assert len(rr["placed"]) == 1 and rr["failed"] == [], rr
+    rebuilt = next(d for d in r.list_docs() if d["id"] == pid)["arch"]
+    assert os.path.isfile(rebuilt), rebuilt
+    events = r.doc_timeline(next(d for d in r.list_docs() if d["id"] == pid))
+    assert events[-1]["act"] == "归位" and events[-1]["who"] == "完整性检查"
+    print("30c. 缺失文件重新归位 OK")
+
+    # 31. 恢复预览：导入前看清数量与提醒，不直接覆盖
+    preview = audit.backup_preview(r.backup(), r)
+    assert preview["ok"] and "材料" in preview["text"]
+    assert preview["counts"]["docs"] == len(r.list_docs())
+    empty = audit.backup_preview({}, r)
+    assert not empty["ok"] and "结构不正确" in empty["text"]
+    print("31. 恢复预览 OK")
+
     print("SELFTEST OK")
 
 

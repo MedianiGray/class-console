@@ -104,7 +104,7 @@ def main():
     assert len(dv._selected_ids()) == 2
     assert "批量归档 (2)" in dv.btn_archive.cget("text")
     detail = dv.detail_text.get("1.0", "end")
-    assert "审批节点" in detail and "提交" in detail and "批量" in detail
+    assert "流转时间线" in detail and "提交" in detail and "批量" in detail
     dv.archive(); root.update()
     by_id = {d["id"]: d for d in repo.list_docs()}
     assert all(by_id[i]["status"] == "已归档" for i in (ids_a, ids_b))
@@ -251,6 +251,36 @@ def main():
     restored = [d for d in repo.list_docs() if d["name"] == "附件恢复测试"][0]
     assert len(restored["attachments"]) == 1, restored
     print("日志备份附件恢复 OK")
+
+    # v0.17 审计界面：日志筛选、证据包入口、完整性弹窗均可构建
+    app.role_var.set("handler"); app._toggle_role(); root.update()
+    app.switch("logs"); lv = app.views["logs"]; root.update()
+    repo.add_log("提交", "筛选命中甲", "甲", "申请人")
+    repo.add_log("归档", "筛选命中乙", "乙", "审核人")
+    repo.add_log("驳回", "筛选落空丙", "丙", "审核人")
+    lv.var_q.set("筛选命中"); lv.refresh(); root.update()
+    assert "匹配" in lv.count.cget("text"), lv.count.cget("text")
+    lv.var_q.set(""); lv.var_act.set("驳回"); lv.var_who.set("丙")
+    lv.refresh(); root.update()
+    assert "匹配 1 / 共" in lv.count.cget("text"), lv.count.cget("text")
+    lv._clear_filters(); root.update()
+    assert lv.btn_evidence.winfo_ismapped(), "管理层应能看到证据包入口"
+
+    import archive
+    import ui_audit
+    archive.save_root(str(Path(tempfile.mkdtemp()) / "archive"))
+    ed = ui_audit.EvidenceDialog(lv, repo, app)
+    root.update()
+    assert "全部" in ed.cat.get() or ed.cat.get() == "全部"
+    assert ed.with_files.get() is False
+    ed.top.destroy(); root.update()
+
+    iv = ui_audit.IntegrityDialog(lv, repo, app)
+    root.update()
+    assert "归档根" in iv.summary.cget("text")
+    assert iv.text.get("1.0", "end").strip(), "完整性检查应有结果文本"
+    iv.top.destroy(); root.update()
+    print("审计界面 OK")
 
     app.role_var.set("reviewer"); app._toggle_role(); root.update()
     app.switch("dashboard"); root.update()

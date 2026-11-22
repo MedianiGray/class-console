@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""操作日志视图：留痕列表 + 本地备份导出 / 导入恢复。"""
+"""操作日志视图：留痕筛选 + 证据包 + 本地备份导出 / 恢复。"""
 
 import json
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
+import audit
+from ui_audit import open_evidence
 from theme import FONT, C
 
 
@@ -13,17 +15,39 @@ class LogsView(ttk.Frame):
     HEADS = {"time": "时间", "who": "操作人", "role": "角色", "act": "动作",
              "obj": "对象", "src": "来源"}
     WIDTHS = {"time": 130, "who": 100, "role": 90, "act": 80, "obj": 300, "src": 80}
-    ACT_TAG = {"提交": "green", "归档": "green", "驳回": "red", "查看": "muted"}
+    ACT_TAG = {"提交": "green", "归档": "green", "驳回": "red", "查看": "muted",
+               "证据包": "orange", "完整性检查": "orange"}
+    ACTS = ["全部", "提交", "归档", "驳回", "归位", "查看", "收集入账",
+            "证据包", "完整性检查"]
 
     def __init__(self, master, repo, window):
         super().__init__(master)
         self.repo = repo
         self.window = window
+        self.var_q = tk.StringVar()
+        self.var_act = tk.StringVar(value="全部")
+        self.var_who = tk.StringVar()
         self._build()
 
     def _build(self):
         top = ttk.Frame(self)
-        top.pack(fill="x", padx=18, pady=(4, 10))
+        top.pack(fill="x", padx=18, pady=(4, 8))
+        tk.Label(top, text="筛选", bg=C["bg"], fg=C["muted"],
+                 font=(FONT, 9)).pack(side="left", padx=(0, 6))
+        ent_q = ttk.Entry(top, textvariable=self.var_q, width=24)
+        ent_q.pack(side="left")
+        ent_q.bind("<KeyRelease>", lambda e: self.refresh())
+        cb_act = ttk.Combobox(top, textvariable=self.var_act, values=self.ACTS,
+                              state="readonly", width=10)
+        cb_act.pack(side="left", padx=8)
+        cb_act.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+        tk.Label(top, text="操作人", bg=C["bg"], fg=C["muted"],
+                 font=(FONT, 8)).pack(side="left", padx=(0, 6))
+        ent_who = ttk.Entry(top, textvariable=self.var_who, width=10)
+        ent_who.pack(side="left")
+        ent_who.bind("<KeyRelease>", lambda e: self.refresh())
+        ttk.Button(top, text="清空", style="Ghost.TButton",
+                   command=self._clear_filters).pack(side="left", padx=8)
         self.count = ttk.Label(top, text="", style="Muted.TLabel")
         self.count.pack(side="right")
 
@@ -47,19 +71,31 @@ class LogsView(ttk.Frame):
         ysb.pack(side="right", fill="y")
         xsb.pack(side="bottom", fill="x")
 
-        self.empty = ttk.Label(wrap, text="暂无操作记录，提交、归档、驳回等操作会自动记录在这里",
-                                style="Muted.TLabel")
+        self.empty = ttk.Label(wrap,
+                               text="暂无操作记录，提交、归档、驳回等操作会自动记录在这里",
+                               style="Muted.TLabel")
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
+        self.btn_evidence = ttk.Button(bar, text="导出证据包", style="Accent.TButton",
+                                       command=self.export_evidence)
         self.btn_export = ttk.Button(bar, text="导出备份", style="Ghost.TButton",
                                      command=self.export_backup)
         self.btn_import = ttk.Button(bar, text="导入备份", style="Ghost.TButton",
                                      command=self.import_backup)
         self.btn_export.pack(side="left")
+        self._binding = False
+
+    def _clear_filters(self):
+        self.var_q.set("")
+        self.var_act.set("全部")
+        self.var_who.set("")
+        self.refresh()
 
     def refresh(self):
-        rows = self.repo.list_logs()
+        rows = self.repo.list_logs(self.var_q.get(), self.var_act.get(),
+                                   self.var_who.get())
+        total = len(self.repo.list_logs())
         self.tree.delete(*self.tree.get_children())
         for i, l in enumerate(rows):
             row_tag = "zebra" if i % 2 else ""
@@ -67,16 +103,29 @@ class LogsView(ttk.Frame):
             self.tree.insert("", "end", tags=(row_tag, act_tag), values=(
                 l.get("time", ""), l.get("who", ""), l.get("role", ""),
                 l.get("act", ""), l.get("obj", ""), l.get("src", "本机")))
-        self.count.config(text="共 %d 条记录" % len(rows))
+        if len(rows) == total:
+            self.count.config(text="共 %d 条记录" % total)
+        else:
+            self.count.config(text="匹配 %d / 共 %d 条" % (len(rows), total))
         if rows:
             self.empty.place_forget()
         else:
             self.empty.place(relx=0.5, rely=0.4, anchor="center")
+            self.empty.configure(text="没有匹配的记录，换个关键词或动作再试")
 
-        # 导入备份按 backup:restore 权限点显隐
-        self.btn_import.pack_forget()
+        # 证据包 / 恢复入口按权限点显隐
+        for b in (self.btn_evidence, self.btn_import):
+            b.pack_forget()
+        if self.window.can("docs:export"):
+            self.btn_evidence.pack(side="left", before=self.btn_export)
         if self.window.can("backup:restore"):
             self.btn_import.pack(side="left", padx=8)
+
+    def export_evidence(self):
+        if not self.window.can("docs:export"):
+            self.window.toast("当前视角无权导出证据包")
+            return
+        open_evidence(self, self.repo, self.window, on_done=self.refresh)
 
     def export_backup(self):
         path = filedialog.asksaveasfilename(
@@ -106,23 +155,18 @@ class LogsView(ttk.Frame):
             messagebox.showerror("导入失败", "备份文件无法读取，或不是有效的 JSON 文件")
             return
 
-        if not isinstance(data, dict):
-            messagebox.showerror("导入失败", "备份文件结构不正确，缺少 docs / logs 数据段")
+        preview = audit.backup_preview(data, self.repo)
+        if not preview["ok"]:
+            messagebox.showerror("导入失败", preview["text"])
             return
-        docs, logs = data.get("docs", []), data.get("logs", [])
-        if not isinstance(docs, list) or not isinstance(logs, list):
-            messagebox.showerror("导入失败", "备份文件结构不正确，docs / logs 应为列表")
-            return
-
-        if not self.window.confirm(
-                "导入确认",
-                "导入将覆盖本机当前全部材料与操作日志，且不可撤销。\n确定继续导入吗？"):
+        if not self.window.confirm("导入确认", preview["text"]):
             return
 
         try:
-            self.repo.restore(docs, logs,
+            self.repo.restore(data.get("docs", []), data.get("logs", []),
                               data.get("roster", []), data.get("tasks", []),
-                              data.get("attachments", []))
+                              data.get("attachments", []), data.get("templates"),
+                              data.get("events", []))
         except Exception as e:
             messagebox.showerror("导入失败", str(e))
             return

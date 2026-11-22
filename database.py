@@ -40,6 +40,11 @@ def now_str() -> str:
     return "%02d-%02d %02d:%02d" % (d.month, d.day, d.hour, d.minute)
 
 
+def now_full() -> str:
+    """审计用完整时间，含年份，便于跨年排序与筛选。"""
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
 def date_today() -> str:
     d = datetime.date.today()
     return d.strftime("%Y-%m-%d")
@@ -88,6 +93,18 @@ def _clean(value) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _full_time(value) -> str:
+    """把旧的 MM-DD HH:MM 补成含年份时间；已是完整格式则原样返回。"""
+    text = _clean(value)
+    if not text:
+        return date_today() + " 00:00"
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text
+    if len(text) >= 5 and text[2] == "-":
+        return "%d-%s" % (datetime.date.today().year, text)
+    return text
 
 
 def _like_escape(text: str) -> str:
@@ -178,6 +195,7 @@ class LocalRepository:
         self.db_path = str(db_path)
         self._init_db()
         self._backfill_codes()
+        self._backfill_events()
 
     def _conn(self):
         conn = sqlite3.connect(self.db_path)
@@ -221,6 +239,12 @@ class LocalRepository:
                 form_type TEXT, key TEXT, label TEXT, type TEXT,
                 required INTEGER, options TEXT,
                 UNIQUE(form_type, key)
+            )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS doc_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                doc_id INTEGER, time TEXT, act TEXT,
+                who TEXT, role TEXT, detail TEXT
             )""")
         # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
         cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
@@ -420,6 +444,82 @@ class LocalRepository:
         finally:
             conn.close()
 
+    def _backfill_events(self):
+        """旧库 / 种子记录没有流转事件时，按提交时间与当前状态补一条最小链。"""
+        conn = self._conn()
+        try:
+            docs = conn.execute(
+                "SELECT id,time,status,reason,who,file FROM docs").fetchall()
+            for d in docs:
+                if conn.execute("SELECT COUNT(*) AS n FROM doc_events WHERE doc_id=?",
+                                (d["id"],)).fetchone()["n"]:
+                    continue
+                t = _full_time(d["time"])
+                detail = ("附件：" + d["file"]) if _clean(d["file"]) else ""
+                conn.execute("""INSERT INTO doc_events
+                    (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                    (d["id"], t, "提交", _clean(d["who"]), "申请人", detail))
+                if d["status"] in ("已归档", "已驳回", "待补材料"):
+                    act = "归档" if d["status"] == "已归档" else "驳回"
+                    conn.execute("""INSERT INTO doc_events
+                        (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                        (d["id"], t, act, "系统", "历史回填",
+                         _clean(d["reason"]) or "由旧记录状态补录"))
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+        finally:
+            conn.close()
+
+    def list_events(self, doc_id) -> list:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM doc_events WHERE doc_id=? ORDER BY id",
+                (doc_id,)).fetchall()
+            return [dict(r) for r in rows]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取流转记录失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_all_events(self) -> list:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM doc_events ORDER BY id").fetchall()
+            return [dict(r) for r in rows]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取流转记录失败：%s" % e)
+        finally:
+            conn.close()
+
+    def add_event(self, doc_id, act, who="", role="", detail="", time=None):
+        conn = self._conn()
+        try:
+            conn.execute("""INSERT INTO doc_events
+                (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                (doc_id, _clean(time) or now_full(), _clean(act),
+                 _clean(who) or "系统", _clean(role) or "本机", _clean(detail)))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("写入流转记录失败：%s" % e)
+        finally:
+            conn.close()
+
+    def doc_timeline(self, doc) -> list:
+        """返回一条材料从提交到归档/驳回的完整事件链，旧的按时间。"""
+        if not isinstance(doc, dict):
+            return []
+        events = self.list_events(doc.get("id"))
+        if not events:
+            t = _full_time(doc.get("time"))
+            events.append({"doc_id": doc.get("id"), "time": t, "act": "提交",
+                           "who": doc.get("who") or "", "role": "申请人",
+                           "detail": ""})
+        return sorted(events, key=lambda x: (str(x.get("time") or ""),
+                                             x.get("id") or 0))
+
     def add_doc(self, data: dict):
         if not isinstance(data, dict):
             raise RepositoryError("提交数据格式不正确")
@@ -459,6 +559,12 @@ class LocalRepository:
                     (doc_id,name,path,kind,time) VALUES (?,?,?,?,?)""",
                     (doc_id, _clean(att.get("name")), _clean(att.get("path")),
                      _clean(att.get("kind")), now_str()))
+            actor = _clean(data.get("actor")) or who
+            actor_role = _clean(data.get("actor_role")) or "申请人"
+            detail = note or (("附件：" + file_name) if file_name else "")
+            conn.execute("""INSERT INTO doc_events
+                (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                (doc_id, now_full(), "提交", actor, actor_role, detail))
             conn.commit()
         except sqlite3.Error as e:
             raise RepositoryError("写入材料失败：%s" % e)
@@ -469,7 +575,7 @@ class LocalRepository:
     def _get_doc(self, conn, doc_id):
         return conn.execute("SELECT * FROM docs WHERE id=?", (doc_id,)).fetchone()
 
-    def archive_doc(self, doc_id, reason=None):
+    def archive_doc(self, doc_id, reason=None, actor="", role=""):
         conn = self._conn()
         try:
             row = self._get_doc(conn, doc_id)
@@ -477,6 +583,10 @@ class LocalRepository:
                 return None
             conn.execute("UPDATE docs SET status='已归档', reason=? WHERE id=?",
                          (_clean(reason), doc_id))
+            conn.execute("""INSERT INTO doc_events
+                (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                (doc_id, now_full(), "归档", _clean(actor) or "系统",
+                 _clean(role) or "本机", _clean(reason) or "审核通过，已归档"))
             conn.commit()
             return dict(row)
         except sqlite3.Error as e:
@@ -484,18 +594,23 @@ class LocalRepository:
         finally:
             conn.close()
 
-    def set_arch(self, doc_id, path):
-        """记录材料归档后的实际文件路径。"""
+    def set_arch(self, doc_id, path, actor="", role=""):
+        """记录材料归档后的实际文件路径，并写入归位节点。"""
         conn = self._conn()
         try:
             conn.execute("UPDATE docs SET arch=? WHERE id=?", (_clean(path), doc_id))
+            if _clean(path):
+                conn.execute("""INSERT INTO doc_events
+                    (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                    (doc_id, now_full(), "归位", _clean(actor) or "系统",
+                     _clean(role) or "本机", _clean(path)))
             conn.commit()
         except sqlite3.Error as e:
             raise RepositoryError("写入归档路径失败：%s" % e)
         finally:
             conn.close()
 
-    def reject_doc(self, doc_id, reason=None):
+    def reject_doc(self, doc_id, reason=None, actor="", role=""):
         conn = self._conn()
         try:
             row = self._get_doc(conn, doc_id)
@@ -503,6 +618,10 @@ class LocalRepository:
                 return None
             conn.execute("UPDATE docs SET status='已驳回', reason=? WHERE id=?",
                          (_clean(reason), doc_id))
+            conn.execute("""INSERT INTO doc_events
+                (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                (doc_id, now_full(), "驳回", _clean(actor) or "系统",
+                 _clean(role) or "本机", _clean(reason) or "材料需补交"))
             conn.commit()
             return dict(row)
         except sqlite3.Error as e:
@@ -511,10 +630,27 @@ class LocalRepository:
             conn.close()
 
     # ---------- 日志 ----------
-    def list_logs(self) -> list:
+    def list_logs(self, q: str = "", act: str = "全部", who: str = "") -> list:
+        q, act, who = _clean(q), _clean(act) or "全部", _clean(who)
         conn = self._conn()
         try:
-            rows = conn.execute("SELECT * FROM logs ORDER BY id DESC").fetchall()
+            sql = "SELECT * FROM logs WHERE 1=1"
+            args = []
+            if act and act != "全部":
+                sql += " AND act = ?"
+                args.append(act)
+            if q:
+                like = "%" + _like_escape(q) + "%"
+                sql += (" AND (time LIKE ? ESCAPE '\\' OR who LIKE ? ESCAPE '\\'"
+                        " OR role LIKE ? ESCAPE '\\' OR act LIKE ? ESCAPE '\\'"
+                        " OR obj LIKE ? ESCAPE '\\' OR src LIKE ? ESCAPE '\\')")
+                args += [like] * 6
+            if who:
+                like = "%" + _like_escape(who) + "%"
+                sql += " AND who LIKE ? ESCAPE '\\'"
+                args.append(like)
+            sql += " ORDER BY id DESC"
+            rows = conn.execute(sql, args).fetchall()
             return [dict(r) for r in rows]
         except sqlite3.Error as e:
             raise RepositoryError("读取日志失败：%s" % e)
@@ -715,15 +851,17 @@ class LocalRepository:
             templates.extend(self.template_custom(ft))
         return {"docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
-                "attachments": atts, "templates": templates}
+                "attachments": atts, "templates": templates,
+                "events": self.list_all_events()}
 
     def restore(self, docs: list, logs: list, roster=None, tasks=None,
-                attachments=None, templates=None):
+                attachments=None, templates=None, events=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
         tasks = tasks if isinstance(tasks, list) else []
         attachments = attachments if isinstance(attachments, list) else []
+        events = events if isinstance(events, list) else []
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
@@ -731,6 +869,7 @@ class LocalRepository:
             conn.execute("DELETE FROM roster")
             conn.execute("DELETE FROM tasks")
             conn.execute("DELETE FROM attachments")
+            conn.execute("DELETE FROM doc_events")
             if isinstance(templates, list):
                 conn.execute("DELETE FROM template_fields")
                 for tf in templates:
@@ -775,6 +914,17 @@ class LocalRepository:
                     (doc_id,name,path,kind,time) VALUES (?,?,?,?,?)""",
                     (new_id, _clean(a.get("name")), _clean(a.get("path")),
                      _clean(a.get("kind")), _clean(a.get("time")) or now_str()))
+            for ev in events:
+                if not isinstance(ev, dict):
+                    continue
+                new_id = id_map.get(str(ev.get("doc_id")))
+                if new_id is None:
+                    continue
+                conn.execute("""INSERT INTO doc_events
+                    (doc_id,time,act,who,role,detail) VALUES (?,?,?,?,?,?)""",
+                    (new_id, _clean(ev.get("time")) or now_full(),
+                     _clean(ev.get("act")) or "提交", _clean(ev.get("who")),
+                     _clean(ev.get("role")), _clean(ev.get("detail"))))
             for l in logs:
                 if not isinstance(l, dict):
                     continue
@@ -803,6 +953,7 @@ class LocalRepository:
         finally:
             conn.close()
         self._backfill_codes()
+        self._backfill_events()
 
 
 def build_repository():

@@ -164,6 +164,8 @@ class CollectView(ttk.Frame):
                     "name": base, "cat": cat, "who": "待补", "sid": "",
                     "note": "文件夹收集：%s" % os.path.basename(self.folder),
                     "file": x["name"], "path": x["path"], "scope": "全员",
+                    "actor": self.window.operator_name,
+                    "actor_role": self.window.role_label(),
                 })
                 ok += 1
             except Exception as e:
