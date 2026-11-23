@@ -127,6 +127,7 @@ class DocsView(ttk.Frame):
                                      command=self.reject)
         self.btn_csv = ttk.Button(bar, text="导出 CSV", command=self.export_csv)
         self.btn_place = ttk.Button(bar, text="归位文件", command=self.place_files)
+        self.btn_files = ttk.Button(bar, text="文件室", command=self.open_in_files)
         self.view_btn = tk.Button(bar, text="视图 ▾", relief="flat", bd=0,
                                   bg=C["bg"], fg=C["text"],
                                   activebackground=C["bg_soft"], activeforeground=C["text"],
@@ -143,6 +144,7 @@ class DocsView(ttk.Frame):
                        activebackground=C["primary_soft"], activeforeground=C["primary"],
                        bd=0)
         menu.add_command(label="归位文件到归档目录", command=self.place_files)
+        menu.add_command(label="在文件室查看归档文件", command=self.open_in_files)
         menu.add_command(label="打开归档目录", command=self.open_archive_dir)
         menu.add_separator()
         menu.add_command(label="导出当前视图 CSV", command=self.export_csv)
@@ -553,6 +555,7 @@ class DocsView(ttk.Frame):
             self.btn_archive.config(
                 state=state,
                 text=("批量归档 (%d)" % len(ids)) if len(ids) > 1 else "归档")
+            self.btn_files.config(state=state)
         if self.window.can("docs:reject"):
             self.btn_reject.config(
                 state=state,
@@ -614,12 +617,13 @@ class DocsView(ttk.Frame):
         can_archive = self.window.can("docs:archive")
         can_export = self.window.can("docs:export")
         for b in (self.btn_view, self.btn_place, self.btn_csv, self.view_btn, self.more,
-                  self.btn_archive, self.btn_reject):
+                  self.btn_archive, self.btn_reject, self.btn_files):
             b.pack_forget()
         self.btn_view.pack(side="left")
         if can_archive:
             self.btn_archive.pack(side="left", padx=8)
             self.btn_place.pack(side="left", padx=8)
+            self.btn_files.pack(side="left", padx=(0, 8))
         if can_export:
             self.btn_csv.pack(side="left", padx=8)
         self.view_btn.pack(side="left", padx=8)
@@ -628,6 +632,8 @@ class DocsView(ttk.Frame):
         if self.window.can("docs:reject"):
             self.btn_reject.pack(side="right")
         self.more_menu.entryconfig("归位文件到归档目录",
+                                   state="normal" if can_archive else "disabled")
+        self.more_menu.entryconfig("在文件室查看归档文件",
                                    state="normal" if can_archive else "disabled")
         self.more_menu.entryconfig("导出当前视图 CSV",
                                    state="normal" if can_export else "disabled")
@@ -770,6 +776,21 @@ class DocsView(ttk.Frame):
             pass
         if not archive.open_folder(base):
             self.window.toast("无法打开 %s" % base)
+
+    def open_in_files(self):
+        """把选中材料带到文件室，直接展开所在目录。"""
+        if not self.window.can("docs:archive"):
+            self.window.toast("当前视角无权访问文件室")
+            return
+        doc = self._find_doc(self._selected())
+        if not doc:
+            self.window.toast("先选中一条材料")
+            return
+        path = str(doc.get("arch") or doc.get("path") or "").strip()
+        if not path:
+            self.window.toast("这条材料还没有本地文件路径")
+            return
+        self.window.goto_files(path)
 
     def place_files(self):
         """把当前筛选结果中的已归档材料统一归位到归档根目录。"""

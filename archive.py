@@ -13,6 +13,7 @@ import datetime
 import os
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import theme
@@ -326,3 +327,30 @@ def open_folder(path):
         return True
     except OSError:
         return False
+
+
+def open_file(path):
+    """用系统默认程序打开一个文件；不在本机时返回 False。"""
+    try:
+        if path and os.path.exists(path):
+            os.startfile(str(path))
+            return True
+    except OSError:
+        pass
+    return False
+
+
+def reveal(path):
+    """在资源管理器里定位文件；文件夹直接打开，文件选中它。"""
+    target = str(path or "").strip()
+    if not target:
+        return False
+    try:
+        if os.path.isdir(target):
+            return open_folder(target)
+        if os.path.isfile(target) and os.path.dirname(target):
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(target)])
+            return True
+    except OSError:
+        pass
+    return False

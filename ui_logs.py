@@ -18,10 +18,10 @@ class LogsView(ttk.Frame):
     ACT_TAG = {"提交": "green", "归档": "green", "驳回": "red", "查看": "muted",
                "证据包": "orange", "完整性检查": "orange", "催交": "orange",
                "回执": "green", "免交": "muted", "延期": "muted",
-               "恢复应交": "green", "交接包": "orange"}
+               "恢复应交": "green", "交接包": "orange", "文件室登记": "orange"}
     ACTS = ["全部", "提交", "归档", "驳回", "归位", "查看", "收集入账",
-            "证据包", "完整性检查", "催交", "回执", "免交", "延期",
-            "恢复应交", "交接包"]
+            "文件室登记", "证据包", "完整性检查", "催交", "回执", "免交",
+            "延期", "恢复应交", "交接包"]
 
     def __init__(self, master, repo, window):
         super().__init__(master)

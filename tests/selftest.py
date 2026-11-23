@@ -16,7 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # 设置文件改到临时目录，避免测试读写本机真实偏好
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-appdata-")
 from database import LocalRepository, RepositoryError, date_today  # noqa: E402
+import archive  # noqa: E402
 import audit  # noqa: E402
+import fileroom  # noqa: E402
 import handover  # noqa: E402
 import service  # noqa: E402
 
@@ -583,6 +585,49 @@ def main():
                data["exemptions"], data["followups"])
     assert len(r3.list_exemptions()) == len(data["exemptions"])
     print("37. 届别交接包 OK")
+
+    # 38. 文件室：扫描映射、缺失反查、拖入落位与冲突避让
+    base = Path(tempfile.mkdtemp()) / "归档"
+    archive.save_root(str(base))
+    mate = base / "团务材料" / "250201-张三"
+    mate.mkdir(parents=True)
+    (mate / "已归档.txt").write_text("已归档", encoding="utf-8")
+    (mate / "未登记.txt").write_text("待登记", encoding="utf-8")
+    did = r.add_doc({"name": "已归档材料", "cat": "团务材料", "who": "张三",
+                     "sid": "250201", "path": str(mate / "已归档.txt")})
+    r.archive_doc(did, "通过", "覃祖悦", "审核人")
+    r.set_arch(did, str(mate / "已归档.txt"), "覃祖悦", "审核人")
+    missing_id = r.add_doc({"name": "丢失材料", "cat": "奖助材料",
+                            "who": "李四", "sid": "250202"})
+    r.archive_doc(missing_id, "通过", "覃祖悦", "审核人")
+    r.set_arch(missing_id, str(base / "奖助材料" / "250202-李四" / "丢失.pdf"),
+               "覃祖悦", "审核人")
+    archive.write_index(r.list_docs(), base)
+
+    maps = fileroom.build_status(r.list_docs(), base)
+    assert len(maps["missing"]) == 1 and maps["missing"][0]["code"]
+    assert fileroom.file_status(mate / "已归档.txt", maps)["state"] == "台账有"
+    assert fileroom.file_status(mate / "未登记.txt", maps)["state"] == "未登记"
+    ctx = fileroom.infer_context("团务材料/250201-张三", r.list_roster())
+    assert (ctx["cat"], ctx["sid"], ctx["who"]) == ("团务材料", "250201", "张三")
+    assert len(fileroom.list_files(base, "团务材料/250201-张三")) == 2
+    assert fileroom.list_files(base, q="未登记")[0]["name"] == "未登记.txt"
+
+    outside = Path(tempfile.mkdtemp()) / "新增材料.txt"
+    outside.write_text("拖入内容", encoding="utf-8")
+    res = fileroom.register_files(r, [str(outside)], base=base,
+                                  rel="团务材料/250201-张三", cat="团务材料",
+                                  sid="250201", who="张三", actor="覃祖悦",
+                                  role="经办人")
+    assert res["ok"] == 1 and os.path.isfile(res["targets"][0]["path"]), res
+    assert open(res["targets"][0]["path"], encoding="utf-8").read() == "拖入内容"
+    dup = fileroom.register_files(r, [str(outside)], base=base,
+                                  rel="团务材料/250201-张三", cat="团务材料",
+                                  sid="250201", who="张三", actor="覃祖悦",
+                                  role="经办人")
+    assert dup["ok"] == 1 and dup["targets"][0]["path"].endswith("_v2.txt")
+    assert any(l["act"] == "文件室登记" for l in r.list_logs())
+    print("38. 文件室扫描/缺失/拖入 OK")
 
     print("SELFTEST OK")
 

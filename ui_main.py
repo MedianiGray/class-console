@@ -19,6 +19,7 @@ from ui_submit import SubmitView
 from ui_logs import LogsView
 from ui_roster import RosterView
 from ui_service import ServiceView
+from ui_files import FileRoomView
 from ui_tasks import TasksView
 import theme
 from theme import FONT, C
@@ -47,6 +48,7 @@ class MainWindow(ttk.Frame):
     NAV = [
         ("dashboard", "工作台概览", None, "◈", None),
         ("docs", "材料台账", None, "▤", "flow"),
+        ("files", "文件室", "docs:archive", "▧", "flow"),
         ("collect", "文件夹收集", "docs:create", "▣", "flow"),
         ("submit", "提交材料", "docs:create", "＋", "flow"),
         ("roster", "名单核对", "roster:manage", "◎", "crew"),
@@ -54,9 +56,9 @@ class MainWindow(ttk.Frame):
         ("service", "服务留痕", "logs:view", "♡", "crew"),
         ("logs", "操作日志", "logs:view", "≡", "crew"),
     ]
-    NAV_SHORT = {"dashboard": "概览", "docs": "台账", "collect": "收集",
-                 "roster": "名单", "tasks": "任务", "submit": "提交",
-                 "service": "服务", "logs": "日志"}
+    NAV_SHORT = {"dashboard": "概览", "docs": "台账", "files": "文件",
+                 "collect": "收集", "roster": "名单", "tasks": "任务",
+                 "submit": "提交", "service": "服务", "logs": "日志"}
     GROUPS = [("flow", "材料流程"), ("crew", "协同跟进")]
 
     def __init__(self, master, repo):
@@ -84,6 +86,59 @@ class MainWindow(ttk.Frame):
         theme.setup_ttk(top)
         self._build()
         self.refresh_all()
+        self._enable_file_drop()
+
+    def _enable_file_drop(self):
+        """等窗口真正映射后再挂 WM_DROPFILES，避免拿不到顶层 HWND。"""
+        if getattr(self, "_drop_ready", None) is not None:
+            return
+        self._drop_ready = "pending"
+        self.after(260, self._install_file_drop)
+
+    def _install_file_drop(self):
+        if not self.winfo_exists():
+            return
+        try:
+            from drop_target import enable_drop
+            self._drop_ready = enable_drop(self.winfo_toplevel(),
+                                           self._on_files_dropped)
+        except Exception:
+            self._drop_ready = False
+        if self._drop_ready is False and not getattr(self, "_drop_retried", False):
+            self._drop_retried = True
+            self.after(500, self._install_file_drop)
+
+    def _on_files_dropped(self, paths):
+        if not self.can("docs:archive"):
+            self.toast("当前视角无权登记文件")
+            return
+        if self.current != "files":
+            self.switch("files")
+        self.views["files"].accept_drop(paths)
+
+    def goto_doc(self, code):
+        """按编号回到台账并筛出这一条。"""
+        q = str(code or "").strip()
+        if not q:
+            return
+        docs = self.views.get("docs")
+        if docs is None:
+            return
+        docs.cat.set("全部")
+        docs.status.set("全部")
+        docs.type.set("全部")
+        docs.q.set(q)
+        self.switch("docs")
+        docs.tree.focus_set()
+
+    def goto_files(self, path=None):
+        """从台账 / 缺失清单跳到文件室；有路径就展开并选中。"""
+        if not self._nav_visible("files"):
+            self.toast("当前视角无权访问文件室")
+            return
+        self.switch("files")
+        if path:
+            self.views["files"].reveal_path(path)
 
     def can(self, perm):
         return perm in PERMISSIONS.get(self.role, [])
@@ -146,6 +201,7 @@ class MainWindow(ttk.Frame):
         self.views = {
             "dashboard": DashboardView(body, self.repo, self),
             "docs": DocsView(body, self.repo, self),
+            "files": FileRoomView(body, self.repo, self),
             "collect": CollectView(body, self.repo, self),
             "roster": RosterView(body, self.repo, self),
             "tasks": TasksView(body, self.repo, self),

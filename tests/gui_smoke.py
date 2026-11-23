@@ -3,7 +3,7 @@
 
 运行：
     py -3.14 tests/gui_smoke.py
-覆盖：视图切换、角色切换、提交入库、留痕角色跟随、校验拦截、归档驳回、禁用联动、脏记录渲染、申请人学号过滤、日志备份附件恢复。
+覆盖：视图切换、角色切换、提交入库、留痕角色跟随、校验拦截、归档驳回、禁用联动、脏记录渲染、申请人学号过滤、文件室目录/预览/缺失反查、日志备份附件恢复。
 """
 import sys
 import json
@@ -34,7 +34,7 @@ def main():
     app.confirm = lambda title, msg: True
     root.update()
 
-    for k in ("dashboard", "docs", "roster", "tasks", "submit", "logs"):
+    for k in ("dashboard", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
     print("视图切换 OK")
@@ -302,6 +302,7 @@ def main():
     assert lv.btn_evidence.winfo_ismapped(), "管理层应能看到证据包入口"
 
     import archive
+    import audit
     import ui_audit
     archive.save_root(str(Path(tempfile.mkdtemp()) / "archive"))
     ed = ui_audit.EvidenceDialog(lv, repo, app)
@@ -325,6 +326,91 @@ def main():
     assert "待处理" in dash.bottom_title.cget("text")
     print("看板岗位显隐 OK")
 
+    # v0.19 文件室：目录树、文件状态、文本预览、缺失反查与登记弹窗
+    base = archive.root()
+    mate = base / "团务材料" / "250201-张三"
+    mate.mkdir(parents=True, exist_ok=True)
+    (mate / "文件室材料.txt").write_text("文件室预览内容", encoding="utf-8")
+    fid = repo.add_doc({"name": "文件室材料", "cat": "团务材料", "who": "张三",
+                        "sid": "250201", "path": str(mate / "文件室材料.txt")})
+    repo.archive_doc(fid, "通过", "覃祖悦", "审核人")
+    repo.set_arch(fid, str(mate / "文件室材料.txt"), "覃祖悦", "审核人")
+    mid2 = repo.add_doc({"name": "文件室缺失", "cat": "奖助材料",
+                         "who": "李四", "sid": "250202"})
+    repo.archive_doc(mid2, "通过", "覃祖悦", "审核人")
+    repo.set_arch(mid2, str(base / "奖助材料" / "250202-李四" / "没有这份.pdf"),
+                  "覃祖悦", "审核人")
+    audit.rebuild_index(repo.list_docs(), base)
+    app.switch("files"); root.update()
+    fv = app.views["files"]
+    fv.refresh(); root.update()
+    assert fv._dir_iids.get("团务材料/250201-张三"), "文件室目录树缺材料目录"
+    assert fv.tree_dirs.get_children("root"), "文件室目录树为空"
+    fv.rel = "团务材料/250201-张三"
+    fv._build_tree(); fv._load_files(); root.update()
+    assert fv.files.get_children(), "文件室当前目录未列出文件"
+    first_file = fv.files.get_children()[0]
+    fv.files.selection_set(first_file); fv.files.focus(first_file)
+    fv._on_file(); root.update()
+    assert "文件室材料" in fv.preview_title.cget("text"), fv.preview_title.cget("text")
+    texts = [w.get("1.0", "end") for w in fv.preview_body.winfo_children()
+             if isinstance(w, tk.Text)]
+    assert any("文件室预览内容" in t for t in texts), "文本预览未显示文件内容"
+    assert len(fv.maps["missing"]) >= 1, "缺失文件未进入反查清单"
+    import ui_files
+    md = ui_files.MissingDialog(fv, repo, app)
+    root.update()
+    assert len(md.rows) >= 1 and md.tree.get_children(), "缺失弹窗列表为空"
+    md.top.destroy(); root.update()
+    rd = ui_files.RegisterDialog(fv, repo, app, [str(mate / "文件室材料.txt")],
+                                 current_rel="团务材料/250201-张三")
+    root.update()
+    assert rd.var_cat.get() == "团务材料" and rd.var_who.get() == "张三"
+    assert "落点" in rd.target_var.get()
+    rd.top.destroy(); root.update()
+    print("文件室视图/预览/缺失反查 OK")
+
+    # Windows 原生拖入：真实 WM_DROPFILES 消息应触发当前文件室登记回调
+    import ctypes
+    import time
+    from ctypes import wintypes
+    import drop_target
+    if app._drop_ready in (None, False, "pending"):
+        app._install_file_drop()
+        root.update()
+    assert app._drop_ready is True, "拖入注册失败"
+    got = []
+    fv.accept_drop = lambda paths: got.extend(paths)
+    drop_file = base / "拖入消息.txt"
+    drop_file.write_text("drop", encoding="utf-8")
+    class DROPFILES(ctypes.Structure):
+        _fields_ = [("pFiles", wintypes.DWORD), ("pt", wintypes.POINT),
+                    ("fNC", wintypes.BOOL), ("fWide", wintypes.BOOL)]
+    text = (str(drop_file) + "\0\0").encode("utf-16-le")
+    size = ctypes.sizeof(DROPFILES) + len(text)
+    k32 = ctypes.windll.kernel32
+    k32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    k32.GlobalAlloc.restype = wintypes.HGLOBAL
+    k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    k32.GlobalLock.restype = ctypes.c_void_p
+    k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    hdrop = k32.GlobalAlloc(0x42, size)
+    ptr = k32.GlobalLock(hdrop)
+    df = DROPFILES()
+    df.pFiles = ctypes.sizeof(DROPFILES)
+    df.fWide = True
+    ctypes.memmove(ptr, ctypes.byref(df), ctypes.sizeof(DROPFILES))
+    ctypes.memmove(ptr + ctypes.sizeof(DROPFILES), text, len(text))
+    k32.GlobalUnlock(hdrop)
+    ctypes.windll.user32.SendMessageW(
+        drop_target._state["hwnd"], drop_target.WM_DROPFILES,
+        wintypes.WPARAM(hdrop), 0)
+    root.update()
+    time.sleep(0.1)
+    root.update()
+    assert got and os.path.normcase(got[0]) == os.path.normcase(str(drop_file)), got
+    print("Windows 原生拖入 OK")
+
     # 主题切换：深色 / 浅色各重建一次，数据与视图保持不变
     import theme
     for m in ("dark", "light"):
@@ -333,7 +419,7 @@ def main():
         root.update()
         assert theme.resolved() == m, "主题未按预期生效：%s" % m
         assert app.current in app.views, "切主题后当前视图丢失"
-        for k in ("dashboard", "docs", "collect", "roster", "tasks", "service", "submit", "logs"):
+        for k in ("dashboard", "docs", "files", "collect", "roster", "tasks", "service", "submit", "logs"):
             app.switch(k)
             root.update()
         assert app.views["docs"].tree.get_children(), "切主题后台账为空"

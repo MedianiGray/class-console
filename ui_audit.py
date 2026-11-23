@@ -115,9 +115,10 @@ class IntegrityDialog:
         ("orphan_file", "磁盘未登记文件"),
     ]
 
-    def __init__(self, parent, repo, window):
+    def __init__(self, parent, repo, window, on_done=None):
         self.repo = repo
         self.window = window
+        self.on_done = on_done
         self.result = None
         self.top = tk.Toplevel(parent)
         self.top.title("完整性检查")
@@ -207,6 +208,8 @@ class IntegrityDialog:
         self.window.toast("索引已按台账重建")
         if path:
             messagebox.showinfo("重建完成", "索引已写入：\n%s" % path, parent=self.top)
+        if self.on_done:
+            self.on_done()
         self.refresh()
 
     def _repair(self):
@@ -232,6 +235,8 @@ class IntegrityDialog:
                                 f.get("detail") or "")
                 for f in res["failed"][:8])
         messagebox.showinfo("归位完成", msg, parent=self.top)
+        if self.on_done:
+            self.on_done()
         self.refresh()
 
 
@@ -239,5 +244,5 @@ def open_evidence(parent, repo, window, on_done=None):
     return EvidenceDialog(parent, repo, window, on_done)
 
 
-def open_integrity(parent, repo, window):
-    return IntegrityDialog(parent, repo, window)
+def open_integrity(parent, repo, window, on_done=None):
+    return IntegrityDialog(parent, repo, window, on_done=on_done)

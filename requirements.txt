@@ -1,3 +1,4 @@
-# 运行本程序无需安装第三方库：Tkinter、SQLite3 均为 Python 标准库。
+# 运行依赖：Tkinter、SQLite3 为 Python 标准库；图片 / PDF 预览使用 Pillow。
+Pillow>=10.0
 # 仅在 Windows 上打包 exe 时需要安装打包工具：
 pyinstaller>=6.0
