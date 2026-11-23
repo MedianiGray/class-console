@@ -23,6 +23,7 @@ from ui_files import FileRoomView
 from ui_tasks import TasksView
 import theme
 from theme import FONT, C
+from seed import SEED_DOCS
 
 # 岗位与权限点模型（与 web/index.html 对齐）。
 ROLES = {
@@ -41,6 +42,11 @@ PERMISSIONS = {
                   "backup:restore", "logs:view", "config:manage"],
     "applicant": ["docs:create", "docs:edit"],
 }
+
+
+def old_user_should_skip_first_run(doc_count, done, dismissed):
+    """首次引导判定：只有“没写过标记且材料多于种子”的老库才静默跳过。"""
+    return done is None and dismissed is None and doc_count > len(SEED_DOCS)
 
 
 class MainWindow(ttk.Frame):
@@ -77,6 +83,7 @@ class MainWindow(ttk.Frame):
             g for g in theme.load_ui("nav_closed", "").split(",") if g)
         if not theme.is_applied():
             theme.init_from_settings()
+        self._skip_first_run_for_old_users()
         top = self.winfo_toplevel()
         try:
             top.configure(bg=C["bg"])
@@ -87,6 +94,22 @@ class MainWindow(ttk.Frame):
         self._build()
         self.refresh_all()
         self._enable_file_drop()
+
+    def _skip_first_run_for_old_users(self):
+        """老库已有真实材料、且从没写过首导标记时，静默视为已完成。"""
+        if theme.load_ui("first_run_done", None) is not None:
+            return
+        if theme.load_ui("first_run_dismissed", None) is not None:
+            return
+        try:
+            doc_count = len(self.repo.list_docs())
+        except Exception:
+            return
+        if old_user_should_skip_first_run(
+                doc_count,
+                theme.load_ui("first_run_done", None),
+                theme.load_ui("first_run_dismissed", None)):
+            theme.save_ui("first_run_dismissed", "1")
 
     def _enable_file_drop(self):
         """等窗口真正映射后再挂 WM_DROPFILES，避免拿不到顶层 HWND。"""
@@ -512,6 +535,102 @@ class MainWindow(ttk.Frame):
         import ui_settings
         ui_settings.open_settings(self)
 
+    # ---------- 首次引导 ----------
+    def first_run_steps(self):
+        raw = str(theme.load_ui("first_run_steps", "") or "")
+        return set(x for x in raw.split(",") if x)
+
+    def first_run_visible(self):
+        return (str(theme.load_ui("first_run_done", "0")) != "1" and
+                str(theme.load_ui("first_run_dismissed", "0")) != "1")
+
+    def mark_first_run(self, step):
+        steps = self.first_run_steps()
+        step = str(step)
+        if step not in steps:
+            steps.add(step)
+        if self.role == "applicant" and self.applicant_sid:
+            steps.add("1")
+        theme.save_ui("first_run_steps", ",".join(sorted(steps)))
+        if {"1", "2"}.issubset(steps) and str(theme.load_ui("first_run_done", "0")) != "1":
+            theme.save_ui("first_run_done", "1")
+            self.toast("上手完成，使用帮助已收进设置")
+        self.refresh_all()
+
+    def first_run_go(self, step, view):
+        self.mark_first_run(step)
+        self.switch(view)
+
+    def dismiss_first_run(self):
+        theme.save_ui("first_run_dismissed", "1")
+        self.refresh_all()
+
+    def reset_first_run(self):
+        theme.save_ui("first_run_done", "0")
+        theme.save_ui("first_run_dismissed", "0")
+        theme.save_ui("first_run_steps", "")
+        self.switch("dashboard")
+        self.toast("三步上手已重新显示在概览")
+
+    def open_help(self):
+        top = tk.Toplevel(self)
+        top.title("使用帮助")
+        top.configure(bg=C["bg"])
+        theme.apply_tk_defaults(top)
+        w, h = 560, 440
+        self.update_idletasks()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - w) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - h) // 3)
+        top.geometry("%dx%d+%d+%d" % (w, h, x, y))
+        top.transient(self.winfo_toplevel())
+        top.resizable(False, False)
+        tk.Label(top, text="三步上手", bg=C["bg"], fg=C["text"],
+                 font=(FONT, 15, "bold"), anchor="w").pack(fill="x", padx=22, pady=(18, 2))
+        tk.Label(top, text="不弹欢迎页；完成一次提交 → 审核 → 归档后，卡片会自动收起。",
+                 bg=C["bg"], fg=C["muted"], font=(FONT, 9), anchor="w").pack(
+                     fill="x", padx=22, pady=(0, 10))
+        card = tk.Frame(top, bg=C["card"], highlightthickness=1,
+                       highlightbackground=C["line"])
+        card.pack(fill="both", expand=True, padx=22, pady=(0, 12))
+        steps = self.first_run_steps()
+        is_applicant = self.role == "applicant"
+        rows = ([
+            ("填写申请人学号", "在设置里填好学号，只看自己的材料"),
+            ("提交第一份材料", "登记后进入待审核队列"),
+            ("查看审核进度", "归档或驳回后回到台账看结果"),
+        ] if is_applicant else [
+            ("录入或收集第一份材料", "手动提交，或从文件夹收集登记"),
+            ("审核并归档", "通过后写入归档目录，留下第一条留痕"),
+            ("核对名单或登记任务", "知道谁没交、什么时候截止"),
+        ])
+        for i, (title, desc) in enumerate(rows):
+            row = tk.Frame(card, bg=C["card"])
+            row.pack(fill="x", padx=14, pady=(10 if i == 0 else 0, 0))
+            done = str(i + 1) in steps
+            tk.Label(row, text="✓" if done else str(i + 1), width=2,
+                     bg=C["tag_green"] if done else C["primary_soft"],
+                     fg=C["green"] if done else C["primary"],
+                     font=(FONT, 9, "bold")).pack(side="left", anchor="n")
+            box = tk.Frame(row, bg=C["card"])
+            box.pack(side="left", fill="x", expand=True, padx=(10, 0))
+            tk.Label(box, text=title, bg=C["card"], fg=C["text"],
+                     font=(FONT, 10, "bold"), anchor="w").pack(fill="x")
+            tk.Label(box, text=desc, bg=C["card"], fg=C["muted"],
+                     font=(FONT, 9), anchor="w", justify="left").pack(fill="x", pady=(1, 6))
+            if i < 2:
+                tk.Frame(card, bg=C["line"], height=1).pack(fill="x", padx=14, pady=(0, 0))
+        footer = tk.Frame(top, bg=C["bg"])
+        footer.pack(side="bottom", fill="x", padx=22, pady=(0, 16))
+        ttk.Button(footer, text="关闭", command=top.destroy).pack(side="right")
+        ttk.Button(footer, text="重新显示在概览", command=lambda: (top.destroy(),
+                                                                  self.reset_first_run())).pack(
+            side="right", padx=(0, 8))
+        top.bind("<Escape>", lambda e: top.destroy())
+        try:
+            top.grab_set()
+        except tk.TclError:
+            pass
+
     # ---------- 全局搜索 ----------
     _SEARCH_PH = "搜索材料、学号、编号…"
 
@@ -627,6 +746,10 @@ class MainWindow(ttk.Frame):
         self.title_label.config(text=self._nav_title(key))
         self.eyebrow_label.config(text=self._nav_eyebrow(key))
         self.refresh_all()
+        if key in ("roster", "tasks") and self.first_run_visible():
+            steps = self.first_run_steps()
+            if "3" not in steps:
+                self.mark_first_run(3)
 
     def refresh_all(self):
         try:

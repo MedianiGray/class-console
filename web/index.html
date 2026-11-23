@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>班级材料操作台 · 浏览器本地版 v0.20.1</title>
+<title>班级材料操作台 · 浏览器本地版 v0.21.0</title>
 <style>
   :root{
     color-scheme:light;
@@ -201,16 +201,37 @@
   .sell .sell-d{font-size:12.5px;color:var(--muted);line-height:1.55}
 
   /* 空态上手步骤 */
+  .first-run{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px 18px;margin:0 0 18px}
+  .fr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+  .fr-title{font-size:14px;font-weight:650;letter-spacing:-.01em}
+  .fr-sub{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:3px}
+  .fr-count{font-size:11px;font-weight:600;color:var(--primary);background:var(--primary-soft);
+    border-radius:999px;padding:3px 9px;white-space:nowrap}
+  .fr-dismiss{border:0;background:transparent;color:var(--sub);font-size:12px;cursor:pointer;
+    padding:2px 0;white-space:nowrap}
+  .fr-dismiss:hover{color:var(--text)}
+  .fr-demo{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    background:var(--bg-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;
+    font-size:12px;color:var(--muted);line-height:1.5}
+  .fr-demo button{border:0;background:transparent;color:var(--primary);font-size:12px;
+    cursor:pointer;white-space:nowrap;padding:0}
   .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .step{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px;
     display:flex;flex-direction:column;gap:8px}
   .step .step-no{width:24px;height:24px;border-radius:50%;background:var(--primary-soft);color:var(--primary);
     font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .step.done .step-no{background:var(--tag-green);color:var(--green)}
   .step .step-t{font-size:14px;font-weight:600}
   .step .step-d{font-size:12.5px;color:var(--muted);line-height:1.55;flex:1}
   .step .step-go{border:0;background:transparent;color:var(--primary);font-size:13px;font-weight:500;
     padding:0;cursor:pointer;text-align:left}
   .step .step-go:hover{text-decoration:underline}
+  .step .step-state{font-size:12px;font-weight:600;color:var(--green)}
+  .fr-help-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  .fr-help-row:first-of-type{border-top:0;padding-top:0}
+  .fr-help-no{width:22px;height:22px;border-radius:50%;background:var(--primary-soft);color:var(--primary);
+    font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 
   /* 导航分组 */
   .nav-group-label{font-size:11px;color:var(--sub);letter-spacing:.05em;font-weight:600;
@@ -376,6 +397,11 @@
   .more-item .mi-s{display:block;font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:1px}
   .more-item .mi-badge{margin-left:auto;font-size:10px;font-weight:600;color:var(--sub);
     background:var(--bg-soft);border-radius:999px;padding:2px 7px;white-space:nowrap}
+  .more-help{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    border-top:1px solid var(--line);margin-top:16px;padding-top:12px}
+  .more-help button{border:0;background:transparent;color:var(--primary);font-size:12.5px;
+    font-weight:500;cursor:pointer;padding:0}
+  .more-help span{font-size:11.5px;color:var(--muted)}
 
   /* 详情抽屉 */
   .drawer-mask{position:fixed;inset:0;background:rgba(31,41,55,.32);opacity:0;pointer-events:none;
@@ -988,7 +1014,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.20.1";
+var WEB_VERSION = "0.21.0";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -1124,14 +1150,157 @@ var SEED_TASKS = [
   {title:"奖学金评定证明回收", cat:"奖助材料", scope:"班委", note:"核对证明复印件齐全", done:true, offset:-2}
 ];
 
+/* 种子只用于第一次预览；标 demo 后，首导步骤不会把它们算作你的真实进度 */
+[SEED_DOCS, SEED_LOGS, SEED_ROSTER, SEED_TASKS].forEach(function(list){
+  list.forEach(function(row){ row.demo = true; });
+});
+
 /* ============ 本地缓存存储层（对齐仓库契约） ============ */
-var store = { docs: [], logs: [], roster: [], tasks: [], templates: {}, seq: { doc: 0, log: 0 } };
+var store = { docs: [], logs: [], roster: [], tasks: [], templates: {}, seq: { doc: 0, log: 0 }, demo: false };
 var APPLICANT_KEY = "classconsole_web_applicant_sid";
 function loadApplicantSid(){
   try { return clean(localStorage.getItem(APPLICANT_KEY)); } catch(e){ return ""; }
 }
 function saveApplicantSid(sid){
   try { localStorage.setItem(APPLICANT_KEY, clean(sid)); } catch(e){}
+}
+
+/* ============ 首次引导（只做一次，不弹欢迎页） ============ */
+var FIRST_RUN_KEY = "classconsole_web_first_run";
+function loadFirstRunPref(){
+  var p = { dismissed:false, seen:false };
+  try {
+    var raw = localStorage.getItem(FIRST_RUN_KEY);
+    if (raw) {
+      p.seen = true;
+      var obj = JSON.parse(raw);
+      p.dismissed = !!(obj && obj.dismissed);
+    }
+  } catch(e){}
+  return p;
+}
+var firstRun = loadFirstRunPref();
+function saveFirstRunPref(){
+  firstRun.seen = true;
+  try { localStorage.setItem(FIRST_RUN_KEY, JSON.stringify({ dismissed: !!firstRun.dismissed })); } catch(e){}
+}
+function firstRunRealDocs(){
+  return store.docs.filter(function(d){ return !d.demo; });
+}
+function firstRunRealRoster(){
+  return store.roster.filter(function(r){ return !r.demo; });
+}
+function firstRunRealTasks(){
+  return store.tasks.filter(function(t){ return !t.demo; });
+}
+function firstRunProgress(){
+  var real = firstRunRealDocs();
+  var isApplicant = state.role === "applicant";
+  var sid = clean(state.applicantSid);
+  var mine = sid ? real.filter(function(d){ return d.sid === sid; }) : [];
+  var steps, done;
+  if (isApplicant) {
+    steps = [
+      { done:!!sid, title:"填写申请人学号", desc:"填好后，这里只显示你自己的材料" },
+      { done:mine.length > 0, title:"提交第一份材料", desc:"登记材料，进入待审核队列" },
+      { done:mine.some(function(d){ return d.status === "已归档" || d.status === "已驳回"; }),
+        title:"查看审核进度", desc:"材料有结果后，回到这里看归档或补充" }
+    ];
+    done = steps[0].done && steps[1].done;
+  } else {
+    steps = [
+      { done:real.length > 0, title:"录入或收集第一份材料", desc:"手动提交，或从文件夹收集登记" },
+      { done:real.some(function(d){ return d.status === "已归档"; }), title:"审核并归档", desc:"通过后写入归档目录，留下第一条留痕" },
+      { done:firstRunRealRoster().length > 0 || firstRunRealTasks().length > 0,
+        title:"核对名单或登记任务", desc:"知道谁没交、什么时候截止" }
+    ];
+    done = steps[0].done && steps[1].done;
+  }
+  return { steps:steps, done:done, isApplicant:isApplicant, sid:sid };
+}
+function firstRunStepHtml(step, index, action){
+  return '<div class="step' + (step.done ? " done" : "") + '">' +
+    '<div class="step-no">' + (step.done ? "✓" : (index + 1)) + '</div>' +
+    '<div class="step-t">' + esc(step.title) + '</div>' +
+    '<div class="step-d">' + esc(step.desc) + '</div>' +
+    (step.done ? '<div class="step-state">已完成</div>' : (action || "")) +
+  '</div>';
+}
+function firstRunHtml(){
+  if (firstRun.dismissed) return "";
+  var p = firstRunProgress();
+  var doneCount = p.steps.filter(function(s){ return s.done; }).length;
+  var actions;
+  if (p.isApplicant) {
+    actions = [
+      p.sid ? "" : '<button class="step-go" data-focus="applicantSid">填写学号</button>',
+      '<button class="step-go" data-go="submit">提交材料</button>',
+      '<button class="step-go" data-go="docs">查看进度</button>'
+    ];
+  } else {
+    actions = [
+      can("docs:create") ? '<button class="step-go" data-go="submit">去录入</button>' : '<button class="step-go" data-go="docs">去台账</button>',
+      '<button class="step-go" data-go="docs">去审核</button>',
+      can("roster:manage") ? '<button class="step-go" data-go="roster">去核对</button>' :
+        (can("task:manage") ? '<button class="step-go" data-go="tasks">去登记</button>' : '<button class="step-go" data-go="docs">去台账</button>')
+    ];
+  }
+  var demoHtml = store.demo && store.docs.some(function(d){ return d.demo; })
+    ? '<div class="fr-demo"><span>这里还有示例数据，不计入上手进度。</span>' +
+      '<button type="button" data-demo-clear>清空示例数据</button></div>'
+    : "";
+  return '<div class="first-run">' +
+    '<div class="fr-head"><div><div class="fr-title">三步上手</div>' +
+      '<div class="fr-sub">不弹欢迎页。完成一次提交 → 审核 → 归档，这张卡会自动收起，之后可在「更多 → 使用帮助」重看。</div></div>' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0">' +
+        '<span class="fr-count">' + doneCount + ' / 3</span>' +
+        '<button class="fr-dismiss" type="button" data-first-run-dismiss>收起</button>' +
+      '</div></div>' + demoHtml +
+    '<div class="steps">' + p.steps.map(function(s, i){ return firstRunStepHtml(s, i, actions[i]); }).join("") + '</div>' +
+  '</div>';
+}
+function dismissFirstRun(){
+  firstRun.dismissed = true;
+  saveFirstRunPref();
+  renderDashboard();
+}
+function maybeCompleteFirstRun(){
+  if (firstRun.dismissed) return;
+  var p = firstRunProgress();
+  if (!p.done) return;
+  firstRun.dismissed = true;
+  saveFirstRunPref();
+  toast("上手完成，步骤已收进「更多 → 使用帮助」");
+}
+function initFirstRun(){
+  if (firstRun.seen || firstRun.dismissed) return;
+  if (firstRunRealDocs().length === 0) return;
+  /* 已有真实数据的老用户不打扰；新用户第一次打开才显示 */
+  firstRun.dismissed = true;
+  saveFirstRunPref();
+}
+function clearDemoData(){
+  store.docs = store.docs.filter(function(d){ return !d.demo; });
+  store.logs = store.logs.filter(function(l){ return !l.demo; });
+  store.roster = store.roster.filter(function(r){ return !r.demo; });
+  store.tasks = store.tasks.filter(function(t){ return !t.demo; });
+  store.demo = false;
+  store.seq = { doc:store.docs.length, log:store.logs.length };
+  backfillCodes();
+  saveStore();
+  closeModal();
+  switchView("dashboard");
+  toast("示例数据已清空");
+}
+function openFirstRunHelp(){
+  var p = firstRunProgress();
+  var body = '<div class="fr-sub" style="margin:0 0 12px">' +
+    '三步完成一次材料闭环。任何时候都可以从这里重看，不影响已办的事。</div>' +
+    p.steps.map(function(s, i){
+      return '<div class="fr-help-row"><span class="fr-help-no">' + (s.done ? "✓" : (i + 1)) + '</span>' +
+        '<span><b>' + esc(s.title) + '</b><br><span class="fr-sub">' + esc(s.desc) + '</span></span></div>';
+    }).join("");
+  showModal("使用帮助", body, [{label:"关闭", cls:"btn"}]);
 }
 
 function nowStr() {
@@ -1209,6 +1378,7 @@ function loadStore() {
         store.tasks = Array.isArray(data.tasks) ? data.tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
         store.templates = (data.templates && typeof data.templates === "object") ? normalizeTemplates(data.templates) : {};
         store.seq = data.seq || { doc: store.docs.length, log: store.logs.length };
+        store.demo = !!data.demo;
         backfillCodes();
         saveStore();
         return;
@@ -1222,10 +1392,11 @@ function loadStore() {
     var d = new Date(); d.setDate(d.getDate() + (t.offset || 0));
     function pad(n){ return (n < 10 ? "0" : "") + n; }
     var ds = d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
-    return { id: i+1, title:t.title, cat:t.cat, scope:t.scope, note:t.note, done:t.done, deadline:ds };
+    return { id: i+1, title:t.title, cat:t.cat, scope:t.scope, note:t.note, done:t.done, deadline:ds, demo:true };
   });
   store.templates = {};
   store.seq = { doc: store.docs.length, log: store.logs.length };
+  store.demo = true;
   backfillCodes();
   saveStore();
 }
@@ -1262,6 +1433,7 @@ function normalizeDoc(raw, i) {
   row.extra = (raw.extra && typeof raw.extra === "object") ? raw.extra : {};
   row.attachments = Array.isArray(raw.attachments)
     ? raw.attachments.filter(function(a){ return a && typeof a === "object"; }) : [];
+  if (raw.demo) row.demo = true;
   return row;
 }
 function codePrefix(cat){ return CAT_PREFIX[clean(cat)] || "材料"; }
@@ -1312,7 +1484,9 @@ function rejectDoc(id){ var d = findDoc(id); if(!d) return null; d.status = "已
 
 /* ---- 班级名单（学号—姓名对照） ---- */
 function normalizeRoster(raw, i){
-  return { id: (i || 0) + 1, sid: clean(raw.sid), who: clean(raw.who) };
+  var row = { id: (i || 0) + 1, sid: clean(raw.sid), who: clean(raw.who) };
+  if (raw.demo) row.demo = true;
+  return row;
 }
 function listRoster(){ return store.roster.slice().sort(function(a,b){ return a.sid.localeCompare(b.sid); }); }
 function findRosterBySid(sid){ var s = clean(sid); return store.roster.find(function(r){ return r.sid === s; }) || null; }
@@ -1329,11 +1503,13 @@ function removeRoster(id){ store.roster = store.roster.filter(function(r){ retur
 
 /* ---- 任务 / 截止跟踪 ---- */
 function normalizeTask(raw, i){
-  return {
+  var row = {
     id: (i || 0) + 1,
     title: clean(raw.title), cat: clean(raw.cat), scope: clean(raw.scope) || "全员",
     deadline: clean(raw.deadline), note: clean(raw.note), done: !!raw.done
   };
+  if (raw.demo) row.demo = true;
+  return row;
 }
 function listTasks(){ return store.tasks.slice().sort(function(a,b){ return a.deadline < b.deadline ? -1 : 1; }); }
 function findTask(id){ return store.tasks.find(function(t){ return t.id === id; }) || null; }
@@ -1514,6 +1690,7 @@ function restore(docs, logs, roster, tasks, templates) {
   if (templates && typeof templates === "object") store.templates = normalizeTemplates(templates);
   else if (!store.templates || typeof store.templates !== "object") store.templates = {};
   store.seq = { doc: store.docs.length, log: store.logs.length };
+  store.demo = false;
   backfillCodes();
   saveStore();
 }
@@ -1643,7 +1820,9 @@ function moreMenuSections(){
 }
 function moreMenuHtml(){
   var secs = moreMenuSections();
-  if (!secs.length) return '<div class="more-intro">当前岗位没有可用的扩展工具。</div>';
+  var help = '<div class="more-help"><button type="button" data-more-help>使用帮助</button>' +
+    '<span>三步上手，随时重看</span></div>';
+  if (!secs.length) return '<div class="more-intro">当前岗位没有可用的扩展工具。</div>' + help;
   return '<div class="more-intro">主流程只保留办理与跟进；低频、进阶能力统一收在这里，按需打开，不占首屏。</div>' +
     secs.map(function(sec){
       return '<div class="more-sec"><div class="more-sec-h">' + esc(sec.title) + '</div>' +
@@ -1657,7 +1836,7 @@ function moreMenuHtml(){
             (n.moreTag ? '<span class="mi-badge">' + esc(n.moreTag) + '</span>' : "") +
           '</button>';
         }).join("") + '</div></div>';
-    }).join("");
+    }).join("") + help;
 }
 function openMoreMenu(){
   showModal("更多功能", moreMenuHtml(), [{label:"关闭", cls:"btn"}]);
@@ -1669,6 +1848,8 @@ function openMoreMenu(){
       switchView(key);
     };
   }
+  var help = document.querySelector("#modalBody [data-more-help]");
+  if (help) help.onclick = function(){ closeModal(); openFirstRunHelp(); };
 }
 function buildNav() {
   var nav = document.getElementById("nav");
@@ -1749,7 +1930,8 @@ function refreshAll() {
   var s = stats(visibleDocs());
   document.getElementById("statusRight").textContent = "材料 " + s.total + " 条 · 日志 " + store.logs.length + " 条";
   var persistTip = state.persist === false ? " · 存储不可用(仅本次会话)" : "";
-  document.getElementById("statusLeft").textContent = "网页版 v" + WEB_VERSION + " · 本地缓存 · " + roleLabel() + persistTip;
+  var demoTip = store.demo ? " · 含示例数据" : "";
+  document.getElementById("statusLeft").textContent = "网页版 v" + WEB_VERSION + " · 本地缓存 · " + roleLabel() + persistTip + demoTip;
   var tr = document.getElementById("topbarAction");
   if (tr) {
     if (state.current === "dashboard" && can("docs:create")) {
@@ -1889,6 +2071,7 @@ function bindReminders(){
 
 /* ============ 看板（待办优先 + 卡片下钻） ============ */
 function renderDashboard() {
+  maybeCompleteFirstRun();
   var isApplicant = state.role === "applicant";
   var sid = clean(state.applicantSid);
   var docs = visibleDocs(store.docs), logs = listLogs();
@@ -2028,20 +2211,11 @@ function renderDashboard() {
     '</div><div class="ab-d">' + esc(abDesc) + '</div></div>' +
     '<button class="btn primary" ' + abAttrs + ">" + esc(abLabel) + "</button></div>";
 
-  var firstGo = canCreate ? "submit" : "docs";
-  var thirdGo = canRoster ? "roster" : (canTask ? "tasks" : "docs");
-  var stepsHtml = empty
-    ? '<div class="steps" style="margin-bottom:14px">' +
-        '<div class="step"><div class="step-no">1</div><div class="step-t">' + (canCreate ? "提交或收集材料" : "查看材料台账") + '</div>' +
-          '<div class="step-d">手动录入一份材料，或选定文件夹自动识别新增文件</div>' +
-          '<button class="step-go" data-go="' + firstGo + '">前往录入</button></div>' +
-        '<div class="step"><div class="step-no">2</div><div class="step-t">跟进审核与归档</div>' +
-          '<div class="step-d">新材料进入待审核队列，处理后归档并留下操作记录</div>' +
-          '<button class="step-go" data-go="docs">前往台账</button></div>' +
-        '<div class="step"><div class="step-no">3</div><div class="step-t">核对名单 · 跟进任务</div>' +
-          '<div class="step-d">对照名单查看未交人员，登记任务与截止时间</div>' +
-          '<button class="step-go" data-go="' + thirdGo + '">前往核对</button></div>' +
-      "</div>"
+  var firstRunCard = firstRunHtml();
+  var emptyStartHtml = empty && !firstRunCard
+    ? '<div class="card panel" style="margin-bottom:14px"><h3>还没有材料</h3>' +
+      '<div class="empty-sub" style="margin-bottom:10px">从第一份材料开始。录入后会进入待审核队列，归档时自动留下记录。</div>' +
+      '<button class="btn primary" data-go="' + (canCreate ? "submit" : "docs") + '">' + (canCreate ? "提交第一份" : "查看台账") + '</button></div>'
     : "";
 
   var queueHtml = '<div class="card panel" style="margin-bottom:14px"><h3>' + queueTitle + "</h3>" +
@@ -2054,8 +2228,8 @@ function renderDashboard() {
     "</div>";
 
   document.getElementById("view-dashboard").innerHTML = empty
-    ? heroHtml + stepsHtml + (rightPanel ? '<div class="grid-2">' + rightPanel + "</div>" : "")
-    : heroHtml + actionHtml + queueHtml + '<div class="kpi-row">' + kpiHtml + "</div>" + auxHtml + gridHtml;
+    ? firstRunCard + emptyStartHtml + (rightPanel ? '<div class="grid-2">' + rightPanel + "</div>" : "")
+    : firstRunCard + actionHtml + queueHtml + '<div class="kpi-row">' + kpiHtml + "</div>" + auxHtml + gridHtml;
 
   document.querySelectorAll("#view-dashboard .kpi").forEach(function(card){
     var go = function(){ drillByStatus(card.dataset.filter); };
@@ -2072,6 +2246,14 @@ function renderDashboard() {
     a.onclick = function(){
       var el = document.getElementById(a.dataset.focus);
       if (el && el.focus) el.focus();
+    };
+  });
+  document.querySelectorAll("#view-dashboard [data-first-run-dismiss]").forEach(function(btn){
+    btn.onclick = dismissFirstRun;
+  });
+  document.querySelectorAll("#view-dashboard [data-demo-clear]").forEach(function(btn){
+    btn.onclick = function(){
+      confirmModal("清空示例数据", "只会删除示例材料、日志、名单和任务；你自己录入的真实数据不受影响。", clearDemoData);
     };
   });
   document.querySelectorAll("#view-dashboard tbody tr.clickable").forEach(function(tr){
@@ -4925,6 +5107,7 @@ function renderAI(){
 
 aiLoadPrefs();
 loadStore();
+initFirstRun();
 applyPrefs();
 buildNav();
 buildDocs();

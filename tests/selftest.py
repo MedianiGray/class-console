@@ -21,6 +21,7 @@ import audit  # noqa: E402
 import fileroom  # noqa: E402
 import handover  # noqa: E402
 import service  # noqa: E402
+from ui_main import old_user_should_skip_first_run  # noqa: E402
 
 
 def main():
@@ -628,6 +629,13 @@ def main():
     assert dup["ok"] == 1 and dup["targets"][0]["path"].endswith("_v2.txt")
     assert any(l["act"] == "文件室登记" for l in r.list_logs())
     print("38. 文件室扫描/缺失/拖入 OK")
+
+    # 39. 首次引导：老库静默跳过只认“没写过标记且材料多于种子”
+    assert old_user_should_skip_first_run(8, None, None)
+    assert not old_user_should_skip_first_run(7, None, None)
+    assert not old_user_should_skip_first_run(8, "0", None)
+    assert not old_user_should_skip_first_run(8, None, "0")
+    print("39. 首次引导老用户判定 OK")
 
     print("SELFTEST OK")
 

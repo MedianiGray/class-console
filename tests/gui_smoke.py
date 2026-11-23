@@ -34,6 +34,21 @@ def main():
     app.confirm = lambda title, msg: True
     root.update()
 
+    # 首次引导：卡片可收起、可重显、完成前两步自动收起
+    dash = app.views["dashboard"]
+    assert app.first_run_visible(), "首次引导应默认可见"
+    assert dash.first_card.winfo_ismapped(), "首次引导卡未显示"
+    assert dash.fr_count.cget("text") == "0 / 3", dash.fr_count.cget("text")
+    assert dash.fr_rows[0][1].cget("text") == "录入或收集第一份材料"
+    dash.fr_dismiss.invoke(); root.update()
+    assert not app.first_run_visible() and not dash.first_card.winfo_ismapped()
+    app.reset_first_run(); root.update()
+    assert app.first_run_visible() and dash.first_card.winfo_ismapped()
+    app.mark_first_run(1); app.mark_first_run(2); root.update()
+    assert not app.first_run_visible(), "完成前两步后首导应收起"
+    app.reset_first_run(); root.update()
+    print("首次引导卡 OK")
+
     for k in ("dashboard", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()

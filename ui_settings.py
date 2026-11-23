@@ -85,6 +85,10 @@ class SettingsDialog:
         ttk.Entry(row, textvariable=var).pack(side="left", fill="x", expand=True)
         return row
 
+    def _open_help(self):
+        self.close()
+        self.window.open_help()
+
     def _build(self):
         for ch in self.top.winfo_children():
             ch.destroy()
@@ -95,6 +99,8 @@ class SettingsDialog:
         footer = tk.Frame(self.top, bg=C["bg"])
         footer.pack(side="bottom", fill="x", padx=20, pady=(6, 12))
         ttk.Button(footer, text="关闭", command=self.close).pack(side="right")
+        ttk.Button(footer, text="使用帮助", command=self._open_help).pack(
+            side="right", padx=(0, 8))
         tk.Label(footer, text="改动即时生效，下次打开仍保留", bg=C["bg"],
                  fg=C["sub"], font=(FONT, 9)).pack(side="left")
 
@@ -528,6 +534,8 @@ class SettingsDialog:
         theme.save_ui("applicant_sid", val)
         self.window.applicant_sid = val
         self.window.refresh_all()
+        if val and self.window.role == "applicant":
+            self.window.mark_first_run(1)
 
     # ---------- 归档 ----------
     def _pick_archive_root(self):

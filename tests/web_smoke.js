@@ -454,5 +454,47 @@ sandbox.state.role = "applicant";
 assert("申请人更多入口只留 AI", sandbox.moreItems().length === 1 && sandbox.moreMenuSections().length === 1);
 sandbox.state.role = "handler";
 
+// 首次引导：示例数据不计进度、三步卡可收起、可从更多重看
+sandbox.state.applicantSid = "";
+sandbox.store.docs = sandbox.SEED_DOCS.map(function(d, i){ return Object.assign({id: i + 1}, d); });
+sandbox.store.logs = sandbox.SEED_LOGS.map(function(l, i){ return Object.assign({id: i + 1}, l); });
+sandbox.store.roster = sandbox.SEED_ROSTER.map(function(r, i){ return Object.assign({id: i + 1}, r); });
+sandbox.store.tasks = sandbox.SEED_TASKS.map(function(t, i){ return Object.assign({id: i + 1}, t); });
+sandbox.store.demo = true;
+sandbox.firstRun.dismissed = false;
+assert("种子标记示例数据", sandbox.store.demo === true && sandbox.store.docs.every(d => d.demo));
+const fr0 = sandbox.firstRunProgress();
+assert("示例数据不计上手进度", fr0.steps.filter(s => s.done).length === 0 && fr0.done === false);
+const frHtml = sandbox.firstRunHtml();
+assert("首导卡为三步", (frHtml.match(/<div class="step(?=[ "])/g) || []).length === 3);
+assert("首导卡可收起", frHtml.indexOf("data-first-run-dismiss") >= 0);
+assert("首导卡提示示例数据", frHtml.indexOf("示例数据") >= 0);
+assert("首导卡可清示例", frHtml.indexOf("data-demo-clear") >= 0);
+sandbox.firstRun.dismissed = true;
+assert("收起后不再渲染首导", sandbox.firstRunHtml() === "");
+sandbox.firstRun.dismissed = false;
+assert("更多菜单带使用帮助", moreHtml.indexOf("data-more-help") >= 0 && moreHtml.indexOf("使用帮助") >= 0);
+
+// 真实材料与归档才算完成；申请人只看本人步骤
+sandbox.store.docs.push({id:99, name:"真实材料", status:"已归档", sid:"250201", demo:false});
+const fr1 = sandbox.firstRunProgress();
+assert("真实归档完成前两步", fr1.steps[0].done && fr1.steps[1].done && fr1.done === true);
+sandbox.firstRun.dismissed = false;
+sandbox.maybeCompleteFirstRun();
+assert("真实归档后首导自动收起", sandbox.firstRun.dismissed === true);
+sandbox.firstRun.seen = false;
+sandbox.firstRun.dismissed = false;
+sandbox.initFirstRun();
+assert("已有真实数据的老用户不打扰", sandbox.firstRun.dismissed === true);
+sandbox.firstRun.dismissed = false;
+sandbox.state.role = "applicant";
+sandbox.state.applicantSid = "250201";
+const frA = sandbox.firstRunProgress();
+assert("申请人文案只三步", frA.isApplicant && frA.steps[0].title.indexOf("学号") >= 0);
+assert("申请人按本人学号计进度", frA.steps[0].done && frA.steps[1].done);
+sandbox.state.role = "handler";
+sandbox.state.applicantSid = "";
+sandbox.store.docs.pop();
+
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);

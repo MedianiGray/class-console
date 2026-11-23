@@ -751,6 +751,8 @@ class DocsView(ttk.Frame):
         if len(todo) == 1 and not fail:
             msg += note
         self.window.toast(msg[:120])
+        if ok:
+            self.window.mark_first_run(3 if self.window.role == "applicant" else 2)
 
     def _place_one(self, doc_id, doc, quiet=False):
         """复制到归档根并按目录归位，返回一句提示。"""

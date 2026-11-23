@@ -57,12 +57,60 @@ class DashboardView(ttk.Frame):
     def _build(self):
         self.columnconfigure(0, weight=2, uniform="g")
         self.columnconfigure(1, weight=1, uniform="g")
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
+
+        # ---- 首次引导：一张可收起的卡，不做多页 tour ----
+        self.first_card = tk.Frame(self, bg=C["card"], highlightthickness=1,
+                                   highlightbackground=C["line"])
+        self.first_card.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        fr_head = tk.Frame(self.first_card, bg=C["card"])
+        fr_head.pack(fill="x", padx=18, pady=(14, 0))
+        tk.Label(fr_head, text="三步上手", bg=C["card"], fg=C["text"],
+                 font=(FONT, 10, "bold")).pack(side="left")
+        self.fr_count = tk.Label(fr_head, text="0 / 3", bg=C["primary_soft"], fg=C["primary"],
+                                 font=(FONT, 8, "bold"), padx=8, pady=2)
+        self.fr_count.pack(side="left", padx=(8, 0))
+        self.fr_dismiss = tk.Button(fr_head, text="收起", relief="flat", bd=0,
+                                    bg=C["card"], fg=C["sub"], activebackground=C["bg_soft"],
+                                    activeforeground=C["text"], font=(FONT, 9), cursor="hand2",
+                                    command=self.window.dismiss_first_run)
+        self.fr_dismiss.pack(side="right")
+        help_lbl = tk.Label(fr_head, text="使用帮助 →", bg=C["card"], fg=C["primary"],
+                            font=(FONT, 9), cursor="hand2")
+        help_lbl.pack(side="right", padx=(0, 14))
+        help_lbl.bind("<Button-1>", lambda e: self.window.open_help())
+        tk.Label(self.first_card, text="不弹欢迎页。完成一次提交 → 审核 → 归档，这张卡会自动收起。",
+                 bg=C["card"], fg=C["muted"], font=(FONT, 9), anchor="w").pack(
+                     fill="x", padx=18, pady=(2, 10))
+
+        self.fr_steps = tk.Frame(self.first_card, bg=C["card"])
+        self.fr_steps.pack(fill="x", padx=18, pady=(0, 14))
+        self.fr_rows = []
+        for i in range(3):
+            self.fr_steps.columnconfigure(i, weight=1, uniform="fr")
+            cell = tk.Frame(self.fr_steps, bg=C["bg_soft"], highlightthickness=1,
+                            highlightbackground=C["line"])
+            cell.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0))
+            no = tk.Label(cell, text=str(i + 1), bg=C["primary_soft"], fg=C["primary"],
+                          font=(FONT, 9, "bold"), width=2, height=1)
+            no.pack(anchor="w", padx=12, pady=(10, 0))
+            title = tk.Label(cell, text="", bg=C["bg_soft"], fg=C["text"],
+                             font=(FONT, 9, "bold"), anchor="w", justify="left")
+            title.pack(fill="x", padx=12, pady=(6, 0))
+            desc = tk.Label(cell, text="", bg=C["bg_soft"], fg=C["muted"],
+                            font=(FONT, 8), anchor="w", justify="left", wraplength=220)
+            desc.pack(fill="x", padx=12, pady=(2, 8))
+            btn = tk.Button(cell, text="", relief="flat", bd=0, bg=C["bg_soft"],
+                            fg=C["primary"], activebackground=C["bg_soft"],
+                            activeforeground=C["primary"], font=(FONT, 8, "bold"),
+                            cursor="hand2", anchor="w", padx=0, pady=0)
+            btn.pack(fill="x", padx=12, pady=(0, 10))
+            self.fr_rows.append((no, title, desc, btn))
 
         # ---- 主视觉带：待办 + 指标，同一表面，避免四个白盒并排 ----
         hero = tk.Frame(self, bg=C["hero"], highlightthickness=1,
                         highlightbackground=C["hero_line"])
-        hero.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        hero.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 12))
         hero.columnconfigure(1, weight=1)
 
         left = tk.Frame(hero, bg=C["hero"])
@@ -120,7 +168,7 @@ class DashboardView(ttk.Frame):
         # ---- 待办表（主栏）----
         self.pending_card, body = self._card(self, "待办队列", "按提交先后", "全部",
                                              lambda: self.window.switch("docs"))
-        self.pending_card.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
+        self.pending_card.grid(row=2, column=0, sticky="nsew", padx=(0, 12))
         self.bottom_title = tk.Label(body, text="", bg=C["card"], fg=C["sub"],
                                      font=(FONT, 9), anchor="w")
         self.bottom_title.pack(fill="x", pady=(0, 6))
@@ -140,7 +188,7 @@ class DashboardView(ttk.Frame):
         # ---- 类别分布（侧栏）----
         self.cat_card, cat_body = self._card(self, "类别分布", "", "台账",
                                              lambda: self.window.switch("docs"))
-        self.cat_card.grid(row=1, column=1, sticky="nsew")
+        self.cat_card.grid(row=2, column=1, sticky="nsew")
         self.cat_box = tk.Frame(cat_body, bg=C["card"])
         self.cat_box.pack(fill="both", expand=True)
         self.cat_total = tk.Label(cat_body, text="", bg=C["card"], fg=C["sub"],
@@ -150,16 +198,69 @@ class DashboardView(ttk.Frame):
         # ---- 近期动态（跨两栏）：用列表而不是表格，比台账更轻 ----
         self.log_card, log_body = self._card(self, "近期动态", "最近 4 条", "日志",
                                             lambda: self.window.switch("logs"))
-        self.log_card.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        self.log_card.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         self.log_box = tk.Frame(log_body, bg=C["card"])
         self.log_box.pack(fill="x")
 
     # ---------- 数据 ----------
+    def _sync_first_run(self):
+        if not self.window.first_run_visible():
+            self.first_card.grid_remove()
+            return
+        self.first_card.grid()
+        steps = self.window.first_run_steps()
+        done = [("1" in steps), ("2" in steps), ("3" in steps)]
+        is_applicant = self.window.role == "applicant"
+        sid = str(getattr(self.window, "applicant_sid", "") or "").strip()
+        if is_applicant:
+            rows = [
+                ("填写申请人学号", "填好后只看你自己的材料", self.window.open_settings),
+                ("提交第一份材料", "登记材料，进入待审核队列",
+                 lambda: self.window.switch("submit")),
+                ("查看审核进度", "归档或驳回后回到这里看结果",
+                 lambda: self.window.first_run_go(3, "docs")),
+            ]
+            if sid:
+                done[0] = True
+        else:
+            first_cmd = (lambda: self.window.switch("submit")) if self.window.can("docs:create") \
+                else (lambda: self.window.switch("docs"))
+            third_cmd = (lambda: self.window.first_run_go(3, "roster")) \
+                if self.window.can("roster:manage") \
+                else (lambda: self.window.first_run_go(3, "tasks")) \
+                if self.window.can("task:manage") \
+                else (lambda: self.window.switch("docs"))
+            rows = [
+                ("录入或收集第一份材料", "手动提交，或从文件夹收集登记", first_cmd),
+                ("审核并归档", "通过后写入归档目录，留下第一条留痕",
+                 lambda: self.window.switch("docs")),
+                ("核对名单或登记任务", "知道谁没交、什么时候截止", third_cmd),
+            ]
+        for i, (title, desc, cmd) in enumerate(rows):
+            no, t_lbl, d_lbl, btn = self.fr_rows[i]
+            is_done = done[i]
+            no.config(text="✓" if is_done else str(i + 1),
+                      bg=C["tag_green"] if is_done else C["primary_soft"],
+                      fg=C["green"] if is_done else C["primary"])
+            t_lbl.config(text=title)
+            d_lbl.config(text=desc)
+            if is_done:
+                btn.config(text="已完成", state="disabled", fg=C["green"],
+                           disabledforeground=C["green"])
+            else:
+                btn.config(text=("填写学号" if (is_applicant and i == 0) else
+                                 "去录入" if i == 0 else "去审核" if i == 1 else "去核对"),
+                           state="normal", fg=C["primary"], command=cmd)
+        self.fr_count.config(text="%d / 3" % sum(1 for x in done if x))
+
     def refresh(self):
+        self._sync_first_run()
         try:
             docs = self.repo.list_docs()
             logs = self.repo.list_logs()
         except Exception as e:
+            self.window.show_status("看板加载失败：%s" % e)
+            return
             self.window.show_status("看板加载失败：%s" % e)
             return
 

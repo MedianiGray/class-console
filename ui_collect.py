@@ -182,6 +182,8 @@ class CollectView(ttk.Frame):
                 pass
         self.window.refresh_all()
         self.window.toast("已入账 %d 份材料并自动编号" % ok)
+        if ok:
+            self.window.mark_first_run(1)
         self.scan()
 
     def refresh(self):

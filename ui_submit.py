@@ -369,6 +369,7 @@ class SubmitView(ttk.Frame):
         self.window.refresh_all()
         self.window.toast("材料已提交，进入待审核列表")
         self.window.switch("docs")
+        self.window.mark_first_run(2 if self.window.role == "applicant" else 1)
 
     def refresh(self):
         self.err_label.config(text="")

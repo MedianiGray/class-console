@@ -2,7 +2,7 @@
 
 > 面向班级学委 / 辅导员的**离线优先**材料工作台：把材料从提交、审核、归档到留痕的流程收拢在一个本地程序里闭环。
 >
-> 当前版本：**网页版 v0.20.1（AI 助手 · 更多功能收口）｜ 桌面端 v0.19.0（文件室版）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
+> 当前版本：**网页版 v0.21.0 · 桌面端 v0.21.0（上手版）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
 
 ## 一、项目简介
 
@@ -87,6 +87,8 @@ class-console/
 │   └── 早期单页试用版原型.html
 ├── docs/
 │   ├── 工作台蓝图.md              # 总纲：定位、角色、模块、架构、流程、路线
+│   ├── 办公工作台蓝图-v2.0.md      # 目标态：一个入口、事项主链、四级协助、简洁规则
+│   ├── 阶段A-材料包收口清单.md      # 首导、空态、错误态、性能、安装包与发布门禁
 │   ├── 工作台升级蓝图-v2.md        # 对标成熟后台：IA、表格、筛选、批量、反馈与工程规范
 │   ├── 接入规划.md               # 平台服务 / AI API 分阶段接入规划
 │   ├── 可选能力与通用对接蓝图.md  # 能力分级、默认关闭策略、通用连接器架构
@@ -102,8 +104,8 @@ class-console/
 
 ### 下载现成程序（Windows）
 
-前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.19.0)
-下载附件 `class-console-v0.19.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.21.0)
+下载附件 `class-console-v0.21.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
 
 ### 浏览器本地缓存版
 
