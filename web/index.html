@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>班级材料操作台 · 浏览器本地版 v0.20.0</title>
+<title>班级材料操作台 · 浏览器本地版 v0.20.1</title>
 <style>
   :root{
     color-scheme:light;
@@ -219,6 +219,13 @@
   .nav button.nav-aux{color:var(--sub);font-size:13px}
   .nav button.nav-aux .ico{opacity:.65}
   .nav button.nav-aux:hover:not(.active){color:var(--text)}
+  .nav button.nav-more{color:var(--sub);font-size:13px}
+  .nav button.nav-more .ico{opacity:.65}
+  .nav button.nav-more .more-count{margin-left:auto;min-width:18px;height:18px;border-radius:999px;
+    background:var(--bg-soft);color:var(--sub);font-size:10px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;padding:0 5px}
+  .nav button.nav-more.active .more-count{background:var(--primary);color:#fff}
+  .sidebar.collapsed .nav button.nav-more .more-count{display:none}
 
   /* 首屏下一步行动条：全页唯一强调带 */
   .action-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;
@@ -354,6 +361,21 @@
   .modal .body .kv{display:grid;grid-template-columns:86px 1fr;gap:6px 12px;padding:4px 0}
   .modal .body .kv .k{color:var(--muted)}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+  .more-intro{font-size:12.5px;line-height:1.6;color:var(--muted);margin:-2px 0 2px}
+  .more-sec{margin-top:16px}
+  .more-sec-h{font-size:11.5px;font-weight:600;color:var(--sub);letter-spacing:.04em;margin:0 0 3px}
+  .more-sec-d{font-size:11.5px;color:var(--muted);margin:0 0 8px}
+  .more-list{display:flex;flex-direction:column;gap:8px}
+  .more-item{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--line);
+    border-radius:10px;background:var(--card-soft);cursor:pointer;text-align:left;color:var(--text)}
+  .more-item:hover{border-color:var(--line-strong);background:var(--bg-soft)}
+  .more-item .mi-ico{width:30px;height:30px;border-radius:8px;background:var(--primary-soft);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .more-item .mi-ico svg{width:16px;height:16px}
+  .more-item .mi-t{display:block;font-size:13px;font-weight:600;line-height:1.3}
+  .more-item .mi-s{display:block;font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:1px}
+  .more-item .mi-badge{margin-left:auto;font-size:10px;font-weight:600;color:var(--sub);
+    background:var(--bg-soft);border-radius:999px;padding:2px 7px;white-space:nowrap}
 
   /* 详情抽屉 */
   .drawer-mask{position:fixed;inset:0;background:rgba(31,41,55,.32);opacity:0;pointer-events:none;
@@ -966,7 +988,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.20.0";
+var WEB_VERSION = "0.20.1";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -1523,12 +1545,13 @@ var ICONS = {
   shield:    ICON_SVG + '<path d="M12 3.5 5.5 6v5c0 4 2.8 7 6.5 8.5 3.7-1.5 6.5-4.5 6.5-8.5V6z"/><path d="m9.2 11.8 2 2 3.6-3.8"/></svg>',
   sliders:   ICON_SVG + '<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
   spark:     ICON_SVG + '<path d="m12 3 1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7z"/></svg>',
+  more:      ICON_SVG + '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>',
   search:    ICON_SVG + '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>'
 };
 var NAV_GROUPS = [
   {key:"main",   label:"办理材料"},
   {key:"follow", label:"跟进核对"},
-  {key:"aux",    label:"辅助工具"}
+  {key:"aux",    label:"更多"}
 ];
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"dashboard", group:"main"},
@@ -1537,9 +1560,13 @@ var NAV = [
   {key:"roster",    title:"名单核对",   ico:"roster",    perm:"roster:manage", group:"follow"},
   {key:"tasks",     title:"任务跟踪",   ico:"tasks",      perm:"task:manage", group:"follow"},
   {key:"templates", title:"材料模板",   ico:"sliders",    perm:"template:config", group:"follow"},
-  {key:"ai",        title:"AI 助手",    ico:"spark",      group:"aux", tier:"aux"},
-  {key:"collect",   title:"文件夹收集", ico:"folder",    perm:"docs:collect", group:"aux", tier:"aux"},
-  {key:"logs",      title:"操作日志",   ico:"logs",      perm:"logs:view",   group:"aux", tier:"aux"}
+  {key:"ai",        title:"AI 助手",    ico:"spark",      group:"aux", tier:"aux", moreSection:"smart",  moreTag:"进阶"},
+  {key:"collect",   title:"文件夹收集", ico:"folder",    perm:"docs:collect", group:"aux", tier:"aux", moreSection:"files", moreTag:"本地"},
+  {key:"logs",      title:"操作日志",   ico:"logs",      perm:"logs:view",   group:"aux", tier:"aux", moreSection:"files", moreTag:"留痕"}
+];
+var MORE_SECTIONS = [
+  {key:"smart", title:"智能辅助", desc:"读上下文、出草稿，只给建议，不替你执行"},
+  {key:"files", title:"文件与留痕", desc:"目录比对与操作记录，低频但可追溯"}
 ];
 
 /* ---- 岗位与权限点模型 ----
@@ -1600,6 +1627,49 @@ function confirmModal(title, message, onOk) {
 }
 
 /* ============ 导航与全局刷新 ============ */
+function moreItems(){
+  return NAV.filter(function(n){ return n.group === "aux" && navVisible(n); });
+}
+function moreMenuSections(){
+  var all = moreItems();
+  return MORE_SECTIONS.map(function(sec){
+    return {
+      key: sec.key,
+      title: sec.title,
+      desc: sec.desc,
+      items: all.filter(function(n){ return n.moreSection === sec.key; })
+    };
+  }).filter(function(sec){ return sec.items.length > 0; });
+}
+function moreMenuHtml(){
+  var secs = moreMenuSections();
+  if (!secs.length) return '<div class="more-intro">当前岗位没有可用的扩展工具。</div>';
+  return '<div class="more-intro">主流程只保留办理与跟进；低频、进阶能力统一收在这里，按需打开，不占首屏。</div>' +
+    secs.map(function(sec){
+      return '<div class="more-sec"><div class="more-sec-h">' + esc(sec.title) + '</div>' +
+        '<div class="more-sec-d">' + esc(sec.desc) + '</div><div class="more-list">' +
+        sec.items.map(function(n){
+          var meta = VIEW_META[n.key] || {};
+          return '<button type="button" class="more-item" data-more-key="' + esc(n.key) + '">' +
+            '<span class="mi-ico">' + (ICONS[n.ico] || "") + '</span>' +
+            '<span><span class="mi-t">' + esc(n.title) + '</span>' +
+            '<span class="mi-s">' + esc(meta.sub || "按需打开") + '</span></span>' +
+            (n.moreTag ? '<span class="mi-badge">' + esc(n.moreTag) + '</span>' : "") +
+          '</button>';
+        }).join("") + '</div></div>';
+    }).join("");
+}
+function openMoreMenu(){
+  showModal("更多功能", moreMenuHtml(), [{label:"关闭", cls:"btn"}]);
+  var nodes = document.querySelectorAll("#modalBody [data-more-key]");
+  for (var i = 0; i < nodes.length; i++) {
+    nodes[i].onclick = function(){
+      var key = this.getAttribute("data-more-key");
+      closeModal();
+      switchView(key);
+    };
+  }
+}
 function buildNav() {
   var nav = document.getElementById("nav");
   nav.innerHTML = "";
@@ -1610,6 +1680,17 @@ function buildNav() {
     label.className = "nav-group-label";
     label.textContent = g.label;
     nav.appendChild(label);
+    if (g.key === "aux") {
+      var more = document.createElement("button");
+      more.dataset.key = "more";
+      more.title = "更多功能";
+      more.className = "nav-more";
+      more.innerHTML = '<span class="ico">' + ICONS.more + '</span><span class="txt">更多功能</span>' +
+        '<span class="more-count">' + items.length + '</span>';
+      more.onclick = openMoreMenu;
+      nav.appendChild(more);
+      return;
+    }
     items.forEach(function(n){
       var b = document.createElement("button");
       b.dataset.key = n.key;
@@ -1620,6 +1701,9 @@ function buildNav() {
       nav.appendChild(b);
     });
   });
+  var cur = NAV.find(function(n){ return n.key === state.current; });
+  var mb = document.querySelector('.nav button[data-key="more"]');
+  if (mb && cur && cur.group === "aux") mb.classList.add("active");
 }
 var VIEW_META = {
   dashboard:{eyebrow:"工作台 · 今日概览", sub:"从提交到归档全程留痕；数据只在本机浏览器，不上云"},
@@ -1628,9 +1712,9 @@ var VIEW_META = {
   tasks:    {eyebrow:"协同跟进 · 任务", sub:"截止日期、临期与逾期跟踪"},
   submit:   {eyebrow:"材料流程 · 提交", sub:"登记材料，审核通过后归档"},
   templates:{eyebrow:"协同跟进 · 模板", sub:"内置字段固定保留，附加字段可按需增删"},
-  collect:  {eyebrow:"辅助工具 · 文件夹", sub:"比对目录变化，勾选后登记入账"},
-  ai:       {eyebrow:"辅助工具 · 智能整理", sub:"本地模型或自有 API；先给上下文，再给可执行建议"},
-  logs:     {eyebrow:"辅助工具 · 留痕", sub:"提交、审核与导入导出的本机记录"}
+  collect:  {eyebrow:"更多 · 文件夹", sub:"比对目录变化，勾选后登记入账"},
+  ai:       {eyebrow:"更多 · 智能整理", sub:"本地模型或自有 API；先给上下文，再给可执行建议"},
+  logs:     {eyebrow:"更多 · 留痕", sub:"提交、审核与导入导出的本机记录"}
 };
 function renderPageHead(target){
   var head = document.getElementById("pageHead");
@@ -1653,6 +1737,8 @@ function switchView(key) {
     var btn = document.querySelector('.nav button[data-key="' + n.key + '"]');
     if (btn) btn.classList.toggle("active", n.key === key);
   });
+  var moreBtn = document.querySelector('.nav button[data-key="more"]');
+  if (moreBtn) moreBtn.classList.toggle("active", target.group === "aux");
   var vt = document.getElementById("viewTitle");
   if (vt) vt.textContent = target.title;
   renderPageHead(target);

@@ -441,5 +441,18 @@ sandbox.aiState.apiBase = "https://api.deepseek.com/v1/chat/completions";
 assert("AI 完整接口不重复拼接", sandbox.aiApiEndpoint() === "https://api.deepseek.com/v1/chat/completions");
 sandbox.aiState.apiBase = "https://api.deepseek.com";
 
+// 更多功能：辅助项收口、分类、按权限收敛
+sandbox.state.role = "handler";
+assert("更多入口分组为更多", sandbox.NAV_GROUPS[2].label === "更多");
+assert("更多功能收纳三项辅助", sandbox.moreItems().length === 3);
+assert("更多功能按两类分组", sandbox.moreMenuSections().length === 2);
+assert("智能辅助只含 AI", sandbox.moreMenuSections()[0].items.length === 1 && sandbox.moreMenuSections()[0].items[0].key === "ai");
+assert("文件与留痕含收集与日志", sandbox.moreMenuSections()[1].items.length === 2);
+const moreHtml = sandbox.moreMenuHtml();
+assert("更多菜单不混入主流程", moreHtml.indexOf("智能辅助") >= 0 && moreHtml.indexOf("文件与留痕") >= 0 && moreHtml.indexOf("工作台概览") < 0);
+sandbox.state.role = "applicant";
+assert("申请人更多入口只留 AI", sandbox.moreItems().length === 1 && sandbox.moreMenuSections().length === 1);
+sandbox.state.role = "handler";
+
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);
