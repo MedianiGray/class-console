@@ -388,6 +388,10 @@ def backup_preview(data, repo) -> dict:
     tasks = data.get("tasks") if isinstance(data.get("tasks"), list) else []
     templates = data.get("templates") if isinstance(
         data.get("templates"), list) else []
+    exemptions = data.get("exemptions") if isinstance(
+        data.get("exemptions"), list) else []
+    followups = data.get("followups") if isinstance(
+        data.get("followups"), list) else []
     current = repo.stats()
     current_logs = len(repo.list_logs())
     codes = [str(d.get("code") or "").strip() for d in valid_docs]
@@ -397,6 +401,8 @@ def backup_preview(data, repo) -> dict:
         warnings.append("备份不含流转事件，恢复后将按当前状态自动补录最小节点。")
     if not templates:
         warnings.append("备份不含模板附加字段，恢复时保留本机现有配置。")
+    if not exemptions and not followups:
+        warnings.append("备份不含免交 / 延期与催交 / 回执登记，恢复后服务留痕为空。")
     if dup:
         warnings.append("备份中有 %d 个重复编号，恢复后仍会保留，需要人工核对。" % dup)
     text = (
@@ -406,15 +412,19 @@ def backup_preview(data, repo) -> dict:
         "名单：当前 %d 人 → 备份 %d 人\n"
         "任务：当前 %d 条 → 备份 %d 条\n"
         "附件：备份 %d 个\n"
-        "模板附加字段：备份 %d 项\n" % (
+        "模板附加字段：备份 %d 项\n"
+        "免交 / 延期：备份 %d 条\n"
+        "催交 / 回执：备份 %d 条\n" % (
             current["total"], len(valid_docs), current_logs, len(valid_logs),
             len(repo.list_roster()), len(roster), len(repo.list_tasks()),
-            len(tasks), len(attachments), len(templates)))
+            len(tasks), len(attachments), len(templates),
+            len(exemptions), len(followups)))
     if warnings:
         text += "\n注意：\n- " + "\n- ".join(warnings) + "\n"
     text += "\n确定用备份覆盖本机数据吗？"
     return {"ok": True, "text": text,
             "counts": {"docs": len(valid_docs), "logs": len(valid_logs),
                        "roster": len(roster), "tasks": len(tasks),
-                       "attachments": len(attachments), "templates": len(templates)},
+                       "attachments": len(attachments), "templates": len(templates),
+                       "exemptions": len(exemptions), "followups": len(followups)},
             "warnings": warnings}

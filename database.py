@@ -107,6 +107,20 @@ def _full_time(value) -> str:
     return text
 
 
+def _parse_full_time(value):
+    """解析完整或旧式时间；失败返回 None，供 24 小时限频判断。"""
+    text = _clean(value)
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.datetime.strptime(_full_time(text), "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+
+
 def _like_escape(text: str) -> str:
     """转义 LIKE 通配符，避免用户输入 % _ 被当作模糊匹配。"""
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -117,6 +131,12 @@ CAT_PREFIX = {
     "团务材料": "团务", "奖助材料": "奖助", "学分材料": "学分",
     "宣传材料": "宣传", "班级事务": "事务",
 }
+
+# 服务层：免交 / 延期、催交与回执。
+EXEMPT_KINDS = ("免交", "延期")
+RECEIPT_RESPONSES = ("已提交", "校外交", "稍后补")
+SERVICE_ACTS = ("催交", "回执", "免交", "延期", "恢复应交", "交接包")
+CHASE_COOLDOWN_HOURS = 24
 
 
 def code_prefix(cat: str) -> str:
@@ -245,6 +265,19 @@ class LocalRepository:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_id INTEGER, time TEXT, act TEXT,
                 who TEXT, role TEXT, detail TEXT
+            )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS exemptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sid TEXT, who TEXT, cat TEXT, kind TEXT,
+                reason TEXT, until TEXT, time TEXT, actor TEXT, role TEXT,
+                UNIQUE(sid, cat)
+            )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS followups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sid TEXT, who TEXT, cat TEXT, act TEXT, channel TEXT,
+                msg TEXT, time TEXT, response TEXT, note TEXT, actor TEXT
             )""")
         # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
         cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
@@ -728,6 +761,312 @@ class LocalRepository:
         return {"total": len(roster), "done": len(roster) - len(absent),
                 "absent": absent, "resubmit": resubmit, "extra": extra}
 
+    # ---------- 服务层：免交 / 延期 ----------
+    def _student_name(self, sid, who=""):
+        who = _clean(who)
+        if who:
+            return who
+        row = self.find_roster_by_sid(_clean(sid))
+        return _clean(row.get("who")) if row else ""
+
+    def list_exemptions(self, active_only=False) -> list:
+        """返回免交 / 延期登记；延期到期后不再算有效。"""
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM exemptions ORDER BY time DESC, id DESC").fetchall()
+        except sqlite3.Error as e:
+            raise RepositoryError("读取免交 / 延期失败：%s" % e)
+        finally:
+            conn.close()
+        today = date_today()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["active"] = (d.get("kind") == "免交" or
+                           (d.get("kind") == "延期" and
+                            _clean(d.get("until")) >= today and
+                            bool(_clean(d.get("until")))))
+            d["state"] = d.get("kind") if d["active"] else "已到期"
+            if active_only and not d["active"]:
+                continue
+            out.append(d)
+        return out
+
+    def exemption_map(self, active_only=True) -> dict:
+        """按 (学号, 类别) 取当前有效登记，供矩阵直接判格。"""
+        return {(r.get("sid"), r.get("cat")): r
+                for r in self.list_exemptions(active_only=active_only)}
+
+    def set_exemption(self, sid, who, cat, kind, reason="", until="",
+                      actor="", role="", time=None):
+        """登记免交或延期；同一学生同一类别只保留最新一条。"""
+        sid, cat, kind = _clean(sid), _clean(cat), _clean(kind)
+        reason = _clean(reason)
+        if not sid:
+            raise RepositoryError("学号不能为空")
+        if cat not in CAT_PREFIX:
+            raise RepositoryError("未知材料类别")
+        if kind not in EXEMPT_KINDS:
+            raise RepositoryError("登记类型只能是免交或延期")
+        if not reason:
+            raise RepositoryError("请填写免交 / 延期原因")
+        until = normalize_deadline(until) if kind == "延期" else ""
+        if kind == "延期":
+            if not until:
+                raise RepositoryError("延期需要填写截止日期")
+            if until < date_today():
+                raise RepositoryError("延期日期不能早于今天")
+        who = self._student_name(sid, who)
+        t = _full_time(time or now_full())
+        conn = self._conn()
+        try:
+            conn.execute("DELETE FROM exemptions WHERE sid=? AND cat=?", (sid, cat))
+            conn.execute("""INSERT INTO exemptions
+                (sid,who,cat,kind,reason,until,time,actor,role)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (sid, who, cat, kind, reason, until, t,
+                 _clean(actor) or "系统", _clean(role) or "系统"))
+            conn.commit()
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise RepositoryError("登记免交 / 延期失败：%s" % e)
+        finally:
+            conn.close()
+        obj = "%s %s %s" % (who or sid, sid, cat)
+        try:
+            self.add_log(kind, obj, _clean(actor) or "系统",
+                         _clean(role) or "系统", src="本机")
+        except Exception:
+            pass
+        return self.exemption_map().get((sid, cat)) or {}
+
+    def remove_exemption(self, sid, cat, actor="", role=""):
+        """取消免交 / 延期，恢复该类别应交。"""
+        sid, cat = _clean(sid), _clean(cat)
+        conn = self._conn()
+        changed = 0
+        try:
+            cur = conn.execute("DELETE FROM exemptions WHERE sid=? AND cat=?",
+                               (sid, cat))
+            changed = cur.rowcount
+            conn.commit()
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise RepositoryError("取消登记失败：%s" % e)
+        finally:
+            conn.close()
+        if changed:
+            try:
+                self.add_log("恢复应交", "%s %s" % (sid, cat),
+                             _clean(actor) or "系统", _clean(role) or "系统",
+                             src="本机")
+            except Exception:
+                pass
+        return bool(changed)
+
+    # ---------- 服务层：催交与回执 ----------
+    def chase_state(self, sid, now=None) -> dict:
+        """同一学生 24 小时内只提醒一次；催交或回执都算一次联系。"""
+        sid = _clean(sid)
+        conn = self._conn()
+        try:
+            row = conn.execute("""SELECT * FROM followups
+                WHERE sid=? AND act IN ('催交','回执')
+                ORDER BY id DESC LIMIT 1""", (sid,)).fetchone()
+        except sqlite3.Error as e:
+            raise RepositoryError("读取催交记录失败：%s" % e)
+        finally:
+            conn.close()
+        if not row:
+            return {"allowed": True, "last": "", "remain_min": 0,
+                    "last_act": "", "response": ""}
+        last = dict(row)
+        seen = _parse_full_time(last.get("time"))
+        now = now or datetime.datetime.now()
+        if seen is None:
+            return {"allowed": True, "last": _clean(last.get("time")),
+                    "remain_min": 0, "last_act": _clean(last.get("act")),
+                    "response": _clean(last.get("response"))}
+        gap = now - seen
+        limit = datetime.timedelta(hours=CHASE_COOLDOWN_HOURS)
+        if gap < limit:
+            remain = int((limit - gap).total_seconds() // 60) + 1
+            return {"allowed": False, "last": _clean(last.get("time")),
+                    "remain_min": remain, "last_act": _clean(last.get("act")),
+                    "response": _clean(last.get("response"))}
+        return {"allowed": True, "last": _clean(last.get("time")),
+                "remain_min": 0, "last_act": _clean(last.get("act")),
+                "response": _clean(last.get("response"))}
+
+    def add_followup(self, sid, who, cats, msg, channel="微信 / 群公告",
+                     actor="", role="", at=None):
+        """登记一次催交；不足 24 小时直接拒绝，避免反复追赶。"""
+        sid, msg = _clean(sid), _clean(msg)
+        cats = _clean(cats)
+        if not sid or not msg:
+            raise RepositoryError("催交对象与话术不能为空")
+        for cat in [x.strip() for x in cats.replace("、", ",").split(",") if x.strip()]:
+            if cat not in CAT_PREFIX:
+                raise RepositoryError("未知材料类别：%s" % cat)
+        state = self.chase_state(sid, now=_parse_full_time(at) if at else None)
+        if not state["allowed"]:
+            raise RepositoryError(
+                "距上次联系不足 24 小时，还需等待约 %d 分钟；同一学生每天只提醒一次。"
+                % state["remain_min"])
+        who = self._student_name(sid, who)
+        t = _full_time(at or now_full())
+        conn = self._conn()
+        try:
+            conn.execute("""INSERT INTO followups
+                (sid,who,cat,act,channel,msg,time,response,note,actor)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (sid, who, cats, "催交", _clean(channel) or "微信 / 群公告",
+                 msg, t, "", "", _clean(actor) or "系统"))
+            conn.commit()
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise RepositoryError("登记催交失败：%s" % e)
+        finally:
+            conn.close()
+        try:
+            self.add_log("催交", "%s %s（%s）" % (who or sid, sid, cats),
+                         _clean(actor) or "系统", _clean(role) or "系统",
+                         src="本机")
+        except Exception:
+            pass
+        return self.chase_state(sid)
+
+    def add_receipt(self, sid, who, cat, response, note="",
+                    actor="", role="", at=None):
+        """登记同学回执；不直接改材料状态，只停止无意义追赶并留痕。"""
+        sid, cat, response = _clean(sid), _clean(cat), _clean(response)
+        if not sid:
+            raise RepositoryError("学号不能为空")
+        if cat not in CAT_PREFIX:
+            raise RepositoryError("未知材料类别")
+        if response not in RECEIPT_RESPONSES:
+            raise RepositoryError("回执类型不正确")
+        who = self._student_name(sid, who)
+        t = _full_time(at or now_full())
+        conn = self._conn()
+        try:
+            conn.execute("""INSERT INTO followups
+                (sid,who,cat,act,channel,msg,time,response,note,actor)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (sid, who, cat, "回执", "回执登记", "", t,
+                 response, _clean(note), _clean(actor) or "系统"))
+            conn.commit()
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise RepositoryError("登记回执失败：%s" % e)
+        finally:
+            conn.close()
+        try:
+            self.add_log("回执", "%s %s（%s）%s" % (
+                who or sid, sid, cat, response),
+                _clean(actor) or "系统", _clean(role) or "系统", src="本机")
+        except Exception:
+            pass
+        return True
+
+    def latest_receipts(self) -> dict:
+        """按 (学号, 类别) 取最近一条回执，矩阵用来区分「已交」与「待核实」。"""
+        conn = self._conn()
+        try:
+            rows = conn.execute("""SELECT * FROM followups
+                WHERE act='回执' ORDER BY id DESC""").fetchall()
+        except sqlite3.Error as e:
+            raise RepositoryError("读取回执失败：%s" % e)
+        finally:
+            conn.close()
+        out = {}
+        for r in rows:
+            key = (r["sid"], r["cat"])
+            if key not in out:
+                out[key] = dict(r)
+        return out
+
+    def list_followups(self) -> list:
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM followups ORDER BY time DESC, id DESC").fetchall()
+            return [dict(r) for r in rows]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取催交 / 回执失败：%s" % e)
+        finally:
+            conn.close()
+
+    def service_feed(self, limit=200) -> list:
+        """服务留痕统一流水：催交、回执、免交、延期、交接包。"""
+        items = []
+        for i, r in enumerate(self.list_followups()):
+            if r.get("act") == "回执":
+                detail = "%s%s" % (r.get("response") or "回执",
+                                   (" · " + r["note"]) if r.get("note") else "")
+            else:
+                detail = r.get("msg") or ""
+            items.append({
+                "time": r.get("time", ""), "kind": r.get("act", ""),
+                "who": r.get("who", ""), "sid": r.get("sid", ""),
+                "cat": r.get("cat", ""), "detail": detail,
+                "channel": r.get("channel", ""), "actor": r.get("actor", ""),
+                "_seq": 100000 + i,
+            })
+        for i, r in enumerate(self.list_exemptions()):
+            detail = r.get("reason") or ""
+            if r.get("kind") == "延期":
+                detail = "%s（至 %s）%s" % (detail, r.get("until") or "",
+                                           "" if r.get("active") else "（已到期）")
+            items.append({
+                "time": r.get("time", ""), "kind": r.get("state", r.get("kind", "")),
+                "who": r.get("who", ""), "sid": r.get("sid", ""),
+                "cat": r.get("cat", ""), "detail": detail,
+                "channel": "登记", "actor": r.get("actor", ""),
+                "_seq": 200000 + i,
+            })
+        try:
+            service_logs = [l for l in self.list_logs()
+                            if l.get("act") in ("恢复应交", "交接包")]
+        except Exception:
+            service_logs = []
+        for i, l in enumerate(service_logs):
+            items.append({
+                "time": l.get("time", ""), "kind": l.get("act", ""),
+                "who": l.get("who", ""), "sid": "", "cat": "",
+                "detail": l.get("obj", ""), "channel": (
+                    "导出 / 导入" if l.get("act") == "交接包" else "登记"),
+                "actor": l.get("who", ""), "_seq": 300000 + i,
+            })
+        items.sort(key=lambda x: (x.get("time", ""), x.get("_seq")), reverse=True)
+        return items[:limit]
+
+    def service_stats(self, days=7) -> dict:
+        cutoff = (datetime.datetime.now() -
+                  datetime.timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+        fs = self.list_followups()
+        chases = [f for f in fs if f.get("act") == "催交" and f.get("time", "") >= cutoff]
+        receipts = [f for f in fs if f.get("act") == "回执" and f.get("time", "") >= cutoff]
+        active = self.list_exemptions(active_only=True)
+        return {"chases": len(chases), "receipts": len(receipts),
+                "exempt": len([x for x in active if x.get("kind") == "免交"]),
+                "deferred": len([x for x in active if x.get("kind") == "延期"]),
+                "days": days}
+
+    def nearest_deadline(self, cats) -> str:
+        """取这些类别里最近的未完成任务截止日，用于催交话术。"""
+        cats = set(cats if isinstance(cats, (list, tuple, set)) else [cats])
+        dates = []
+        for t in self.list_tasks():
+            if t.get("done") or not _clean(t.get("deadline")):
+                continue
+            tcat = _clean(t.get("cat"))
+            if tcat in cats or tcat in ("全部", "全员", ""):
+                dates.append(t["deadline"])
+        dates.sort()
+        return dates[0] if dates else ""
+
     # ---------- 任务 ----------
     def list_tasks(self) -> list:
         conn = self._conn()
@@ -852,16 +1191,21 @@ class LocalRepository:
         return {"docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
                 "attachments": atts, "templates": templates,
-                "events": self.list_all_events()}
+                "events": self.list_all_events(),
+                "exemptions": self.list_exemptions(),
+                "followups": self.list_followups()}
 
     def restore(self, docs: list, logs: list, roster=None, tasks=None,
-                attachments=None, templates=None, events=None):
+                attachments=None, templates=None, events=None,
+                exemptions=None, followups=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
         tasks = tasks if isinstance(tasks, list) else []
         attachments = attachments if isinstance(attachments, list) else []
         events = events if isinstance(events, list) else []
+        exemptions = exemptions if isinstance(exemptions, list) else []
+        followups = followups if isinstance(followups, list) else []
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
@@ -870,6 +1214,8 @@ class LocalRepository:
             conn.execute("DELETE FROM tasks")
             conn.execute("DELETE FROM attachments")
             conn.execute("DELETE FROM doc_events")
+            conn.execute("DELETE FROM exemptions")
+            conn.execute("DELETE FROM followups")
             if isinstance(templates, list):
                 conn.execute("DELETE FROM template_fields")
                 for tf in templates:
@@ -946,6 +1292,34 @@ class LocalRepository:
                     (_clean(t.get("title")), _clean(t.get("cat")),
                      _clean(t.get("scope")) or "全员", _clean(t.get("deadline")),
                      _clean(t.get("note")), 1 if t.get("done") else 0))
+            for x in exemptions:
+                if not isinstance(x, dict):
+                    continue
+                sid, cat = _clean(x.get("sid")), _clean(x.get("cat"))
+                kind = _clean(x.get("kind"))
+                if not sid or cat not in CAT_PREFIX or kind not in EXEMPT_KINDS:
+                    continue
+                conn.execute("""INSERT OR REPLACE INTO exemptions
+                    (sid,who,cat,kind,reason,until,time,actor,role)
+                    VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (sid, _clean(x.get("who")), cat, kind,
+                     _clean(x.get("reason")), _clean(x.get("until")),
+                     _full_time(x.get("time")), _clean(x.get("actor")) or "系统",
+                     _clean(x.get("role")) or "系统"))
+            for f in followups:
+                if not isinstance(f, dict):
+                    continue
+                sid, cat = _clean(f.get("sid")), _clean(f.get("cat"))
+                act = _clean(f.get("act"))
+                if not sid or not cat or act not in ("催交", "回执"):
+                    continue
+                conn.execute("""INSERT INTO followups
+                    (sid,who,cat,act,channel,msg,time,response,note,actor)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (sid, self._student_name(sid, f.get("who")), cat, act,
+                     _clean(f.get("channel")) or "本机", _clean(f.get("msg")),
+                     _full_time(f.get("time")), _clean(f.get("response")),
+                     _clean(f.get("note")), _clean(f.get("actor")) or "系统"))
             conn.commit()
         except sqlite3.Error as e:
             conn.rollback()

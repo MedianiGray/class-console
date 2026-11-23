@@ -18,6 +18,7 @@ from ui_collect import CollectView
 from ui_submit import SubmitView
 from ui_logs import LogsView
 from ui_roster import RosterView
+from ui_service import ServiceView
 from ui_tasks import TasksView
 import theme
 from theme import FONT, C
@@ -50,10 +51,12 @@ class MainWindow(ttk.Frame):
         ("submit", "提交材料", "docs:create", "＋", "flow"),
         ("roster", "名单核对", "roster:manage", "◎", "crew"),
         ("tasks", "任务跟踪", "task:manage", "◷", "crew"),
+        ("service", "服务留痕", "logs:view", "♡", "crew"),
         ("logs", "操作日志", "logs:view", "≡", "crew"),
     ]
     NAV_SHORT = {"dashboard": "概览", "docs": "台账", "collect": "收集",
-                 "roster": "名单", "tasks": "任务", "submit": "提交", "logs": "日志"}
+                 "roster": "名单", "tasks": "任务", "submit": "提交",
+                 "service": "服务", "logs": "日志"}
     GROUPS = [("flow", "材料流程"), ("crew", "协同跟进")]
 
     def __init__(self, master, repo):
@@ -146,6 +149,7 @@ class MainWindow(ttk.Frame):
             "collect": CollectView(body, self.repo, self),
             "roster": RosterView(body, self.repo, self),
             "tasks": TasksView(body, self.repo, self),
+            "service": ServiceView(body, self.repo, self),
             "submit": SubmitView(body, self.repo, self),
             "logs": LogsView(body, self.repo, self),
         }

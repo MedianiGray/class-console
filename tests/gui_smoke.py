@@ -9,6 +9,7 @@ import sys
 import json
 import os
 import tempfile
+import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -252,6 +253,40 @@ def main():
     assert len(restored["attachments"]) == 1, restored
     print("日志备份附件恢复 OK")
 
+    # v0.18 服务层：延期/回执进矩阵、催交限频、服务留痕视图
+    import service
+    app.role_var.set("handler"); app._toggle_role(); root.update()
+    repo.add_roster("269998", "服务测试")
+    future = (datetime.date.today() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
+    repo.set_exemption("269998", "服务测试", "奖助材料", "延期", "材料在校外",
+                       future, actor="覃祖悦", role="经办人")
+    missing = service.missing_categories(repo.list_docs(), "269998")
+    msg = service.chase_message("服务测试", missing, future)
+    repo.add_followup("269998", "服务测试", "、".join(missing), msg,
+                      "微信 / 群公告", "覃祖悦", "经办人")
+    assert repo.chase_state("269998")["allowed"] is False, "催交后应进入 24 小时冷却"
+    repo.add_receipt("269998", "服务测试", "团务材料", "校外交", "已在校外提交",
+                     "覃祖悦", "经办人")
+    rv.refresh(); root.update()
+    def _mrow(sid):
+        for i in rv.matrix.get_children():
+            vals = rv.matrix.item(i, "values")
+            if vals and vals[0] == sid:
+                return i
+        return ""
+    mid = _mrow("269998")
+    assert mid, "矩阵未找到新增同学"
+    rv.matrix.selection_set(mid); rv.matrix.focus(mid); rv.svc_cat.set("奖助材料")
+    rv._update_matrix_actions(); root.update()
+    assert "延期" in rv.matrix_target.cget("text"), rv.matrix_target.cget("text")
+    assert str(rv.btn_exempt.cget("state")) == "normal", "延期学生仍可修改登记"
+    app.switch("service"); root.update()
+    svc = app.views["service"]
+    svc.refresh(); root.update()
+    assert len(svc.tree.get_children()) >= 3, "服务留痕条数不足"
+    assert svc.summary.cget("text").startswith("共 "), svc.summary.cget("text")
+    print("服务入口/留痕视图 OK")
+
     # v0.17 审计界面：日志筛选、证据包入口、完整性弹窗均可构建
     app.role_var.set("handler"); app._toggle_role(); root.update()
     app.switch("logs"); lv = app.views["logs"]; root.update()
@@ -298,7 +333,7 @@ def main():
         root.update()
         assert theme.resolved() == m, "主题未按预期生效：%s" % m
         assert app.current in app.views, "切主题后当前视图丢失"
-        for k in ("dashboard", "docs", "roster", "tasks", "submit", "logs"):
+        for k in ("dashboard", "docs", "collect", "roster", "tasks", "service", "submit", "logs"):
             app.switch(k)
             root.update()
         assert app.views["docs"].tree.get_children(), "切主题后台账为空"

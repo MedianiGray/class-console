@@ -8,12 +8,17 @@
 import os
 import sys
 import tempfile
+import datetime
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # 设置文件改到临时目录，避免测试读写本机真实偏好
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-appdata-")
 from database import LocalRepository, RepositoryError, date_today  # noqa: E402
+import audit  # noqa: E402
+import handover  # noqa: E402
+import service  # noqa: E402
 
 
 def main():
@@ -481,6 +486,103 @@ def main():
     empty = audit.backup_preview({}, r)
     assert not empty["ok"] and "结构不正确" in empty["text"]
     print("31. 恢复预览 OK")
+
+    # 32. 免交 / 延期登记与取消
+    r.add_roster("259998", "服务同学")
+    ex = r.set_exemption("259998", "服务同学", "团务材料", "免交", "校外已交",
+                         actor="覃祖悦", role="经办人")
+    assert ex["kind"] == "免交" and ex["active"] is True
+    assert r.exemption_map()[("259998", "团务材料")]["reason"] == "校外已交"
+    future = (datetime.date.today() + datetime.timedelta(days=3)).strftime("%Y-%m-%d")
+    r.set_exemption("259998", "服务同学", "团务材料", "延期", "住院",
+                    future, actor="覃祖悦", role="经办人")
+    assert r.exemption_map()[("259998", "团务材料")]["kind"] == "延期"
+    assert r.remove_exemption("259998", "团务材料", "覃祖悦", "经办人")
+    assert ("259998", "团务材料") not in r.exemption_map()
+    try:
+        r.set_exemption("259998", "服务同学", "团务材料", "延期", "住院",
+                        "2000-01-01", actor="覃祖悦", role="经办人")
+        raise SystemExit("应拦截过期延期")
+    except RepositoryError:
+        pass
+    print("32. 免交 / 延期 OK")
+
+    # 33. 催交话术与 24 小时限频（按人，不按类别）
+    docs = r.list_docs()
+    missing = service.missing_categories(docs, "259998")
+    assert "团务材料" in missing
+    msg = service.chase_message("服务同学", missing, future)
+    assert msg.count("服务同学") == 1 and "这项还差你一份材料" in msg
+    now = datetime.datetime.now().replace(second=0, microsecond=0)
+    at = now.strftime("%Y-%m-%d %H:%M")
+    r.add_followup("259998", "服务同学", "、".join(missing), msg,
+                   "微信 / 群公告", "覃祖悦", "经办人", at=at)
+    state = r.chase_state("259998", now=now)
+    assert not state["allowed"] and state["last_act"] == "催交"
+    try:
+        r.add_followup("259998", "服务同学", "团务材料", msg,
+                       "私聊", "覃祖悦", "经办人", at=at)
+        raise SystemExit("应拦截 24 小时内重复催交")
+    except RepositoryError:
+        pass
+    later = now + datetime.timedelta(hours=25)
+    assert r.chase_state("259998", now=later)["allowed"]
+    print("33. 催交 24 小时限频 OK")
+
+    # 34. 回执登记与矩阵状态
+    r.add_receipt("259998", "服务同学", "奖助材料", "已提交", "微信回执",
+                  "覃祖悦", "经办人", at=at)
+    rec = r.latest_receipts()[("259998", "奖助材料")]
+    assert rec["response"] == "已提交"
+    assert service.cell_status(r.list_docs(), "259998", "奖助材料",
+                               r.exemption_map(), r.latest_receipts()) == "回执·已交"
+    assert "奖助材料" not in service.missing_categories(
+        r.list_docs(), "259998", r.exemption_map(), r.latest_receipts())
+    r.add_receipt("259998", "服务同学", "团务材料", "校外交", "已在校外提交",
+                  "覃祖悦", "经办人", at=at)
+    assert service.receipt_suggestion("校外交").startswith("如确认校外已交")
+    print("34. 回执与矩阵口径 OK")
+
+    # 35. 服务留痕统计与动作过滤
+    r.set_exemption("259998", "服务同学", "宣传材料", "免交", "免修",
+                    actor="覃祖悦", role="经办人")
+    feed = r.service_feed()
+    kinds = {x["kind"] for x in feed}
+    assert {"催交", "回执", "免交", "恢复应交"} <= kinds, kinds
+    stats = r.service_stats()
+    assert stats["chases"] >= 1 and stats["receipts"] >= 2
+    assert r.nearest_deadline(["团务材料"]) == "" or r.nearest_deadline(["团务材料"])
+    assert any(l["act"] == "催交" for l in r.list_logs(act="催交"))
+    print("35. 服务留痕 OK")
+
+    # 36. 服务数据随备份往返
+    bak = r.backup()
+    assert "exemptions" in bak and "followups" in bak
+    r2 = LocalRepository(Path(tempfile.mkdtemp()) / "roundtrip.db")
+    r2.restore(bak["docs"], bak["logs"], bak["roster"], bak["tasks"],
+               bak["attachments"], bak["templates"], bak["events"],
+               bak["exemptions"], bak["followups"])
+    assert len(r2.list_followups()) == len(bak["followups"])
+    assert len(r2.service_feed()) >= 2
+    print("36. 服务数据备份往返 OK")
+
+    # 37. 届别交接包：可读、可恢复、带清单
+    pack = Path(tempfile.mkdtemp()) / "交接包.zip"
+    info = handover.export_handover(r, pack, "覃祖悦", "经办人")
+    assert info["size"] > 0 and info["counts"]["roster"] == len(r.list_roster())
+    with zipfile.ZipFile(pack) as z:
+        names = z.namelist()
+        for need in ("数据备份.json", "交接说明.txt", "manifest.json"):
+            assert need in names, need
+        assert "原始材料" in z.read("交接说明.txt").decode("utf-8")
+    data = handover.read_handover(pack)
+    assert handover.handover_summary(data).startswith("交接包版本")
+    r3 = LocalRepository(Path(tempfile.mkdtemp()) / "handover.db")
+    r3.restore(data["docs"], data["logs"], data["roster"], data["tasks"],
+               data["attachments"], data["templates"], data["events"],
+               data["exemptions"], data["followups"])
+    assert len(r3.list_exemptions()) == len(data["exemptions"])
+    print("37. 届别交接包 OK")
 
     print("SELFTEST OK")
 

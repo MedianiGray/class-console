@@ -16,9 +16,12 @@ class LogsView(ttk.Frame):
              "obj": "对象", "src": "来源"}
     WIDTHS = {"time": 130, "who": 100, "role": 90, "act": 80, "obj": 300, "src": 80}
     ACT_TAG = {"提交": "green", "归档": "green", "驳回": "red", "查看": "muted",
-               "证据包": "orange", "完整性检查": "orange"}
+               "证据包": "orange", "完整性检查": "orange", "催交": "orange",
+               "回执": "green", "免交": "muted", "延期": "muted",
+               "恢复应交": "green", "交接包": "orange"}
     ACTS = ["全部", "提交", "归档", "驳回", "归位", "查看", "收集入账",
-            "证据包", "完整性检查"]
+            "证据包", "完整性检查", "催交", "回执", "免交", "延期",
+            "恢复应交", "交接包"]
 
     def __init__(self, master, repo, window):
         super().__init__(master)
@@ -166,7 +169,8 @@ class LogsView(ttk.Frame):
             self.repo.restore(data.get("docs", []), data.get("logs", []),
                               data.get("roster", []), data.get("tasks", []),
                               data.get("attachments", []), data.get("templates"),
-                              data.get("events", []))
+                              data.get("events", []), data.get("exemptions", []),
+                              data.get("followups", []))
         except Exception as e:
             messagebox.showerror("导入失败", str(e))
             return

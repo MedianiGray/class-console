@@ -11,6 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 
 import archive
 import audit
+import handover
 import theme
 from theme import FONT, C
 from database import app_data_dir, FORM_TEMPLATES
@@ -349,6 +350,17 @@ class SettingsDialog:
         ttk.Button(btns, text="备份到文件", command=self._backup).pack(side="left", padx=8)
         ttk.Button(btns, text="从文件恢复", style="Danger.TButton",
                    command=self._restore).pack(side="left")
+        btns2 = tk.Frame(card3, bg=C["card"])
+        btns2.pack(fill="x", padx=14, pady=(0, 4))
+        ttk.Button(btns2, text="导出交接包", command=self._export_handover).pack(
+            side="left")
+        ttk.Button(btns2, text="导入交接包", style="Danger.TButton",
+                   command=self._import_handover).pack(side="left", padx=8)
+        tk.Label(card3, text="交接包带台账、索引、日志、服务登记与设置说明；"
+                 "原始材料文件需连同归档目录一起拷贝。",
+                 bg=C["card"], fg=C["sub"], font=(FONT, 8), anchor="w",
+                 wraplength=470, justify="left").pack(fill="x", padx=14,
+                                                         pady=(0, 12))
 
         # 关于
         card4 = self._section(wrap, "关于")
@@ -644,6 +656,63 @@ class SettingsDialog:
             return
         self.window.toast("已备份 %d 条材料" % len(data.get("docs", [])))
 
+    def _export_handover(self):
+        import datetime
+        path = filedialog.asksaveasfilename(
+            parent=self.top, title="导出届别交接包", defaultextension=".zip",
+            initialfile="班级操作台-届别交接包-%s.zip" %
+                        datetime.date.today().strftime("%Y-%m-%d"),
+            filetypes=[("交接包 ZIP", "*.zip")])
+        if not path:
+            return
+        try:
+            info = handover.export_handover(
+                self.window.repo, path, self.window.operator_name,
+                self.window.role_label())
+        except Exception as e:
+            messagebox.showerror("导出交接包失败", str(e), parent=self.top)
+            return
+        self.window.refresh_all()
+        self.window.toast("交接包已导出：%d 条材料，%.1f KB" % (
+            info["counts"]["docs"], info["size"] / 1024.0))
+
+    def _import_handover(self):
+        if not self.window.can("backup:restore"):
+            self.window.toast("当前视角无权导入交接包")
+            return
+        path = filedialog.askopenfilename(
+            parent=self.top, title="导入届别交接包",
+            filetypes=[("交接包 ZIP", "*.zip")])
+        if not path:
+            return
+        try:
+            data = handover.read_handover(path)
+        except ValueError as e:
+            messagebox.showerror("导入交接包失败", str(e), parent=self.top)
+            return
+        preview = audit.backup_preview(data, self.window.repo)
+        if not preview["ok"]:
+            messagebox.showerror("导入交接包失败", preview["text"], parent=self.top)
+            return
+        text = handover.handover_summary(data) + "\n\n" + preview["text"]
+        if not messagebox.askyesno("导入交接包", text, parent=self.top):
+            return
+        try:
+            self.window.repo.restore(
+                data.get("docs", []), data.get("logs", []),
+                data.get("roster"), data.get("tasks"),
+                data.get("attachments"), data.get("templates"),
+                data.get("events", []), data.get("exemptions", []),
+                data.get("followups", []))
+        except Exception as e:
+            messagebox.showerror("导入交接包失败", str(e), parent=self.top)
+            return
+        self.window.repo.add_log("交接包", "导入 %s" % os.path.basename(path),
+                                 self.window.operator_name,
+                                 self.window.role_label(), src="本机")
+        self.window.refresh_all()
+        self.window.toast("交接包已导入，请确认名单与归档目录")
+
     def _restore(self):
         path = filedialog.askopenfilename(
             parent=self.top, title="从文件恢复",
@@ -667,7 +736,9 @@ class SettingsDialog:
             self.window.repo.restore(data.get("docs", []), data.get("logs", []),
                                      data.get("roster"), data.get("tasks"),
                                      data.get("attachments"), data.get("templates"),
-                                     data.get("events", []))
+                                     data.get("events", []),
+                                     data.get("exemptions", []),
+                                     data.get("followups", []))
         except Exception as e:
             messagebox.showerror("恢复失败", str(e), parent=self.top)
             return

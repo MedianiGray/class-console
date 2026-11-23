@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""名单核对视图：学号—姓名名单、应交/已交/未交核对、添加与移除。"""
+"""名单核对视图：学号—姓名名单、应交/已交/未交核对、服务登记与完成矩阵。"""
 
+import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import service
 from theme import FONT, C
 
 
@@ -62,22 +64,24 @@ class RosterView(ttk.Frame):
         self.empty = ttk.Label(table_box, text="名单为空，可在下方添加成员", style="Muted.TLabel")
 
         # 完成矩阵：名单成员 × 材料类别，补「谁哪类还没交」的信息
+        matrix_tab.rowconfigure(1, weight=1)
+        matrix_tab.columnconfigure(0, weight=1)
         self.matrix_summary = ttk.Label(matrix_tab, text="", style="Muted.TLabel",
-                                        anchor="w")
-        self.matrix_summary.pack(fill="x", padx=8, pady=(6, 4))
+                                        anchor="w", wraplength=760, justify="left")
+        self.matrix_summary.grid(row=0, column=0, sticky="ew", padx=8, pady=(6, 4))
         mx_box = tk.Frame(matrix_tab, bg=C["card"], highlightthickness=1,
                           highlightbackground=C["line"])
-        mx_box.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        mx_box.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 4))
         self.matrix = ttk.Treeview(
             mx_box, columns=("sid", "who") + tuple(self.MATRIX_CATS),
             show="headings", selectmode="browse")
         self.matrix.heading("sid", text="学号", anchor="w")
         self.matrix.heading("who", text="姓名", anchor="w")
-        self.matrix.column("sid", width=110, minwidth=88, anchor="w", stretch=False)
-        self.matrix.column("who", width=92, minwidth=76, anchor="w", stretch=False)
+        self.matrix.column("sid", width=104, minwidth=88, anchor="w", stretch=False)
+        self.matrix.column("who", width=84, minwidth=70, anchor="w", stretch=False)
         for cat in self.MATRIX_CATS:
             self.matrix.heading(cat, text=cat, anchor="center")
-            self.matrix.column(cat, width=82, minwidth=66, anchor="center", stretch=False)
+            self.matrix.column(cat, width=92, minwidth=76, anchor="center", stretch=False)
         self.matrix.tag_configure("zebra", background=C["zebra"])
         mysb = ttk.Scrollbar(mx_box, orient="vertical", command=self.matrix.yview)
         mxsb = ttk.Scrollbar(mx_box, orient="horizontal", command=self.matrix.xview)
@@ -88,6 +92,34 @@ class RosterView(ttk.Frame):
         mx_box.rowconfigure(0, weight=1)
         mx_box.columnconfigure(0, weight=1)
         self.matrix.bind("<Double-1>", self._open_student)
+        self.matrix.bind("<Button-1>", self._on_matrix_click, add="+")
+        self.matrix.bind("<<TreeviewSelect>>", self._on_matrix_select, add="+")
+
+        # 服务操作条：选中一行 + 类别，就地登记，不再开第二套页面
+        actbar = tk.Frame(matrix_tab, bg=C["bg"])
+        actbar.grid(row=2, column=0, sticky="ew", padx=6, pady=(0, 6))
+        self.matrix_target = tk.Label(
+            actbar, text="选中一行后再登记", bg=C["bg"], fg=C["muted"],
+            font=(FONT, 9), anchor="w")
+        self.matrix_target.pack(side="left")
+        self.svc_cat = tk.StringVar(value=self.MATRIX_CATS[0])
+        self.svc_cat_box = ttk.Combobox(
+            actbar, textvariable=self.svc_cat, values=self.MATRIX_CATS,
+            state="readonly", width=10)
+        self.svc_cat_box.pack(side="left", padx=(10, 6))
+        self.svc_cat_box.bind("<<ComboboxSelected>>",
+                              lambda e: self._update_matrix_actions())
+        self.btn_receipt = ttk.Button(actbar, text="登记回执",
+                                      style="Ghost.TButton",
+                                      command=self._receipt_dialog)
+        self.btn_chase = ttk.Button(actbar, text="生成催交",
+                                    style="Ghost.TButton",
+                                    command=self._chase_selected)
+        self.btn_exempt = ttk.Button(actbar, text="免交 / 延期",
+                                     command=self._exempt_dialog)
+        self.btn_exempt.pack(side="right")
+        self.btn_chase.pack(side="right", padx=6)
+        self.btn_receipt.pack(side="right")
 
         # 右侧核对面板：三个数字 + 未交名单，补足「谁没交」的信息
         panel = tk.Frame(wrap, bg=C["card"], highlightthickness=1,
@@ -151,7 +183,9 @@ class RosterView(ttk.Frame):
                 status = "未交"
             self.tree.insert("", "end", tags=(r["id"], tag),
                              values=(r.get("sid", ""), r.get("who", ""), status))
-        self._refresh_matrix(rows, docs)
+        ex_map = self.repo.exemption_map()
+        receipts = self.repo.latest_receipts()
+        self._refresh_matrix(rows, docs, ex_map, receipts)
         chk = self.repo.roster_check()
         self.summary.config(text="名单共 %d 人" % chk["total"])
         for key, val in (("total", chk["total"]), ("done", chk["done"]),
@@ -189,35 +223,83 @@ class RosterView(ttk.Frame):
             self.btn_add.pack(side="left")
             self.btn_remove.pack(side="left", padx=8)
             self.btn_clear.pack(side="left")
+        self._update_matrix_actions()
 
-    def _cell_status(self, docs, sid, cat):
-        rows = [d for d in docs
-                if d.get("sid") == sid and d.get("cat") == cat]
-        status = {d.get("status") for d in rows}
-        if "已归档" in status:
-            return "已交"
-        if "待审核" in status:
-            return "待审"
-        if "已驳回" in status or "待补材料" in status:
-            return "补交"
-        return "—"
+    def _on_matrix_click(self, event):
+        col = self.matrix.identify_column(event.x)
+        try:
+            idx = int(col.replace("#", "")) - 3
+        except ValueError:
+            idx = -1
+        if 0 <= idx < len(self.MATRIX_CATS):
+            self.svc_cat.set(self.MATRIX_CATS[idx])
+        self._update_matrix_actions()
+        return None
 
-    def _refresh_matrix(self, rows, docs):
+    def _on_matrix_select(self, _event=None):
+        self._update_matrix_actions()
+
+    def _matrix_selected(self):
+        iid = self.matrix.focus() or (self.matrix.selection()[0]
+                                      if self.matrix.selection() else "")
+        if not iid:
+            return None
+        vals = self.matrix.item(iid, "values")
+        if not vals:
+            return None
+        return str(vals[0]), str(vals[1])
+
+    def _selected_cell_status(self):
+        pair = self._matrix_selected()
+        if not pair:
+            return "无记录"
+        sid, _who = pair
+        return service.cell_status(self.repo.list_docs(), sid,
+                                   self.svc_cat.get(),
+                                   self.repo.exemption_map(),
+                                   self.repo.latest_receipts())
+
+    def _update_matrix_actions(self):
+        pair = self._matrix_selected()
+        can = bool(pair) and self.window.can("roster:manage")
+        if pair:
+            self.matrix_target.config(
+                text="%s · %s · %s：%s" % (pair[1], pair[0], self.svc_cat.get(),
+                                          self._selected_cell_status()),
+                fg=C["text"])
+        else:
+            self.matrix_target.config(text="选中一行后再登记", fg=C["muted"])
+        for b in (self.btn_exempt, self.btn_chase, self.btn_receipt):
+            b.config(state="normal" if can else "disabled")
+
+    def _cell_status(self, docs, sid, cat, ex_map=None, receipts=None):
+        return service.cell_status(docs, sid, cat, ex_map, receipts)
+
+    def _refresh_matrix(self, rows, docs, ex_map=None, receipts=None):
         self.matrix.delete(*self.matrix.get_children())
-        counts = {"已交": 0, "待审": 0, "补交": 0, "—": 0}
+        keys = ("已交", "待审", "补交", "免交", "延期",
+                "回执·已交", "回执·校外", "回执·稍后", "无记录")
+        counts = {k: 0 for k in keys}
         for i, r in enumerate(rows):
             sid = r.get("sid") or ""
-            cells = [self._cell_status(docs, sid, c) for c in self.MATRIX_CATS]
+            cells = [self._cell_status(docs, sid, c, ex_map, receipts)
+                     for c in self.MATRIX_CATS]
             for c in cells:
                 counts[c] = counts.get(c, 0) + 1
             self.matrix.insert("", "end", tags=(r["id"], "zebra" if i % 2 else ""),
                                values=(sid, r.get("who", "")) + tuple(cells))
         total = sum(counts.values())
-        self.matrix_summary.config(
-            text=("已交 %d 格 · 待审 %d 格 · 补交 %d 格 · 无记录 %d 格　"
-                  "双击一行查看该生全部材料" % (counts["已交"], counts["待审"],
-                                       counts["补交"], counts["—"]) if total else
-                  "名单为空，先添加成员再查看完成矩阵"))
+        if total:
+            receipt = (counts["回执·已交"] + counts["回执·校外"] +
+                       counts["回执·稍后"])
+            text = ("已交 %d · 待审 %d · 补交 %d · 免交 %d · 延期 %d · 回执 %d · 无记录 %d　"
+                    "双击一行查看该生全部材料" % (
+                        counts["已交"], counts["待审"], counts["补交"],
+                        counts["免交"], counts["延期"], receipt,
+                        counts["无记录"]))
+        else:
+            text = "名单为空，先添加成员再查看完成矩阵"
+        self.matrix_summary.config(text=text)
 
     def _open_student(self, _event=None):
         iid = self.matrix.focus()
@@ -238,6 +320,260 @@ class RosterView(ttk.Frame):
         self.window.switch("docs")
         self.window.toast("已按学号 %s 筛出台账" % sid)
         return "break"
+
+    # ---------- 服务登记 ----------
+    def _need_service_target(self, action):
+        pair = self._matrix_selected()
+        if not pair:
+            self.window.toast("请先在完成矩阵里选中一名成员")
+            return None
+        if not self.window.can("roster:manage"):
+            self.window.toast("当前视角无权登记服务动作")
+            return None
+        return pair
+
+    def _service_dialog(self, title, width, height):
+        dlg = tk.Toplevel(self)
+        dlg.title(title)
+        dlg.transient(self.window)
+        dlg.resizable(False, False)
+        dlg.configure(bg=C["bg"])
+        top = self.window.winfo_toplevel()
+        top.update_idletasks()
+        x = top.winfo_rootx() + max(0, (top.winfo_width() - width) // 2)
+        y = top.winfo_rooty() + max(0, (top.winfo_height() - height) // 2)
+        dlg.geometry("%dx%d+%d+%d" % (width, height, x, y))
+        dlg.grab_set()
+        return dlg
+
+    def _exempt_dialog(self):
+        pair = self._need_service_target("登记免交 / 延期")
+        if not pair:
+            return
+        sid, who = pair
+        cat = self.svc_cat.get()
+        old = next((x for x in self.repo.list_exemptions()
+                    if x.get("sid") == sid and x.get("cat") == cat), None)
+        dlg = self._service_dialog("免交 / 延期", 430, 350)
+        tk.Label(dlg, text="%s · %s" % (who, cat), bg=C["bg"], fg=C["text"],
+                 font=(FONT, 10, "bold"), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
+        if old:
+            tk.Label(dlg, text="当前登记：%s　%s" % (
+                old.get("state") or old.get("kind"),
+                old.get("until") and ("至 " + old["until"]) or ""),
+                bg=C["bg"], fg=C["muted"], font=(FONT, 9), anchor="w").pack(
+                    fill="x", padx=18)
+        else:
+            tk.Label(dlg, text="没有登记时按「无记录」催交；登记后不再重复追赶。",
+                     bg=C["bg"], fg=C["muted"], font=(FONT, 9), anchor="w",
+                     wraplength=390, justify="left").pack(fill="x", padx=18)
+
+        kind = tk.StringVar(value=(old.get("kind") if old else "免交"))
+        reason = tk.StringVar(value=(old.get("reason") if old else ""))
+        until = tk.StringVar(value=(old.get("until") if old else
+                                   (datetime.date.today() +
+                                    datetime.timedelta(days=7)).strftime("%Y-%m-%d")))
+        form = tk.Frame(dlg, bg=C["bg"])
+        form.pack(fill="x", padx=18, pady=(10, 0))
+        tk.Label(form, text="类型", bg=C["bg"], fg=C["sub"], font=(FONT, 9)).grid(
+            row=0, column=0, sticky="w", pady=4)
+        kbox = tk.Frame(form, bg=C["bg"])
+        kbox.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        for val in ("免交", "延期"):
+            tk.Radiobutton(kbox, text=val, variable=kind, value=val, bg=C["bg"],
+                           fg=C["text"], selectcolor=C["card"],
+                           activebackground=C["bg"], activeforeground=C["text"],
+                           font=(FONT, 9)).pack(side="left", padx=(0, 12))
+        tk.Label(form, text="原因 *", bg=C["bg"], fg=C["sub"], font=(FONT, 9)).grid(
+            row=1, column=0, sticky="w", pady=4)
+        ttk.Entry(form, textvariable=reason, width=32).grid(
+            row=1, column=1, sticky="w", padx=(10, 0), pady=4)
+        tk.Label(form, text="延期到", bg=C["bg"], fg=C["sub"], font=(FONT, 9)).grid(
+            row=2, column=0, sticky="w", pady=4)
+        until_entry = ttk.Entry(form, textvariable=until, width=16)
+        until_entry.grid(row=2, column=1, sticky="w", padx=(10, 0), pady=4)
+        tk.Label(form, text="转学、免修、校外已交写清原因；延期到期后自动回到无记录。",
+                 bg=C["bg"], fg=C["muted"], font=(FONT, 8), anchor="w",
+                 wraplength=390, justify="left").grid(
+                     row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+        err = tk.Label(dlg, text="", bg=C["bg"], fg=C["red"], font=(FONT, 9),
+                       anchor="w", wraplength=390, justify="left")
+        err.pack(fill="x", padx=18, pady=(6, 0))
+
+        def sync_until(*_a):
+            until_entry.config(state=("normal" if kind.get() == "延期" else "disabled"))
+
+        kind.trace_add("write", sync_until)
+        sync_until()
+
+        def save():
+            try:
+                self.repo.set_exemption(
+                    sid, who, cat, kind.get(), reason.get(), until.get(),
+                    self.window.operator_name, self.window.role_label())
+            except Exception as e:
+                err.config(text=str(e))
+                return
+            dlg.destroy()
+            self.window.refresh_all()
+            self.window.toast("已登记%s：%s · %s" % (kind.get(), who, cat))
+
+        def remove():
+            if not old:
+                return
+            if not self.window.confirm("取消登记", "确定取消 %s · %s 的%s吗？" % (
+                    who, cat, old.get("kind"))):
+                return
+            self.repo.remove_exemption(sid, cat, self.window.operator_name,
+                                       self.window.role_label())
+            dlg.destroy()
+            self.window.refresh_all()
+            self.window.toast("已恢复应交：%s · %s" % (who, cat))
+
+        btns = tk.Frame(dlg, bg=C["bg"])
+        btns.pack(fill="x", padx=18, pady=(10, 14))
+        ttk.Button(btns, text="关闭", style="Ghost.TButton",
+                   command=dlg.destroy).pack(side="right")
+        ttk.Button(btns, text="保存登记", style="Accent.TButton",
+                   command=save).pack(side="right", padx=8)
+        if old:
+            ttk.Button(btns, text="取消现有登记", style="Ghost.TButton",
+                       command=remove).pack(side="left")
+
+    def _receipt_dialog(self):
+        pair = self._need_service_target("登记回执")
+        if not pair:
+            return
+        sid, who = pair
+        cat = self.svc_cat.get()
+        dlg = self._service_dialog("登记回执", 430, 310)
+        tk.Label(dlg, text="%s · %s" % (who, cat), bg=C["bg"], fg=C["text"],
+                 font=(FONT, 10, "bold"), anchor="w").pack(fill="x", padx=18, pady=(16, 4))
+        tk.Label(dlg, text="回执只停止重复追赶，不等于材料已归档。",
+                 bg=C["bg"], fg=C["muted"], font=(FONT, 9), anchor="w").pack(
+                     fill="x", padx=18)
+        form = tk.Frame(dlg, bg=C["bg"])
+        form.pack(fill="x", padx=18, pady=(10, 0))
+        tk.Label(form, text="回执", bg=C["bg"], fg=C["sub"], font=(FONT, 9)).grid(
+            row=0, column=0, sticky="w", pady=4)
+        response = tk.StringVar(value="已提交")
+        ttk.Combobox(form, textvariable=response, values=("已提交", "校外交", "稍后补"),
+                     state="readonly", width=12).grid(
+                         row=0, column=1, sticky="w", padx=(10, 0), pady=4)
+        tk.Label(form, text="备注", bg=C["bg"], fg=C["sub"], font=(FONT, 9)).grid(
+            row=1, column=0, sticky="w", pady=4)
+        note = tk.StringVar()
+        ttk.Entry(form, textvariable=note, width=30).grid(
+            row=1, column=1, sticky="w", padx=(10, 0), pady=4)
+        hint = tk.Label(dlg, text=service.receipt_suggestion("已提交"), bg=C["bg"],
+                        fg=C["muted"], font=(FONT, 8), anchor="w", wraplength=390,
+                        justify="left")
+        hint.pack(fill="x", padx=18, pady=(6, 0))
+        response.trace_add("write", lambda *a: hint.config(
+            text=service.receipt_suggestion(response.get())))
+        err = tk.Label(dlg, text="", bg=C["bg"], fg=C["red"], font=(FONT, 9),
+                       anchor="w", wraplength=390, justify="left")
+        err.pack(fill="x", padx=18, pady=(6, 0))
+
+        def save():
+            try:
+                self.repo.add_receipt(sid, who, cat, response.get(), note.get(),
+                                      self.window.operator_name,
+                                      self.window.role_label())
+            except Exception as e:
+                err.config(text=str(e))
+                return
+            dlg.destroy()
+            self.window.refresh_all()
+            self.window.toast("已登记回执：%s · %s · %s" % (who, cat, response.get()))
+
+        btns = tk.Frame(dlg, bg=C["bg"])
+        btns.pack(fill="x", padx=18, pady=(12, 14))
+        ttk.Button(btns, text="关闭", style="Ghost.TButton",
+                   command=dlg.destroy).pack(side="right")
+        ttk.Button(btns, text="保存回执", style="Accent.TButton",
+                   command=save).pack(side="right", padx=8)
+
+    def _chase_selected(self):
+        pair = self._need_service_target("生成催交")
+        if not pair:
+            return
+        sid, who = pair
+        docs = self.repo.list_docs()
+        missing = service.missing_categories(
+            docs, sid, self.repo.exemption_map(), self.repo.latest_receipts())
+        if not missing:
+            messagebox.showinfo("无需催交",
+                                "该生没有待催类别：待审的等审核，免交 / 延期的已登记。",
+                                parent=self.window)
+            return
+        state = self.repo.chase_state(sid)
+        if not state["allowed"]:
+            messagebox.showinfo(
+                "24 小时内不重复提醒",
+                "上次联系在 %s，还需等待约 %s。\n\n同一学生每天只提醒一次；"
+                "如已收到回执，可在矩阵里登记回执。" % (
+                    state.get("last") or "不久前",
+                    service.wait_text(state.get("remain_min"))),
+                parent=self.window)
+            return
+        deadline = self.repo.nearest_deadline(missing)
+        msg = service.chase_message(who, missing, deadline)
+        dlg = self._service_dialog("生成催交话术", 500, 400)
+        tk.Label(dlg, text="%s · %s" % (who, sid), bg=C["bg"], fg=C["text"],
+                 font=(FONT, 10, "bold"), anchor="w").pack(fill="x", padx=18, pady=(14, 4))
+        tk.Label(dlg, text="将发：%s%s" % ("、".join(missing),
+                 ("　截止 " + deadline) if deadline else ""),
+                 bg=C["bg"], fg=C["muted"], font=(FONT, 9), anchor="w",
+                 wraplength=460, justify="left").pack(fill="x", padx=18)
+        box = tk.Text(dlg, wrap="word", height=8, relief="flat", bd=0,
+                      bg=C["card"], fg=C["text"], font=(FONT, 10),
+                      padx=10, pady=8, highlightthickness=1,
+                      highlightbackground=C["line"])
+        box.pack(fill="both", expand=True, padx=18, pady=(8, 6))
+        box.insert("1.0", msg)
+        box.config(state="disabled")
+        crow = tk.Frame(dlg, bg=C["bg"])
+        crow.pack(fill="x", padx=18)
+        tk.Label(crow, text="渠道", bg=C["bg"], fg=C["sub"], font=(FONT, 9)).pack(side="left")
+        channel = tk.StringVar(value="微信 / 群公告")
+        ttk.Combobox(crow, textvariable=channel, state="readonly", width=14,
+                     values=("微信 / 群公告", "私聊", "当面提醒")).pack(
+                         side="left", padx=(8, 0))
+        tk.Label(crow, text="复制后只登记一次，24 小时内不再催同一人。",
+                 bg=C["bg"], fg=C["muted"], font=(FONT, 8)).pack(side="left", padx=(10, 0))
+        err = tk.Label(dlg, text="", bg=C["bg"], fg=C["red"], font=(FONT, 9),
+                       anchor="w", wraplength=460, justify="left")
+        err.pack(fill="x", padx=18)
+
+        def copy_only():
+            self.clipboard_clear()
+            self.clipboard_append(msg)
+            self.window.toast("话术已复制，未登记催交")
+
+        def copy_and_log():
+            try:
+                self.repo.add_followup(sid, who, "、".join(missing), msg,
+                                       channel.get(), self.window.operator_name,
+                                       self.window.role_label())
+            except Exception as e:
+                err.config(text=str(e))
+                return
+            self.clipboard_clear()
+            self.clipboard_append(msg)
+            dlg.destroy()
+            self.window.refresh_all()
+            self.window.toast("话术已复制，并记入服务留痕")
+
+        btns = tk.Frame(dlg, bg=C["bg"])
+        btns.pack(fill="x", padx=18, pady=(10, 14))
+        ttk.Button(btns, text="关闭", style="Ghost.TButton",
+                   command=dlg.destroy).pack(side="right")
+        ttk.Button(btns, text="复制并登记", style="Accent.TButton",
+                   command=copy_and_log).pack(side="right", padx=8)
+        ttk.Button(btns, text="只复制", style="Ghost.TButton",
+                   command=copy_only).pack(side="right")
 
     def add_dialog(self):
         if not self.window.can("roster:manage"):
