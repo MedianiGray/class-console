@@ -111,7 +111,7 @@ class-console/
 数据保存在浏览器 localStorage 缓存，离线可用、无需后端。AI 助手可选本地 WebGPU 模型（首次下载后缓存在浏览器）
 或 OpenAI 兼容 API（Key 只存当前页面内存）。直接用浏览器打开该文件即可；
 已部署到 GitHub Pages，公网预览：<https://medianigray.github.io/class-console/>。
-注意：浏览器缓存与桌面版 SQLite 数据各自独立，互不同步；文件室仅桌面版提供。
+注意：浏览器缓存与桌面版 SQLite 数据各自独立，互不同步；文件室仅桌面版提供。AI 助手的加载、API 配置与排障见 [`docs/AI助手使用说明.md`](docs/AI助手使用说明.md)。
 
 ### 从源码运行（调试）
 
