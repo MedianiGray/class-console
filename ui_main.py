@@ -33,11 +33,11 @@ ROLES = {
     "applicant": {"label": "申请人", "operator": "同学"},
 }
 PERMISSIONS = {
-    "handler":   ["docs:create", "docs:edit", "docs:import", "docs:archive", "docs:reject",
+    "handler":   ["docs:create", "docs:edit", "docs:import", "docs:collect", "docs:archive", "docs:reject",
                   "docs:export", "roster:manage", "task:manage", "template:config", "logs:view"],
-    "reviewer":  ["docs:create", "docs:edit", "docs:import", "docs:archive", "docs:reject", "docs:export",
+    "reviewer":  ["docs:create", "docs:edit", "docs:import", "docs:collect", "docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "template:config", "backup:restore", "logs:view"],
-    "manager":   ["docs:archive", "docs:reject", "docs:export",
+    "manager":   ["docs:collect", "docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "template:config",
                   "backup:restore", "logs:view", "config:manage"],
     "applicant": ["docs:create", "docs:edit"],
@@ -55,17 +55,18 @@ class MainWindow(ttk.Frame):
         ("dashboard", "工作台概览", None, "◈", None),
         ("docs", "材料台账", None, "▤", "flow"),
         ("files", "文件室", "docs:archive", "▧", "flow"),
-        ("collect", "文件夹收集", "docs:create", "▣", "flow"),
         ("submit", "提交材料", "docs:create", "＋", "flow"),
         ("roster", "名单核对", "roster:manage", "◎", "crew"),
         ("tasks", "任务跟踪", "task:manage", "◷", "crew"),
         ("service", "服务留痕", "logs:view", "♡", "crew"),
-        ("logs", "操作日志", "logs:view", "≡", "crew"),
+        ("collect", "文件夹收集", "docs:collect", "▣", "aux"),
+        ("logs", "操作日志", "logs:view", "≡", "aux"),
     ]
     NAV_SHORT = {"dashboard": "概览", "docs": "台账", "files": "文件",
                  "collect": "收集", "roster": "名单", "tasks": "任务",
                  "submit": "提交", "service": "服务", "logs": "日志"}
-    GROUPS = [("flow", "材料流程"), ("crew", "协同跟进")]
+    GROUPS = [("flow", "办理材料"), ("crew", "跟进核对")]
+    MORE_GROUP = "aux"
 
     def __init__(self, master, repo):
         super().__init__(master)
@@ -79,6 +80,10 @@ class MainWindow(ttk.Frame):
         self.theme_buttons = {}
         self.nav_badges = {}
         self.group_heads = {}
+        self.more_btn = None
+        self.more_bar = None
+        self.more_count = None
+        self.more_group_head = None
         self._closed_groups = set(
             g for g in theme.load_ui("nav_closed", "").split(",") if g)
         if not theme.is_applied():
@@ -422,6 +427,18 @@ class MainWindow(ttk.Frame):
         self.cmdk = ui_cmdk.open_palette(self)
         return "break"
 
+    def _open_more(self):
+        old = getattr(self, "more_dialog", None)
+        if old is not None:
+            try:
+                if old.top.winfo_exists():
+                    old.close()
+            except Exception:
+                pass
+        import ui_more
+        self.more_dialog = ui_more.open_more(self)
+        return self.more_dialog
+
     def _sync_role_hint(self):
         meta = ROLES.get(self.role, ROLES["handler"])
         try:
@@ -453,12 +470,20 @@ class MainWindow(ttk.Frame):
         theme.save_ui("nav_closed", ",".join(sorted(self._closed_groups)))
         self._build_nav()
 
+    def more_items(self):
+        return [it for it in self.NAV
+                if it[4] == self.MORE_GROUP and self._nav_visible(it[0])]
+
     def _build_nav(self):
         for w in self.nav_box.winfo_children():
             w.destroy()
         self.nav_items = {}
         self.nav_badges = {}
         self.group_heads = {}
+        self.more_btn = None
+        self.more_bar = None
+        self.more_count = None
+        self.more_group_head = None
 
         first = self.NAV[0]
         if self._nav_visible(first[0]):
@@ -485,6 +510,57 @@ class MainWindow(ttk.Frame):
                 continue
             for item in items:
                 self._nav_row(item)
+        self._build_more_row()
+        self._paint_nav_active()
+
+    def _build_more_row(self):
+        """低频入口合成一行；折叠时只留三点，不显示数量。"""
+        items = self.more_items()
+        if not items:
+            return
+        if not self.collapsed:
+            head = tk.Frame(self.nav_box, bg=C["sidebar"])
+            head.pack(fill="x", pady=(14, 4))
+            tk.Label(head, text="更多", bg=C["sidebar"], fg=C["sub"],
+                     font=(FONT, 9), anchor="w").pack(side="left", padx=(8, 0))
+            self.more_group_head = head
+        else:
+            tk.Frame(self.nav_box, bg=C["line"], height=1).pack(
+                fill="x", padx=6, pady=(10, 5))
+        row = tk.Frame(self.nav_box, bg=C["sidebar"])
+        row.pack(fill="x", pady=1)
+        bar = tk.Frame(row, bg=C["sidebar"], width=3)
+        bar.pack(side="left", fill="y")
+        text = "···" if self.collapsed else "···   更多功能"
+        btn = tk.Button(row, text=text, bg=C["sidebar"], fg=C["muted"],
+                        activebackground=C["sidebar_active"], activeforeground=C["primary"],
+                        relief="flat", font=(FONT, 11 if self.collapsed else 10),
+                        anchor="center" if self.collapsed else "w",
+                        padx=0 if self.collapsed else 9,
+                        pady=6, cursor="hand2", bd=0,
+                        command=self._open_more)
+        btn.pack(side="left", fill="x", expand=True)
+        if not self.collapsed:
+            self.more_count = tk.Label(row, text=str(len(items)), bg=C["sidebar"],
+                                       fg=C["sub"], font=(FONT, 8), padx=6)
+            self.more_count.pack(side="right", padx=(0, 8))
+        self.more_btn = btn
+        self.more_bar = bar
+
+    def _paint_nav_active(self):
+        for k, (btn, _row, bar) in self.nav_items.items():
+            active = k == self.current
+            btn.config(bg=C["sidebar_active"] if active else C["sidebar"],
+                       fg=C["primary"] if active else C["muted"])
+            bar.config(bg=C["primary"] if active else C["sidebar"])
+        if self.more_btn is not None:
+            more_active = self.current in [it[0] for it in self.more_items()]
+            self.more_btn.config(bg=C["sidebar_active"] if more_active else C["sidebar"],
+                                 fg=C["primary"] if more_active else C["muted"])
+            self.more_bar.config(bg=C["primary"] if more_active else C["sidebar"])
+            if self.more_count is not None:
+                self.more_count.config(bg=C["sidebar_active"] if more_active else C["sidebar"],
+                                       fg=C["primary"] if more_active else C["sub"])
 
     def _nav_row(self, item):
         key, label, _perm, icon, _g = item
@@ -728,7 +804,8 @@ class MainWindow(ttk.Frame):
 
     def _nav_eyebrow(self, key):
         group = next((g for k, _l, _p, _i, g in self.NAV if k == key), None)
-        glabel = dict(self.GROUPS).get(group, "总览")
+        glabel = dict(self.GROUPS).get(
+            group, "更多" if group == self.MORE_GROUP else "总览")
         return "工作台 · %s" % glabel
 
     def switch(self, key):
@@ -744,11 +821,7 @@ class MainWindow(ttk.Frame):
                 v.tkraise()
             else:
                 v.pack_forget()
-        for k, (btn, row, bar) in self.nav_items.items():
-            active = k == key
-            btn.config(bg=C["sidebar_active"] if active else C["sidebar"],
-                       fg=C["primary"] if active else C["muted"])
-            bar.config(bg=C["primary"] if active else C["sidebar"])
+        self._paint_nav_active()
         self.title_label.config(text=self._nav_title(key))
         self.eyebrow_label.config(text=self._nav_eyebrow(key))
         self.refresh_all()

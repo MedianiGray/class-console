@@ -32,6 +32,7 @@ def main():
         [{"act": "提交", "obj": "正常材料"}])
 
     root = tk.Tk()
+    root.geometry("1220x820+30+30")
     app = MainWindow(root, repo)
     app.confirm = lambda title, msg: True
     root.update()
@@ -512,6 +513,57 @@ def main():
     dlg.close()
     root.update()
     print("错误四段对话框 OK")
+
+    # A5 更多功能：主流程收口、低频入口合一行、折叠三点、权限显隐
+    if app.collapsed:
+        app.toggle_sidebar()
+        root.update()
+    app.role_var.set("handler"); app._toggle_role(); root.update()
+    assert "collect" not in app.nav_items and "logs" not in app.nav_items, \
+        "文件夹收集/操作日志不应再平铺在侧栏"
+    assert "docs" in app.nav_items and "roster" in app.nav_items
+    assert app.more_btn is not None and app.more_btn.winfo_ismapped(), \
+        (app.collapsed, app.more_btn, app.more_count, app.current, app.role,
+         [it[0] for it in app.more_items()], root.winfo_ismapped(), root.geometry())
+    assert app.more_count.cget("text") == "2", app.more_count.cget("text")
+    nav_texts = texts(app.nav_box)
+    for label in ("办理材料", "跟进核对", "更多"):
+        assert label in nav_texts, "侧栏缺少分组：%s" % label
+
+    app.switch("logs"); root.update()
+    assert app.current == "logs"
+    assert app.more_btn.cget("fg") == theme.C["primary"], "当前页在三项内时更多入口未高亮"
+    assert app.eyebrow_label.cget("text") == "工作台 · 更多"
+
+    md = app._open_more(); root.update()
+    assert md.top.winfo_exists() and md.top.title() == "更多功能"
+    assert set(md.item_buttons) == {"collect", "logs"}, md.item_buttons.keys()
+    md.top.event_generate("<Button-1>", x=-30, y=-10)
+    root.update()
+    assert not md.top.winfo_exists(), "点击弹窗外空白应关闭"
+
+    md = app._open_more(); root.update()
+    md.item_buttons["collect"].invoke(); root.update()
+    assert app.current == "collect", "更多功能里的入口未真正跳转"
+    assert not md.top.winfo_exists()
+
+    app.role_var.set("manager"); app._toggle_role(); root.update()
+    assert [it[0] for it in app.more_items()] == ["collect", "logs"], \
+        "汇总者应看到收集与日志"
+    assert app.more_count.cget("text") == "2"
+    app.role_var.set("applicant"); app._toggle_role(); root.update()
+    assert app.more_items() == [], "申请人不应看到文件夹收集与操作日志"
+    assert app.more_btn is None, "申请人没有更多项时不应保留空入口"
+
+    app.role_var.set("handler"); app._toggle_role(); root.update()
+    app.switch("collect"); root.update()
+    app.toggle_sidebar(); root.update()
+    assert app.collapsed
+    assert app.more_btn.cget("text") == "···", app.more_btn.cget("text")
+    assert app.more_count is None, "折叠侧栏后数量角标应隐藏"
+    assert app.more_btn.winfo_ismapped(), "折叠后三点入口应常驻"
+    assert app.more_btn.cget("fg") == theme.C["primary"], "折叠态当前页未联动高亮"
+    print("更多功能/折叠导航 OK")
 
     root.destroy()
     print("GUI SMOKE OK")
