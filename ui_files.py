@@ -18,6 +18,7 @@ import audit
 import fileroom
 import thumbs
 from theme import FONT, C
+from ui_empty import EmptyState
 
 try:
     from PIL import Image, ImageTk
@@ -128,9 +129,7 @@ class FileRoomView(ttk.Frame):
         self.files.bind("<<TreeviewSelect>>", self._on_file)
         self.files.bind("<Double-1>", lambda e: self.open_selected())
         self.files.bind("<Configure>", self._fit_columns)
-        self.empty = ttk.Label(
-            cw, text="这一层还没有文件。把材料拖进窗口，或点「选择文件登记」。",
-            style="Muted.TLabel", wraplength=420, justify="center")
+        self.empty = EmptyState(cw, wraplength=400)
 
         right = tk.Frame(body, bg=C["card"], highlightthickness=1,
                          highlightbackground=C["line"])
@@ -289,12 +288,22 @@ class FileRoomView(ttk.Frame):
             max(0, len(self._dir_iids) - 1), len(rows),
             getattr(self, "_doc_count", 0)))
         if rows:
-            self.empty.place_forget()
+            self.empty.hide()
+        elif q:
+            self.empty.set("全库里没有匹配的文件",
+                           "没有找到包含「%s」的文件；换个关键词，或清空搜索再试。" % q,
+                           "清空搜索", self.clear_search)
+            self.empty.show_place(relx=0.5, rely=0.42)
         else:
-            self.empty.place(relx=0.5, rely=0.42, anchor="center")
-            self.empty.configure(text=(
-                "全库里没有匹配「%s」的文件" % q if q else
-                "这一层还没有文件。把材料拖进窗口，或点「选择文件登记」。"))
+            if self.window.can("docs:create"):
+                self.empty.set("这一层还没有文件",
+                               "把材料拖进窗口，或点「选择文件登记」，落到当前目录并登记为待审核材料。",
+                               "选择文件登记", self.pick_files)
+            else:
+                self.empty.set("这一层还没有文件",
+                               "当前岗位只能查看；切换到经办人岗位后可登记文件。",
+                               "切换岗位", lambda: self.window._role_menu())
+            self.empty.show_place(relx=0.5, rely=0.42)
         self._placeholder("选中文件看预览", "图片、PDF 首页、文本前 200 字都会显示在这里。")
 
     def go_up(self):
@@ -471,6 +480,11 @@ class FileRoomView(ttk.Frame):
     def open_integrity(self):
         from ui_audit import open_integrity
         open_integrity(self, self.repo, self.window, on_done=self.refresh)
+
+    def clear_search(self):
+        self.q.set("")
+        self._load_files()
+        self.search_entry.focus_set()
 
     def pick_files(self):
         paths = filedialog.askopenfilenames(title="选择要登记进文件室的文件")
@@ -738,8 +752,7 @@ class MissingDialog:
         ysb.pack(side="right", fill="y")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
         self.tree.bind("<Double-1>", lambda e: self.goto_doc())
-        self.empty = ttk.Label(box, text="没有缺失文件，索引与磁盘当前对得上。",
-                               style="Muted.TLabel")
+        self.empty = EmptyState(box, wraplength=400)
 
         self.detail = tk.Label(self.top, text="", bg=C["card"], fg=C["muted"],
                                font=(FONT, 9), anchor="w", justify="left",
@@ -772,9 +785,12 @@ class MissingDialog:
                             "源文件仍在本机时，可点「重新归位」复制回归档目录。"
                             % len(self.rows))
         if self.rows:
-            self.empty.place_forget()
+            self.empty.hide()
         else:
-            self.empty.place(relx=0.5, rely=0.45, anchor="center")
+            self.empty.set("没有缺失文件",
+                           "索引与归档目录当前对得上，不需要重新归位或补档。",
+                           "关闭本窗口", self.top.destroy)
+            self.empty.show_place(relx=0.5, rely=0.45)
         self._on_select()
 
     def _on_select(self, _event=None):

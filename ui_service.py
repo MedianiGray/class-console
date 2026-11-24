@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 from theme import FONT, C
+from ui_empty import EmptyState
 
 
 class ServiceView(ttk.Frame):
@@ -83,9 +84,7 @@ class ServiceView(ttk.Frame):
         ysb.pack(side="right", fill="y")
         xsb.pack(side="bottom", fill="x")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
-        self.empty = ttk.Label(
-            tree_box, text="还没有服务记录。去完成矩阵登记免交、延期、回执，或生成一次催交。",
-            style="Muted.TLabel", wraplength=520, justify="center")
+        self.empty = EmptyState(tree_box, wraplength=420)
 
         detail = tk.Frame(self, bg=C["card"], highlightthickness=1,
                           highlightbackground=C["line"])
@@ -146,12 +145,18 @@ class ServiceView(ttk.Frame):
         self.summary.config(text=("共 %d 条服务记录" % total if shown == total else
                                   "匹配 %d / 共 %d 条" % (shown, total)))
         if rows:
-            self.empty.place_forget()
+            self.empty.hide()
+        elif total:
+            self.empty.set("没有匹配的服务记录",
+                           "现有流水被关键词或类型筛选挡住了，清空筛选即可看到全部。",
+                           "清空筛选", self._clear)
+            self.empty.show_place()
+            self._set_detail(None)
         else:
-            self.empty.place(relx=0.5, rely=0.4, anchor="center")
-            self.empty.configure(text=(
-                "没有匹配的服务记录，换个关键词或类型再试" if total else
-                "还没有服务记录。去完成矩阵登记免交、延期、回执，或生成一次催交。"))
+            self.empty.set("还没有服务记录",
+                           "免交、延期、回执、催交都会留在这里；到完成矩阵选中一行即可登记。",
+                           "去名单矩阵", lambda: self.window.switch("roster"))
+            self.empty.show_place()
             self._set_detail(None)
         self.btn_copy.config(state="normal" if rows else "disabled")
 

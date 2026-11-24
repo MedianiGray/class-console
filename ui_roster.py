@@ -7,6 +7,7 @@ from tkinter import ttk, messagebox
 
 import service
 from theme import FONT, C
+from ui_empty import EmptyState
 
 
 class RosterView(ttk.Frame):
@@ -61,7 +62,7 @@ class RosterView(ttk.Frame):
         self.tree.pack(side="left", fill="both", expand=True, padx=(1, 0), pady=1)
         ysb.pack(side="right", fill="y", padx=(0, 1), pady=1)
 
-        self.empty = ttk.Label(table_box, text="名单为空，可在下方添加成员", style="Muted.TLabel")
+        self.empty = EmptyState(table_box, wraplength=360)
 
         # 完成矩阵：名单成员 × 材料类别，补「谁哪类还没交」的信息
         matrix_tab.rowconfigure(1, weight=1)
@@ -91,6 +92,7 @@ class RosterView(ttk.Frame):
         mxsb.grid(row=1, column=0, sticky="ew", padx=(1, 0), pady=(0, 1))
         mx_box.rowconfigure(0, weight=1)
         mx_box.columnconfigure(0, weight=1)
+        self.matrix_empty = EmptyState(mx_box, wraplength=420)
         self.matrix.bind("<Double-1>", self._open_student)
         self.matrix.bind("<Button-1>", self._on_matrix_click, add="+")
         self.matrix.bind("<<TreeviewSelect>>", self._on_matrix_select, add="+")
@@ -196,8 +198,13 @@ class RosterView(ttk.Frame):
             w.destroy()
         absent = chk["absent"]
         if not absent:
-            tk.Label(self.absent_box, text="全部已交，核对完成", bg=C["card"],
-                     fg=C["green"], font=(FONT, 9), anchor="w").pack(fill="x")
+            if rows:
+                tk.Label(self.absent_box, text="全部已交，核对完成", bg=C["card"],
+                         fg=C["green"], font=(FONT, 9), anchor="w").pack(fill="x")
+            else:
+                tk.Label(self.absent_box, text="名单为空，先添加成员再核对",
+                         bg=C["card"], fg=C["sub"], font=(FONT, 9),
+                         anchor="w").pack(fill="x")
         else:
             for r in absent[:12]:
                 row = tk.Frame(self.absent_box, bg=C["card"])
@@ -211,9 +218,17 @@ class RosterView(ttk.Frame):
                          bg=C["card"], fg=C["sub"], font=(FONT, 9),
                          anchor="w").pack(fill="x")
         if rows:
-            self.empty.place_forget()
+            self.empty.hide()
         else:
-            self.empty.place(relx=0.5, rely=0.4, anchor="center")
+            if self.window.can("roster:manage"):
+                self.empty.set("名单还没有人",
+                               "名单用于核对谁交了、谁没交；添加成员后，未交清单与完成矩阵会自动生成。",
+                               "添加一人", self.add_dialog)
+            else:
+                self.empty.set("名单还没有人",
+                               "当前岗位只能查看；切换到经办人或审核者岗位后可添加成员。",
+                               "切换岗位", lambda: self.window._role_menu())
+            self.empty.show_place()
 
         # 名单维护按 roster:manage 权限点显隐
         can_manage = self.window.can("roster:manage")
@@ -289,6 +304,18 @@ class RosterView(ttk.Frame):
             self.matrix.insert("", "end", tags=(r["id"], "zebra" if i % 2 else ""),
                                values=(sid, r.get("who", "")) + tuple(cells))
         total = sum(counts.values())
+        if rows:
+            self.matrix_empty.hide()
+        else:
+            if self.window.can("roster:manage"):
+                self.matrix_empty.set("名单为空，矩阵还没有行",
+                                      "完成矩阵按名单逐人展开；先添加成员，再回来核对各类材料。",
+                                      "添加一人", self.add_dialog)
+            else:
+                self.matrix_empty.set("名单为空，矩阵还没有行",
+                                      "当前岗位只能查看；切换到经办人或审核者岗位后可添加成员。",
+                                      "切换岗位", lambda: self.window._role_menu())
+            self.matrix_empty.show_place()
         if total:
             receipt = (counts["回执·已交"] + counts["回执·校外"] +
                        counts["回执·稍后"])

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>班级材料操作台 · 浏览器本地版 v0.21.0</title>
+<title>班级材料操作台 · 浏览器本地版 v0.21.1</title>
 <style>
   :root{
     color-scheme:light;
@@ -111,9 +111,15 @@
   /* 卡片与通用：单平面，靠发丝线与留白分层，不压阴影 */
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
   .muted{color:var(--muted)}
-  .empty{color:var(--muted);text-align:center;padding:40px 16px}
-  .empty .empty-title{font-size:15px;color:var(--text);margin-bottom:4px;font-weight:600}
-  .empty .empty-sub{font-size:13px;margin-bottom:12px}
+  .empty{color:var(--muted);text-align:center;padding:36px 16px}
+  .empty-title{font-size:15px;color:var(--text);margin-bottom:5px;font-weight:600;white-space:normal}
+  .empty-sub{font-size:13px;line-height:1.65;color:var(--muted);white-space:normal;word-break:break-word}
+  .empty .empty-sub{max-width:440px;margin:0 auto 12px}
+  .empty-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+  .empty.compact{padding:18px 12px}
+  .empty.compact .empty-title{font-size:14px}
+  .empty.compact .empty-sub{font-size:12px}
+  .empty.compact .empty-actions .btn{min-height:30px}
   .btn{border:1px solid var(--line-strong);background:var(--card);border-radius:var(--radius-sm);
     padding:0 15px;min-height:36px;font-size:13.5px;font-weight:500;color:var(--text);
     transition:background .15s,border-color .15s,box-shadow .15s}
@@ -835,6 +841,7 @@
     display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:10px}
   .ai-empty .ae-t{font-size:15px;font-weight:650;color:var(--text);margin-bottom:4px}
   .ai-empty .ae-s{font-size:12px;line-height:1.6;max-width:420px}
+  .ai-empty .ae-actions{margin-top:12px}
   .ai-compose{border-top:1px solid var(--line);padding:10px 14px 12px;background:var(--card)}
   .ai-compose .ac-box{display:flex;gap:8px;align-items:flex-end}
   .ai-compose .btn{flex:0 0 auto;white-space:nowrap;min-width:66px;height:42px}
@@ -1014,7 +1021,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.21.0";
+var WEB_VERSION = "0.21.1";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -1309,6 +1316,43 @@ function nowStr() {
   return p(d.getMonth()+1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
 }
 function clean(v){ return v == null ? "" : String(v).trim(); }
+
+/* 统一空态：标题 + 说明 + 一个主动作。表格类只在表体位置出现，不占整页 */
+function emptyState(title, desc, action, compact){
+  return '<div class="empty' + (compact ? " compact" : "") + '">' +
+    '<div class="empty-title">' + esc(title) + '</div>' +
+    '<div class="empty-sub">' + esc(desc) + '</div>' +
+    (action ? '<div class="empty-actions">' + action + '</div>' : "") + '</div>';
+}
+function emptyBtn(label, attrs, cls){
+  return '<button class="btn ' + (cls || "primary") + ' mini" ' + (attrs || "") + '>' +
+    esc(label) + '</button>';
+}
+function resetDocsFilters(){
+  docsFilter.q = ""; docsFilter.cat = "全部"; docsFilter.type = "全部";
+  docsFilter.status = "全部"; docsFilter.page = 1;
+  docsFilter.sortKey = "id"; docsFilter.sortDir = "desc";
+  renderDocs();
+}
+document.addEventListener("click", function(e){
+  var t = e.target;
+  var go = t && t.closest ? t.closest("[data-empty-go]") : null;
+  if (go) {
+    if (go.dataset.emptyFilter) {
+      docsFilter.status = go.dataset.emptyFilter; docsFilter.page = 1;
+    }
+    switchView(go.dataset.emptyGo);
+    return;
+  }
+  var focus = t && t.closest ? t.closest("[data-empty-focus]") : null;
+  if (focus) {
+    var el = document.getElementById(focus.dataset.emptyFocus);
+    if (el) { el.focus(); if (el.select) el.select(); }
+    return;
+  }
+  var reset = t && t.closest ? t.closest("[data-empty-reset]") : null;
+  if (reset && reset.dataset.emptyReset === "docs") resetDocsFilters();
+});
 
 /* 模板附加字段：仅接受 text/textarea/date/select，key 统一 cf_ 前缀，内置字段不受影响 */
 function normalizeTemplateField(raw){
@@ -1979,7 +2023,7 @@ function refreshReminders(){
     badge.classList.toggle("show", snap.total > 0);
   }
   var btn = document.getElementById("reminderBtn");
-  if (btn) btn.title = snap.total ? "提醒中心 · " + snap.total + " 项待办" : "提醒中心 · 暂无待办";
+  if (btn) btn.title = snap.total ? "提醒中心 · " + snap.total + " 项待办" : "提醒中心 · 没有待办";
   var pop = document.getElementById("reminderPop");
   if (pop && pop.classList.contains("show")) renderReminders();
 }
@@ -2115,7 +2159,9 @@ function renderDashboard() {
     return "<tr><td>" + esc(l.time) + "</td><td>" + esc(l.who) + "</td><td>" +
       esc(l.act) + "</td><td>" + esc(l.obj) + "</td></tr>";
   }).join("");
-  var recentBody = recent || '<tr><td colspan="4" class="empty">暂无操作动态</td></tr>';
+  var recentBody = recent || ('<tr><td colspan="4" class="empty">' +
+    emptyState("还没有操作动态", "提交、审核、归档后，这里会留下最近几条记录。",
+      emptyBtn("查看全部日志", 'data-empty-go="logs"')) + "</td></tr>");
 
   /* 主待办队列：按岗位区分处理 / 跟进 / 本人关注 */
   var focusDocs, queueTitle, queueEmpty;
@@ -2123,20 +2169,29 @@ function renderDashboard() {
     focusDocs = pending.concat(rejected);
     queueTitle = "需我关注的材料（" + focusDocs.length + "）";
     queueEmpty = sid
-      ? '<tr><td colspan="4" class="empty"><div class="empty-title">暂无需要你跟进的材料</div>' +
-        '<div class="empty-sub">你提交的材料进入审核后会显示在这里</div></td></tr>'
-      : '<tr><td colspan="4" class="empty"><div class="empty-title">请先填写申请人学号</div>' +
-        '<div class="empty-sub">未填写时不展示任何人的材料</div></td></tr>';
+      ? '<tr><td colspan="4" class="empty">' + emptyState(
+          "还没有需要你跟进的材料",
+          "提交材料后，这里会显示审核与驳回进度；现在可以提交第一份。",
+          emptyBtn("提交材料", 'data-go="' + (can("docs:create") ? "submit" : "docs") + '"')) + "</td></tr>"
+      : '<tr><td colspan="4" class="empty">' + emptyState(
+          "请先填写申请人学号",
+          "未填写时不展示任何人的材料；填好后这里只显示你自己的进度。",
+          emptyBtn("填写学号", 'data-focus="applicantSid"')) + "</td></tr>";
   } else if (canArchive) {
     focusDocs = pending;
     queueTitle = "待审核 · 需处理（" + pending.length + "）";
-    queueEmpty = '<tr><td colspan="4" class="empty"><div class="empty-title">暂无待审核材料</div>' +
-      '<div class="empty-sub">新材料提交后会先出现在这里等待处理</div></td></tr>';
+    queueEmpty = '<tr><td colspan="4" class="empty">' + emptyState(
+      "没有待审核的材料",
+      "新材料提交后会先进入这里。队列清空时，可录入或收集下一批材料。",
+      emptyBtn(can("docs:create") ? "提交材料" : "查看台账",
+        'data-go="' + (can("docs:create") ? "submit" : "docs") + '"')) + "</td></tr>";
   } else {
     focusDocs = pending;
     queueTitle = "待审核 · 跟进（" + pending.length + "）";
-    queueEmpty = '<tr><td colspan="4" class="empty"><div class="empty-title">暂无待审核材料</div>' +
-      '<div class="empty-sub">新材料提交后会先出现在这里跟进流转</div></td></tr>';
+    queueEmpty = '<tr><td colspan="4" class="empty">' + emptyState(
+      "没有待跟进的材料",
+      "新材料进入待审核队列后会显示在这里，供你查看流转状态。",
+      emptyBtn("查看台账", 'data-go="docs"')) + "</td></tr>";
   }
   var pendRows = focusDocs.slice(0, 6).map(function(d){
     return "<tr class='clickable' data-id='" + d.id + "'><td>" + esc(d.name) + "</td><td>" +
@@ -2190,7 +2245,7 @@ function renderDashboard() {
       abDesc = "被驳回或待审核的材料在这里，及时补充或跟进";
       abGo = "docs"; abLabel = "查看我的材料";
     } else {
-      abTitle = "暂无需要你跟进的材料";
+      abTitle = "还没有需要你跟进的材料";
       abDesc = "提交新材料后，审核进度会显示在这里";
       abGo = canCreate ? "submit" : "docs"; abLabel = canCreate ? "提交材料" : "查看台账";
     }
@@ -2199,7 +2254,7 @@ function renderDashboard() {
     abDesc = canArchive ? "优先处理待审核材料，通过后归档并留痕" : "新材料进入待审核队列，跟进流转状态";
     abGo = "docs"; abFilter = "待审核"; abLabel = "去处理";
   } else {
-    abTitle = "暂无待处理材料";
+    abTitle = "还没有待处理材料";
     abDesc = canCreate ? "可录入新材料，或核对名单与任务进度" : "可核对名单未交人员，跟进任务截止时间";
     abGo = canCreate ? "submit" : (canRoster ? "roster" : "docs");
     abLabel = canCreate ? "提交材料" : (canRoster ? "核对名单" : "查看台账");
@@ -2431,7 +2486,10 @@ function deleteNamedView(index){
 }
 function savedViewsHtml(){
   var views = namedViews();
-  if (!views.length) return '<div class="sv-empty">还没有保存的视图</div>';
+  if (!views.length) return '<div class="sv-empty">' + emptyState(
+    "还没有保存的视图",
+    "调好筛选、排序与列宽后，给这套设置起个名字，下次一键还原。",
+    emptyBtn("给视图起名", 'data-empty-focus="vName"', "subtle"), true) + "</div>";
   return '<div class="sv-list">' + views.map(function(v, i){
     return '<div class="sv-item"><button type="button" class="sv-apply" data-i="' + i + '" title="套用「' +
       esc(v.name) + '」">' + esc(v.name) + '</button><button type="button" class="sv-x" data-i="' +
@@ -2690,20 +2748,24 @@ function renderDocs() {
   var bodyEl = document.getElementById("docsBody");
   if (!total) {
     var headEmpty = store.docs.length === 0;
-    var emptyTitle, emptySub;
+    var emptyTitle, emptySub, emptyAction;
     if (applicantNoSid) {
       emptyTitle = "请先填写申请人学号";
-      emptySub = "在左侧「申请人学号」填写后，这里只显示你的材料";
+      emptySub = "未填写时不显示他人数据；填写后只看你自己的提交与审核进度。";
+      emptyAction = emptyBtn("填写学号", 'data-empty-focus="applicantSid"');
     } else if (headEmpty) {
       emptyTitle = "还没有材料";
-      emptySub = "点击下方「提交材料」录入第一条";
+      emptySub = "材料台账目前为空。提交第一份后会进入待审核队列，归档时自动留痕。";
+      emptyAction = can("docs:create")
+        ? emptyBtn("提交第一份材料", 'data-empty-go="submit"')
+        : emptyBtn("切换岗位", 'data-empty-focus="roleSelect"');
     } else {
       emptyTitle = "没有符合条件的材料";
-      emptySub = "试试放宽搜索或清除筛选条件";
+      emptySub = "现有材料被搜索词或筛选条件挡住了，放宽条件即可看到。";
+      emptyAction = emptyBtn("清除筛选", 'data-empty-reset="docs"', "ghost");
     }
     bodyEl.innerHTML = '<tr><td colspan="' + (1 + visCols.length) + '" class="empty">' +
-      '<div class="empty-title">' + esc(emptyTitle) + '</div>' +
-      '<div class="empty-sub">' + esc(emptySub) + '</div></td></tr>';
+      emptyState(emptyTitle, emptySub, emptyAction) + "</td></tr>";
   } else {
     bodyEl.innerHTML = trs;
   }
@@ -2886,7 +2948,10 @@ function renderDrawer(d) {
   var traceHtml = trace.length ? '<div class="trace"><h4>操作留痕</h4><ul>' +
     trace.map(function(l){ return "<li><span class='t-time'>" + esc(l.time) + "</span>" +
       esc(l.who) + "（" + esc(l.role) + "）· " + esc(l.act) + "</li>"; }).join("") +
-    "</ul></div>" : '<div class="empty">暂无该材料的操作记录</div>';
+    "</ul></div>" : emptyState(
+      "这份材料还没有操作记录",
+      "提交、审核、归档后会逐条留在这里；当前可在详情里继续处理。",
+      emptyBtn("查看全部日志", 'data-empty-go="logs"', "ghost"), true);
 
   var tpl = formTemplate(d.form_type);
   var extra = d.extra || {};
@@ -3228,7 +3293,7 @@ function submitDoc() {
 /* ============ 文件夹收集视图（目录扫描 + 变化记录） ============ */
 var watch = {
   dirHandle: null, dirName: "", baseline: {}, timer: null, scanning: false,
-  items: [], removed: [], selected: {},
+  items: [], removed: [], selected: {}, failed: 0,
   fsSupported: (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function")
 };
 var WATCH_TAG = {
@@ -3280,7 +3345,7 @@ async function pickDirectory() {
     var handle = await window.showDirectoryPicker({ mode: "read" });
     var perm = await handle.requestPermission({ mode: "read" });
     if (perm !== "granted") { toast("未授予文件夹读取权限"); return; }
-    watch.dirHandle = handle; watch.dirName = handle.name; watch.selected = {};
+    watch.dirHandle = handle; watch.dirName = handle.name; watch.selected = {}; watch.failed = 0;
     await scanDirectory();
   } catch (e) {
     if (e && e.name === "AbortError") return; /* 用户取消选择 */
@@ -3290,6 +3355,7 @@ async function pickDirectory() {
 
 async function readDirEntries(handle) {
   var out = [];
+  out.failed = 0;
   for await (var entry of handle.values()) {
     var name = entry[0], h = entry[1];
     if (h.kind !== "file") continue;
@@ -3297,7 +3363,7 @@ async function readDirEntries(handle) {
     try {
       var f = await h.getFile();
       out.push({ rel: name, name: name, size: f.size, mtime: f.lastModified });
-    } catch (e) { /* 单个文件读取失败则跳过 */ }
+    } catch (e) { out.failed++; }
   }
   out.sort(function(a, b){ return a.name.localeCompare(b.name, "zh-CN"); });
   return out;
@@ -3314,9 +3380,11 @@ async function scanDirectory() {
       toast("文件夹权限已失效，请重新选择"); stopWatch(); watch.scanning = false; renderCollect(); return;
     }
     entries = await readDirEntries(watch.dirHandle);
+    watch.failed = entries.failed || 0;
   } catch (e) {
-    watch.scanning = false; toast("读取文件夹失败：" + ((e && e.message) || e)); renderCollect(); return;
+    watch.scanning = false; watch.failed = 0; toast("读取文件夹失败：" + ((e && e.message) || e)); renderCollect(); return;
   }
+  if (watch.failed) toast(watch.failed + " 个文件读取失败，已跳过；可重新扫描或换一个文件夹");
   applyScan(entries);
   watch.scanning = false; renderCollect();
 }
@@ -3341,6 +3409,7 @@ function applyScan(entries) {
 function onLegacyPick(e) {
   var files = e.target.files || [];
   var entries = [];
+  watch.failed = 0;
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     if (WATCH_SKIP_PREFIX.some(function(p){ return f.name.indexOf(p) === 0; })) continue;
@@ -3369,9 +3438,10 @@ function renderCollect() {
     statusEl.textContent = "尚未选择文件夹";
     $("cRescan").style.display = "none";
   }
-  noteEl.textContent = watch.fsSupported
+  noteEl.textContent = (watch.fsSupported
     ? "页面打开期间按快照比对目录变化；页面关闭期间的变动，下次扫描时补录。仅登记文件名、大小与修改时间，不复制文件内容，也不读取磁盘绝对路径。"
-    : "当前浏览器不支持目录后台访问，仅可一次性选择目录读取比对；如需自动监视，请使用 Chrome / Edge。";
+    : "当前浏览器不支持目录后台访问，仅可一次性选择目录读取比对；如需自动监视，请使用 Chrome / Edge。") +
+    (watch.failed ? " 另有 " + watch.failed + " 个文件读取失败，已跳过。" : "");
 
   var rows = watch.items.map(function(it){
     var tag = WATCH_TAG[it.state] || ["muted", it.state];
@@ -3394,7 +3464,27 @@ function renderCollect() {
       '<td><span class="tag red">已删除</span></td></tr>');
   });
   bodyEl.innerHTML = rows.length ? rows.join("")
-    : '<tr><td colspan="5" class="empty"><div class="empty-title">暂无文件</div><div class="empty-sub">选择文件夹后，这里列出扫描到的文件与比对结果</div></td></tr>';
+    : '<tr><td colspan="5" class="empty">' + (function(){
+        if (!watch.dirName) return emptyState("还没有选择文件夹",
+          "选择材料文件夹后，这里会列出文件，并与台账比对出新增、修改、已登记。",
+          emptyBtn(watch.fsSupported ? "选择监视文件夹" : "选择文件夹", 'data-empty-pick="1"'));
+        if (watch.failed) return emptyState("这个文件夹里的文件没有读出来",
+          "有 " + watch.failed + " 个文件读取失败，可能是权限、占用或文件损坏；重新扫描或换一个文件夹再试。",
+          emptyBtn("重新扫描", 'data-empty-rescan="1"'));
+        return emptyState("这个文件夹里还没有可登记的文件",
+          "扫描只统计文件，跳过隐藏与临时文件；换一个文件夹或重新扫描后再看。",
+          emptyBtn("重新扫描", 'data-empty-rescan="1"', "ghost"));
+      })() + "</td></tr>";
+
+  var emptyPick = bodyEl.querySelector("[data-empty-pick]");
+  if (emptyPick) {
+    emptyPick.onclick = function(){
+      if (watch.fsSupported) pickDirectory();
+      else { var legacy = document.getElementById("cLegacy"); if (legacy) legacy.click(); }
+    };
+  }
+  var emptyRescan = bodyEl.querySelector("[data-empty-rescan]");
+  if (emptyRescan) emptyRescan.onclick = function(){ scanDirectory(); };
 
   bodyEl.querySelectorAll("tr[data-rel]").forEach(function(tr){
     var rel = tr.dataset.rel;
@@ -3508,8 +3598,11 @@ function rosterMatrix(rows){
       }).join("") + "</tr>";
   }).join("");
   var head = "<tr><th>学号</th><th>姓名</th>" + CATS.map(function(c){ return "<th>" + esc(c) + "</th>"; }).join("") + "</tr>";
-  var empty = '<tr><td colspan="' + (2 + CATS.length) + '" class="empty"><div class="empty-title">名单为空</div>' +
-    '<div class="empty-sub">先添加成员，矩阵才有行</div></td></tr>';
+  var empty = '<tr><td colspan="' + (2 + CATS.length) + '" class="empty">' + emptyState(
+    "名单为空，矩阵还没有行",
+    "完成矩阵按名单逐人展开；先添加成员或导入名单，再回来核对各类材料。",
+    can("roster:manage") ? emptyBtn("添加一人", 'data-empty-add="roster"')
+              : emptyBtn("切换岗位", 'data-empty-focus="roleSelect"')) + "</td></tr>";
   var html = '<div class="card panel"><div class="toolbar" style="padding:0 0 10px">' +
     "<h3 style='margin:0'>完成矩阵（" + rows.length + " 人 × " + CATS.length + " 类）</h3>" +
     '<span class="spacer"></span><span class="hint">双击一行查看该生全部材料</span></div>' +
@@ -3549,12 +3642,22 @@ function renderRoster() {
     return "<tr><td class='num-col'>" + esc(r.sid) + "</td><td>" + esc(r.who) + "</td><td>" + tag + "</td>" +
       "<td>" + delCell + "</td></tr>";
   }).join("");
-  var body = trs || '<tr><td colspan="4" class="empty"><div class="empty-title">名单为空</div>' +
-    '<div class="empty-sub">点上方「添加一人」或「导入名单」建立班级名单</div></td></tr>';
+  var body = trs || '<tr><td colspan="4" class="empty">' + emptyState(
+    "班级名单还没有人",
+    "名单用于核对谁交了、谁没交；添加一人或导入名单后，未交清单与完成矩阵会自动生成。",
+    canManage ? emptyBtn("添加一人", 'data-empty-add="roster"')
+              : emptyBtn("切换岗位", 'data-empty-focus="roleSelect"')) + "</td></tr>";
 
   var absentHtml = chk.absent.length ? chk.absent.map(function(r){
     return "<li>" + esc(r.who) + "（" + esc(r.sid) + "）</li>";
-  }).join("") : '<div class="empty" style="padding:14px 0">所有人都已提交材料</div>';
+  }).join("") : (rows.length ? emptyState(
+    "名单内成员都已提交",
+    "当前名单里没有未交人员；材料有新增或状态变化时会自动更新。",
+    emptyBtn("查看材料台账", 'data-empty-go="docs"', "ghost"), true)
+  : emptyState(
+    "还没有人可核对",
+    "先在班级名单里添加成员，未交人员才会在这里逐人列出。",
+    canManage ? emptyBtn("添加一人", 'data-empty-add="roster"') : emptyBtn("切换岗位", 'data-empty-focus="roleSelect"'), true));
 
   var extraSids = [];
   var extraRows = chk.extra.filter(function(d){
@@ -3562,7 +3665,10 @@ function renderRoster() {
   });
   var extraHtml = extraRows.length ? extraRows.map(function(d){
     return "<li>" + esc(d.who) + "（" + esc(d.sid) + "）· " + esc(d.name) + "</li>";
-  }).join("") : '<div class="empty" style="padding:10px 0">材料提交人均在名单内</div>';
+  }).join("") : emptyState(
+    rows.length ? "没有名单外提交人" : "还没有材料提交记录",
+    rows.length ? "当前材料提交人都能在名单里找到。" : "台账出现提交人后，这里会自动比对名单并列出名单外的人。",
+    emptyBtn("查看材料台账", 'data-empty-go="docs"', "ghost"), true);
 
   var mainHtml = rosterTab === "matrix" ? rosterMatrix(rows) :
     '<div class="grid-2">' +
@@ -3607,6 +3713,9 @@ function renderRoster() {
   if (rbA) rbA.onclick = rosterAddModal;
   if (rbI) rbI.onclick = rosterImportModal;
   if (rbC) rbC.onclick = rosterClear;
+  document.querySelectorAll('#view-roster [data-empty-add="roster"]').forEach(function(b){
+    b.onclick = rosterAddModal;
+  });
   var copyBtn = document.getElementById("rbCopy");
   if (copyBtn) copyBtn.onclick = function(){
     var txt = chk.absent.map(function(r){ return r.who + "（" + r.sid + "）"; }).join("、");
@@ -3699,8 +3808,11 @@ function renderTasks() {
       (canManage ? ' <button class="btn subtle mini tg-edit" data-id="' + t.id + '">编辑</button> ' +
       '<button class="btn danger mini tg-del" data-id="' + t.id + '">删除</button>' : "") + "</td></tr>";
   }).join("");
-  var body = trs || '<tr><td colspan="5" class="empty"><div class="empty-title">暂无任务</div>' +
-    '<div class="empty-sub">点上方「添加任务」登记要收的材料事项与截止日期</div></td></tr>';
+  var body = trs || '<tr><td colspan="5" class="empty">' + emptyState(
+    "还没有登记任务",
+    "任务用来记清「收什么、什么时候截止」；添加后会按临期、逾期自动排序提醒。",
+    canManage ? emptyBtn("添加任务", 'data-empty-add="task"')
+              : emptyBtn("切换岗位", 'data-empty-focus="roleSelect"')) + "</td></tr>";
 
   document.getElementById("view-tasks").innerHTML =
     '<div class="toolbar">' +
@@ -3712,6 +3824,8 @@ function renderTasks() {
 
   var tAdd = document.getElementById("taskAdd");
   if (tAdd) tAdd.onclick = function(){ taskModal(null); };
+  var emptyAdd = document.querySelector('#view-tasks [data-empty-add="task"]');
+  if (emptyAdd) emptyAdd.onclick = function(){ taskModal(null); };
   document.querySelectorAll(".tg-toggle").forEach(function(b){
     b.onclick = function(){ toggleTask(Number(b.dataset.id)); refreshAll(); };
   });
@@ -4012,7 +4126,11 @@ function renderTemplates() {
           '<div class="ph-side"><button class="btn subtle mini" id="tplToSubmit">去提交表单</button></div></div>' +
         '<table class="tpl-table"><colgroup><col style="width:34%"><col style="width:20%"><col style="width:12%"><col></colgroup>' +
         "<thead><tr><th>字段</th><th>类型</th><th>必填</th><th>来源 / 操作</th></tr></thead>" +
-        "<tbody>" + (rows || '<tr><td colspan="4" class="tpl-empty">暂无字段</td></tr>') + "</tbody></table>" +
+        "<tbody>" + (rows || '<tr><td colspan="4" class="empty">' + emptyState(
+          "这个模板还没有字段",
+          "内置字段通常固定存在；若确实为空，可添加一个附加字段继续。",
+          canCfg ? emptyBtn("添加字段", 'data-empty-focus="tplFieldLabel"') : "", true) +
+        "</td></tr>") + "</tbody></table>" +
         addHtml +
       "</div>" + archiveRuleHtml() + "</div></div>";
 
@@ -4066,8 +4184,12 @@ function renderLogs() {
       "</td><td><span class='tag " + tag + "'>" + esc(l.act) + "</span></td><td>" +
       esc(l.obj) + "</td><td>" + esc(l.src || "本机") + "</td></tr>";
   }).join("");
-  var body = trs || '<tr><td colspan="6" class="empty"><div class="empty-title">暂无操作记录</div>' +
-    '<div class="empty-sub">提交、归档、驳回等操作会自动记录在这里</div></td></tr>';
+  var body = trs || '<tr><td colspan="6" class="empty">' + emptyState(
+    "还没有操作记录",
+    "提交、审核、归档、驳回都会自动写在这里，作为材料流转的依据。",
+    can("docs:create")
+      ? emptyBtn("提交第一份材料", 'data-empty-go="submit"')
+      : emptyBtn("查看材料台账", 'data-empty-go="docs"')) + "</td></tr>";
 
   document.getElementById("view-logs").innerHTML =
     '<div class="toolbar"><span class="hint" style="margin-left:0">共 ' + rows.length + " 条记录</span></div>" +
@@ -4424,7 +4546,20 @@ function renderCommandList(){
   var list = document.getElementById("cmdkList");
   if (!list) return;
   if (!cmdResults.length) {
-    list.innerHTML = '<div class="cmdk-empty">没有匹配的命令或材料<br>试试“模板”“导出”“名单”或同学姓名</div>';
+    list.innerHTML = '<div class="cmdk-empty">' + emptyState(
+      "没有匹配的命令或材料",
+      "现有命令和材料都没命中这个词；试试「模板」「导出」「名单」或同学姓名。",
+      emptyBtn("清空搜索", 'data-cmdk-clear="1"', "ghost"), true) + "</div>";
+    var cmdClear = list.querySelector("[data-cmdk-clear]");
+    if (cmdClear) cmdClear.onclick = function(){
+      var input = document.getElementById("cmdkInput");
+      if (!input) return;
+      input.value = "";
+      cmdSel = 0;
+      cmdResults = buildCommandResults("");
+      renderCommandList();
+      input.focus();
+    };
     return;
   }
   if (cmdSel < 0) cmdSel = 0;
@@ -4638,10 +4773,21 @@ function aiFmt(text){
 }
 function aiChatHtml(){
   if (!aiState.messages.length) {
+    var action;
+    if (aiState.provider === "api" && !clean(aiState.apiKey)) {
+      action = emptyBtn("填写 API Key", 'data-ai-empty="key"');
+    } else if (aiState.provider === "local" && !aiState.engine) {
+      action = aiState.loading
+        ? '<button class="btn primary" disabled>模型加载中…</button>'
+        : emptyBtn("加载本地模型", 'data-ai-empty="load"');
+    } else {
+      action = emptyBtn("输入一个问题", 'data-ai-empty="type"', "ghost");
+    }
     return '<div class="ai-empty"><div class="ae-ico">✦</div>' +
       '<div class="ae-t">把材料任务交给它拆</div>' +
       '<div class="ae-s">它可以读当前台账、名单和任务，帮你列缺项、写催交话术、拆目录与分工。<br>' +
-      '本地模式不出设备；API 模式会把上下文发到你填写的接口。</div></div>';
+      '本地模式不出设备；API 模式会把上下文发到你填写的接口。</div>' +
+      '<div class="ae-actions">' + action + "</div></div>";
   }
   return aiState.messages.map(function(m, i){
     var who = m.role === "user" ? "你" : "助手";
@@ -4666,6 +4812,21 @@ function aiRenderChat(){
       try {
         navigator.clipboard.writeText(m.content || "").then(function(){ toast("已复制到剪贴板"); });
       } catch(e){ toast("复制失败，请手动选择文本"); }
+    };
+  });
+  box.querySelectorAll("[data-ai-empty]").forEach(function(b){
+    b.onclick = function(){
+      var kind = b.dataset.aiEmpty;
+      if (kind === "load") {
+        aiEnsureLocal().then(function(){ toast("本地模型已就绪"); renderAI(); },
+          function(err){ aiSetStatus((err && err.message) || "加载失败", "err"); });
+      } else if (kind === "key") {
+        var keyEl = document.getElementById("aiKey");
+        if (keyEl) keyEl.focus();
+      } else {
+        var inputEl = document.getElementById("aiInput");
+        if (inputEl) inputEl.focus();
+      }
     };
   });
   aiScroll();

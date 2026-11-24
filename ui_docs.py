@@ -9,6 +9,7 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import archive
 import theme
 from theme import FONT, C
+from ui_empty import EmptyState
 
 
 class DocsView(ttk.Frame):
@@ -104,8 +105,7 @@ class DocsView(ttk.Frame):
         ysb.grid(row=0, column=1, sticky="ns", padx=(0, 1), pady=1)
         hsb.grid(row=1, column=0, sticky="ew", padx=(1, 0), pady=(0, 1))
 
-        self.empty = ttk.Label(wrap, text="暂无符合条件的材料，可到「提交材料」录入",
-                                style="Muted.TLabel")
+        self.empty = EmptyState(wrap, wraplength=360)
         self._build_detail()
 
         # 选中联动与快捷键
@@ -223,6 +223,13 @@ class DocsView(ttk.Frame):
         self._widths = dict(self.WIDTHS)
         self._apply_widths()
         self._save_widths()
+
+    def reset_filters(self):
+        self.q.set("")
+        self.cat.set("全部")
+        self.type.set("全部")
+        self.status.set("全部")
+        self.refresh()
         self.window.toast("列宽已恢复默认")
 
     # ---------- 命名保存视图 ----------
@@ -601,9 +608,36 @@ class DocsView(ttk.Frame):
         self._total = len(rows)
 
         if rows:
-            self.empty.place_forget()
+            self.empty.hide()
         else:
-            self.empty.place(relx=0.5, rely=0.4, anchor="center")
+            all_docs = self.repo.list_docs()
+            filters_on = bool(self.q.get().strip()) or any((
+                self.cat.get() != "全部", self.type.get() != "全部",
+                self.status.get() != "全部"))
+            if getattr(self.window, "role", "") == "applicant" and not str(
+                    getattr(self.window, "applicant_sid", "") or "").strip():
+                self.empty.set(
+                    "请先填写申请人学号",
+                    "未填写时不展示任何人的材料。填好后，这里只显示你自己的提交与审核进度。",
+                    "填写学号", self.window.open_settings)
+            elif not all_docs:
+                if self.window.can("docs:create"):
+                    self.empty.set("还没有材料",
+                                   "台账目前为空。提交第一份后会进入待审核队列，归档时自动留痕。",
+                                   "提交第一份材料", lambda: self.window.switch("submit"))
+                else:
+                    self.empty.set("还没有材料",
+                                   "当前岗位只能查看，不能提交；切换到经办人岗位后可录入第一份。",
+                                   "切换岗位", lambda: self.window._role_menu())
+            elif filters_on:
+                self.empty.set("没有符合条件的材料",
+                               "现有材料被搜索词或筛选条件挡住了，放宽条件即可看到。",
+                               "清除筛选", self.reset_filters)
+            else:
+                self.empty.set("当前视角没有可见材料",
+                               "材料在库，但当前岗位看不到；切换到有查看权限的岗位即可。",
+                               "切换岗位", lambda: self.window._role_menu())
+            self.empty.show_place()
 
         # 刷新后把原来选中的行重新定位；筛选或数据变化导致不在列表里时不强行保留
         restored = [self._row_iids[i] for i in keep if i in self._row_iids]

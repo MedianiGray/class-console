@@ -496,5 +496,16 @@ sandbox.state.role = "handler";
 sandbox.state.applicantSid = "";
 sandbox.store.docs.pop();
 
+// A2 空态：统一标题 + 说明 + 主动作，且产品文案不再出现裸「暂无」
+const emptySample = sandbox.emptyState(
+  "还没有测试数据", "这里说明为什么为空以及下一步。",
+  sandbox.emptyBtn("去做第一步", 'data-empty-go="dashboard"'));
+assert("空态含统一标题", emptySample.indexOf('class="empty-title"') >= 0);
+assert("空态含说明", emptySample.indexOf('class="empty-sub"') >= 0);
+assert("空态含主动作", emptySample.indexOf('class="empty-actions"') >= 0 && emptySample.indexOf("去做第一步") >= 0);
+assert("空态按钮保留动作属性", emptySample.indexOf('data-empty-go="dashboard"') >= 0);
+assert("文件夹读取失败有恢复路径", html.indexOf("这个文件夹里的文件没有读出来") >= 0 && html.indexOf("watch.failed") >= 0);
+assert("产品界面无裸暂无", !/暂无/.test(html));
+
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);

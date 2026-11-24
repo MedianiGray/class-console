@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from theme import FONT, C
+from ui_empty import EmptyState
 
 
 class DashboardView(ttk.Frame):
@@ -55,12 +56,25 @@ class DashboardView(ttk.Frame):
         return num
 
     def _build(self):
-        self.columnconfigure(0, weight=2, uniform="g")
-        self.columnconfigure(1, weight=1, uniform="g")
-        self.rowconfigure(2, weight=1)
+        self.canvas = tk.Canvas(self, bg=C["bg"], highlightthickness=0, bd=0)
+        self.vbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.vbar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.vbar.pack(side="right", fill="y")
+
+        content = ttk.Frame(self.canvas)
+        self.inner = content
+        self._inner_window = self.canvas.create_window((0, 0), window=content, anchor="nw")
+        content.bind("<Configure>", self._on_inner_config)
+        self.canvas.bind("<Configure>", self._on_canvas_config)
+        self.canvas.bind_all("<MouseWheel>", self._on_wheel, add="+")
+
+        content.columnconfigure(0, weight=2, uniform="g")
+        content.columnconfigure(1, weight=1, uniform="g")
+        content.rowconfigure(2, weight=1)
 
         # ---- 首次引导：一张可收起的卡，不做多页 tour ----
-        self.first_card = tk.Frame(self, bg=C["card"], highlightthickness=1,
+        self.first_card = tk.Frame(content, bg=C["card"], highlightthickness=1,
                                    highlightbackground=C["line"])
         self.first_card.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
         fr_head = tk.Frame(self.first_card, bg=C["card"])
@@ -108,7 +122,7 @@ class DashboardView(ttk.Frame):
             self.fr_rows.append((no, title, desc, btn))
 
         # ---- 主视觉带：待办 + 指标，同一表面，避免四个白盒并排 ----
-        hero = tk.Frame(self, bg=C["hero"], highlightthickness=1,
+        hero = tk.Frame(content, bg=C["hero"], highlightthickness=1,
                         highlightbackground=C["hero_line"])
         hero.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 12))
         hero.columnconfigure(1, weight=1)
@@ -166,7 +180,7 @@ class DashboardView(ttk.Frame):
         self.task_hint.bind("<Button-1>", lambda e: self.window.switch("tasks"))
 
         # ---- 待办表（主栏）----
-        self.pending_card, body = self._card(self, "待办队列", "按提交先后", "全部",
+        self.pending_card, body = self._card(content, "待办队列", "按提交先后", "全部",
                                              lambda: self.window.switch("docs"))
         self.pending_card.grid(row=2, column=0, sticky="nsew", padx=(0, 12))
         self.bottom_title = tk.Label(body, text="", bg=C["card"], fg=C["sub"],
@@ -182,11 +196,10 @@ class DashboardView(ttk.Frame):
             self.doc_tree.column(c, width=widths[c], anchor="w", stretch=(c == "name"))
         self.doc_tree.pack(fill="both", expand=True)
         self.doc_tree.bind("<Double-1>", lambda e: self.window.switch("docs"))
-        self.doc_empty = tk.Label(body, text="待办已清空，可以开始新的归档", bg=C["card"],
-                                  fg=C["muted"], font=(FONT, 9))
+        self.doc_empty = EmptyState(body, wraplength=420)
 
         # ---- 类别分布（侧栏）----
-        self.cat_card, cat_body = self._card(self, "类别分布", "", "台账",
+        self.cat_card, cat_body = self._card(content, "类别分布", "", "台账",
                                              lambda: self.window.switch("docs"))
         self.cat_card.grid(row=2, column=1, sticky="nsew")
         self.cat_box = tk.Frame(cat_body, bg=C["card"])
@@ -196,11 +209,36 @@ class DashboardView(ttk.Frame):
         self.cat_total.pack(fill="x", pady=(8, 0))
 
         # ---- 近期动态（跨两栏）：用列表而不是表格，比台账更轻 ----
-        self.log_card, log_body = self._card(self, "近期动态", "最近 4 条", "日志",
+        self.log_card, log_body = self._card(content, "近期动态", "最近 4 条", "日志",
                                             lambda: self.window.switch("logs"))
         self.log_card.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         self.log_box = tk.Frame(log_body, bg=C["card"])
         self.log_box.pack(fill="x")
+        self.log_empty = EmptyState(log_body, wraplength=520)
+
+    # ---------- 滚动 ----------
+    def _on_inner_config(self, _event=None):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_config(self, event):
+        self.canvas.itemconfigure(self._inner_window, width=event.width)
+
+    def _on_wheel(self, event):
+        if not self.winfo_ismapped():
+            return
+        x, y = self.winfo_pointerxy()
+        if not (self.winfo_rootx() <= x < self.winfo_rootx() + self.winfo_width()
+                and self.winfo_rooty() <= y < self.winfo_rooty() + self.winfo_height()):
+            return
+        try:
+            widget = self.winfo_containing(x, y)
+            if widget is not None and widget.winfo_class() == "Treeview":
+                return
+        except Exception:
+            pass
+        delta = int(-event.delta / 120) if event.delta else 0
+        if delta:
+            self.canvas.yview_scroll(delta, "units")
 
     # ---------- 数据 ----------
     def _sync_first_run(self):
@@ -296,7 +334,7 @@ class DashboardView(ttk.Frame):
                                    command=lambda: self.window.switch("docs"))
             else:
                 self.hero_num.config(text="0")
-                self.hero_hint.config(text="暂无待处理材料，提交后可在这里查看进度")
+                self.hero_hint.config(text="还没有待处理材料，提交后可在这里查看进度")
                 self.btn_go.config(text="提交材料",
                                    command=lambda: self.window.switch("submit"))
         elif can_archive:
@@ -314,7 +352,7 @@ class DashboardView(ttk.Frame):
             focus = pending
             self.hero_num.config(text=str(len(pending)))
             self.hero_hint.config(text=("最近提交：%s" % pending[0].get("name", "")[:18])
-                                  if pending else "暂无待审核材料")
+                                  if pending else "还没有待审核材料")
             self.btn_go.config(text="查看材料台账",
                                command=lambda: self.window.switch("docs"))
 
@@ -332,15 +370,27 @@ class DashboardView(ttk.Frame):
             self.doc_tree.insert("", "end", tags=(d.get("id"),), values=(
                 d.get("name", ""), d.get("who", ""), d.get("time", "")))
         if focus:
-            self.doc_empty.pack_forget()
+            self.doc_empty.hide_pack()
         else:
-            if is_applicant:
-                self.doc_empty.config(
-                    text=("填写学号后显示我的材料" if not sid
-                          else "暂无需要我关注的材料"))
+            if is_applicant and not sid:
+                self.doc_empty.set("请先填写申请人学号",
+                                   "未填写时不展示任何人的材料；填好后这里只显示你自己的进度。",
+                                   "填写学号", self.window.open_settings)
+            elif is_applicant:
+                self.doc_empty.set("没有需要我关注的材料",
+                                   "已提交的材料会在这里跟进审核与驳回；现在可以提交第一份材料。",
+                                   "提交材料", lambda: self.window.switch("submit"))
+            elif can_archive:
+                self.doc_empty.set("待办已清空",
+                                   "没有待审核的材料；新材料提交后会重新出现在这里。",
+                                   "提交材料" if self.window.can("docs:create") else "查看台账",
+                                   (lambda: self.window.switch("submit")) if self.window.can("docs:create")
+                                   else (lambda: self.window.switch("docs")))
             else:
-                self.doc_empty.config(text="待办已清空，可以开始新的归档")
-            self.doc_empty.pack(pady=(6, 0))
+                self.doc_empty.set("没有待跟进的材料",
+                                   "新材料进入待审核队列后会显示在这里，供你了解流转状态。",
+                                   "查看台账", lambda: self.window.switch("docs"))
+            self.doc_empty.show_pack(pady=(6, 0))
 
         # 类别分布：横条 + 百分比，数字右对齐
         for w in self.cat_box.winfo_children():
@@ -366,6 +416,7 @@ class DashboardView(ttk.Frame):
         # 近期动态
         if can_logs:
             self.log_card.grid()
+            self.log_empty.pack_forget()
             for w in self.log_box.winfo_children():
                 w.destroy()
             for l in logs[:4]:
@@ -380,6 +431,11 @@ class DashboardView(ttk.Frame):
                          font=(FONT, 9), width=5, anchor="w").grid(row=0, column=2, sticky="w")
                 tk.Label(row, text=l.get("obj", ""), bg=C["card"], fg=C["muted"],
                          font=(FONT, 9), anchor="w").grid(row=0, column=3, sticky="w")
+            if not logs:
+                self.log_empty.set("还没有操作动态",
+                                   "提交、审核、归档后会在这里留下最近几条记录。",
+                                   "查看全部日志", lambda: self.window.switch("logs"))
+                self.log_empty.pack(fill="x", pady=(4, 0))
         else:
             self.log_card.grid_remove()
 

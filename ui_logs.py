@@ -8,6 +8,7 @@ from tkinter import ttk, messagebox, filedialog
 import audit
 from ui_audit import open_evidence
 from theme import FONT, C
+from ui_empty import EmptyState
 
 
 class LogsView(ttk.Frame):
@@ -74,9 +75,7 @@ class LogsView(ttk.Frame):
         ysb.pack(side="right", fill="y")
         xsb.pack(side="bottom", fill="x")
 
-        self.empty = ttk.Label(wrap,
-                               text="暂无操作记录，提交、归档、驳回等操作会自动记录在这里",
-                               style="Muted.TLabel")
+        self.empty = EmptyState(wrap, wraplength=380)
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
@@ -111,10 +110,19 @@ class LogsView(ttk.Frame):
         else:
             self.count.config(text="匹配 %d / 共 %d 条" % (len(rows), total))
         if rows:
-            self.empty.place_forget()
+            self.empty.hide()
+        elif total == 0:
+            self.empty.set("还没有操作记录",
+                           "提交、审核、归档、驳回都会自动写在这里，作为材料流转的依据。",
+                           "查看材料台账" if not self.window.can("docs:create") else "提交第一份材料",
+                           (lambda: self.window.switch("docs")) if not self.window.can("docs:create")
+                           else (lambda: self.window.switch("submit")))
+            self.empty.show_place()
         else:
-            self.empty.place(relx=0.5, rely=0.4, anchor="center")
-            self.empty.configure(text="没有匹配的记录，换个关键词或动作再试")
+            self.empty.set("没有匹配的记录",
+                           "现有记录被关键词或动作筛选挡住了，清空筛选即可看到全部。",
+                           "清空筛选", self._clear_filters)
+            self.empty.show_place()
 
         # 证据包 / 恢复入口按权限点显隐
         for b in (self.btn_evidence, self.btn_import):

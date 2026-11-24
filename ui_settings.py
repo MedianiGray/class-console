@@ -563,7 +563,7 @@ class SettingsDialog:
     def _place_all(self):
         docs = [d for d in self.window.repo.list_docs() if d.get("status") == "已归档"]
         if not docs:
-            messagebox.showinfo("暂无材料", "没有已归档材料可归位。", parent=self.top)
+            messagebox.showinfo("没有可归位材料", "没有已归档材料可归位。", parent=self.top)
             return
         copied = 0
         for d in docs:

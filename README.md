@@ -2,7 +2,7 @@
 
 > 面向班级学委 / 辅导员的**离线优先**材料工作台：把材料从提交、审核、归档到留痕的流程收拢在一个本地程序里闭环。
 >
-> 当前版本：**网页版 v0.21.0 · 桌面端 v0.21.0（上手版）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
+> 当前版本：**网页版 v0.21.1 · 桌面端 v0.21.1（顺手版）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
 
 ## 一、项目简介
 
@@ -62,6 +62,7 @@ class-console/
 ├── drop_target.py           # 原生 WM_DROPFILES 拖入，不依赖 tkdnd
 ├── seed.py                  # 首次启动示例数据
 ├── ui_main.py               # 主窗口、导航、角色切换、状态栏反馈
+├── ui_empty.py              # 统一空态组件：标题 + 说明 + 一个真实主动作
 ├── ui_dashboard.py          # 工作台看板视图
 ├── ui_docs.py               # 台账视图（查看 / 归档 / 驳回 / 留痕）
 ├── ui_collect.py            # 文件夹收集视图（扫描未登记文件 / 批量入账编号）
@@ -104,8 +105,8 @@ class-console/
 
 ### 下载现成程序（Windows）
 
-前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.21.0)
-下载附件 `class-console-v0.21.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.21.1)
+下载附件 `class-console-v0.21.1.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
 
 ### 浏览器本地缓存版
 

@@ -13,6 +13,7 @@ from tkinter import ttk, filedialog, messagebox
 
 import archive
 from theme import FONT, C
+from ui_empty import EmptyState
 
 
 class CollectView(ttk.Frame):
@@ -61,6 +62,12 @@ class CollectView(ttk.Frame):
         self.tree.pack(side="left", fill="both", expand=True)
         ysb.pack(side="right", fill="y")
         self.tree.bind("<Button-1>", self._on_click)
+
+        self.empty = EmptyState(wrap, wraplength=400)
+        self.empty.set("还没有扫描结果",
+                       "选择一个材料文件夹，扫描后会列出文件、大小与是否已登记；不移动原文件。",
+                       "选择文件夹", self.pick_folder)
+        self.empty.show_place()
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
@@ -139,6 +146,13 @@ class CollectView(ttk.Frame):
             i += 1
         new_count = sum(1 for x in self.items if not x["registered"])
         self.hint.config(text="共 %d 个文件，未登记 %d 个" % (len(self.items), new_count))
+        if self.items:
+            self.empty.hide()
+        else:
+            self.empty.set("这个文件夹里没有可登记的文件",
+                           "扫描只统计文件，跳过隐藏与临时文件；换一个文件夹或重新扫描后再看。",
+                           "重新扫描", self.scan)
+            self.empty.show_place()
 
     # ---------- 入账 ----------
     def import_selected(self):

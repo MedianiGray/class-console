@@ -358,7 +358,13 @@ class MainWindow(ttk.Frame):
             m.add_command(label="%s · %s" % (meta["label"], meta["operator"]),
                           command=lambda k=key: self._set_role(k))
         try:
-            m.tk_popup(event.x_root + 4, event.y_root + 10)
+            if event is None:
+                x = self.role_hint.winfo_rootx() + 4
+                y = self.role_hint.winfo_rooty() + self.role_hint.winfo_height() + 6
+            else:
+                x = event.x_root + 4
+                y = event.y_root + 10
+            m.tk_popup(x, y)
         finally:
             m.grab_release()
 

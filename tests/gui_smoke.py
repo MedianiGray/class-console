@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-gui-appdata-")
 import tkinter as tk  # noqa: E402
 import ui_logs  # noqa: E402
+from ui_empty import EmptyState  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
 
@@ -441,6 +442,32 @@ def main():
         assert app.views["dashboard"].card_values["total"].cget("text") != "0", "切主题后看板未刷新"
     theme.apply("light")
     print("主题切换 OK")
+
+    # A2 空态组件：标题 + 说明 + 一个真实主动作；看板内容可滚动到底部
+    probe = EmptyState(root, wraplength=320)
+    fired = {"n": 0}
+    probe.set("还没有测试数据", "这里解释为什么为空，以及下一步能做什么。",
+              "去做第一步", lambda: fired.__setitem__("n", fired["n"] + 1))
+    probe.show_place()
+    root.update()
+    assert probe._title.cget("text") == "还没有测试数据"
+    assert probe._desc.cget("text").startswith("这里解释为什么为空")
+    assert probe.action_text == "去做第一步" and probe._btn.winfo_ismapped()
+    probe._btn.invoke()
+    root.update()
+    assert fired["n"] == 1, "空态主动作未真正执行"
+    probe.hide()
+    root.update()
+
+    app.switch("dashboard")
+    root.update()
+    dash = app.views["dashboard"]
+    box = dash.canvas.bbox("all")
+    assert box and box[3] > dash.canvas.winfo_height(), "看板内容未形成可滚动区域"
+    dash.canvas.yview_moveto(1.0)
+    root.update()
+    assert dash.canvas.yview()[1] >= 0.99, "看板未滚到底部"
+    print("空态组件/看板滚动 OK")
 
     root.destroy()
     print("GUI SMOKE OK")

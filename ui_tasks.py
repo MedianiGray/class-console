@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox
 
 from theme import FONT, C
 from database import days_until
+from ui_empty import EmptyState
 
 
 class TasksView(ttk.Frame):
@@ -44,8 +45,7 @@ class TasksView(ttk.Frame):
         self.tree.pack(side="left", fill="both", expand=True)
         ysb.pack(side="right", fill="y")
 
-        self.empty = ttk.Label(wrap, text="暂无任务，点下方「添加任务」登记待办事项",
-                               style="Muted.TLabel")
+        self.empty = EmptyState(wrap, wraplength=360)
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=18, pady=12)
@@ -88,9 +88,17 @@ class TasksView(ttk.Frame):
             text="进行中 %d · 临期 %d · 逾期 %d · 已完成 %d" %
             (st["ongoing"], st["due"], st["overdue"], st["done"]))
         if rows:
-            self.empty.place_forget()
+            self.empty.hide()
         else:
-            self.empty.place(relx=0.5, rely=0.4, anchor="center")
+            if self.window.can("task:manage"):
+                self.empty.set("还没有登记任务",
+                               "任务记清「收什么、什么时候截止」；添加后会按临期、逾期自动排序提醒。",
+                               "添加任务", lambda: self.edit_dialog(None))
+            else:
+                self.empty.set("还没有登记任务",
+                               "当前岗位只能查看；切换到有任务管理权限的岗位后可添加。",
+                               "切换岗位", lambda: self.window._role_menu())
+            self.empty.show_place()
 
         # 任务增删改按 task:manage；完成 / 还原各视角可用
         can_manage = self.window.can("task:manage")
