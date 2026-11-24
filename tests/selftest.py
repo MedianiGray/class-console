@@ -16,10 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # 设置文件改到临时目录，避免测试读写本机真实偏好
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-appdata-")
 from database import LocalRepository, RepositoryError, date_today  # noqa: E402
+import database  # noqa: E402
 import archive  # noqa: E402
 import audit  # noqa: E402
 import fileroom  # noqa: E402
 import handover  # noqa: E402
+import main as app_main  # noqa: E402
 import service  # noqa: E402
 from ui_main import old_user_should_skip_first_run  # noqa: E402
 
@@ -636,6 +638,87 @@ def main():
     assert not old_user_should_skip_first_run(8, "0", None)
     assert not old_user_should_skip_first_run(8, None, "0")
     print("39. 首次引导老用户判定 OK")
+
+    # 40. 备份元数据与条数校验：带 app/version/counts，可预览
+    bak = r.backup()
+    assert bak.get("app") == "class-console"
+    assert bak.get("version") and bak.get("exportedAt")
+    counts = bak.get("counts") or {}
+    assert counts.get("docs") == len(bak["docs"])
+    assert counts.get("logs") == len(bak["logs"])
+    assert counts.get("roster") == len(bak["roster"])
+    assert counts.get("tasks") == len(bak["tasks"])
+    preview = audit.backup_preview(bak, r)
+    assert preview["ok"], preview["text"]
+    print("40. 备份元数据与条数 OK")
+
+    # 41. 条数对不上 / 非本应用备份 / 脏记录均拒绝导入
+    bad_counts = dict(bak)
+    bad_counts["counts"] = dict(counts)
+    bad_counts["counts"]["docs"] = counts["docs"] + 1
+    assert not audit.backup_preview(bad_counts, r)["ok"]
+    bad_app = dict(bak)
+    bad_app["app"] = "other-app"
+    assert not audit.backup_preview(bad_app, r)["ok"]
+    bad_records = dict(bak)
+    bad_records["docs"] = list(bak["docs"]) + ["脏记录"]
+    bad_records["counts"] = dict(counts)
+    bad_records["counts"]["docs"] = counts["docs"] + 1
+    assert not audit.backup_preview(bad_records, r)["ok"]
+    print("41. 备份结构拦截 OK")
+
+    # 42. 归档写盘失败给可读原因，且不把路径/用户名拼进提示
+    broken_base = Path(tempfile.mkdtemp()) / "这不是目录.txt"
+    broken_base.write_text("x", encoding="utf-8")
+    fail = archive.place({"name": "失败材料", "cat": "团务材料", "who": "张三",
+                          "sid": "250201"}, base=broken_base)
+    assert fail["ok"] is False and "建目录失败" in fail["note"], fail
+    assert str(broken_base.parent) not in fail["note"]
+    assert "Users" not in fail["note"] and "\\" not in fail["note"]
+    ok_res = archive.place({"name": "仅目录材料", "cat": "团务材料",
+                            "who": "张三", "sid": "250201"},
+                           base=Path(tempfile.mkdtemp()) / "归档成功")
+    assert ok_res["ok"] is True, ok_res
+    print("42. 归档失败可读提示 OK")
+
+    # 43. 损坏数据库被隔离改名，启动不中断并留下说明
+    old_appdata = os.environ.get("APPDATA")
+    corrupt_appdata = tempfile.mkdtemp(prefix="cc-corrupt-")
+    os.environ["APPDATA"] = corrupt_appdata
+    cc_dir = Path(corrupt_appdata) / "ClassConsole"
+    cc_dir.mkdir(parents=True)
+    (cc_dir / "console.db").write_bytes(b"this is not a sqlite database")
+    try:
+        repo = database.build_repository()
+        assert repo.stats()["total"] >= 1
+        issue = database.LAST_STARTUP_ISSUE
+        assert issue and "损坏" in issue.what
+        assert "没有被删除" in issue.impact
+        assert list(cc_dir.glob("console.corrupt-*.db"))
+    finally:
+        if old_appdata:
+            os.environ["APPDATA"] = old_appdata
+        else:
+            os.environ.pop("APPDATA", None)
+    print("43. 损坏数据库隔离 OK")
+
+    # 44. 未捕获异常写崩溃日志，且日志落在本机数据目录
+    crash_appdata = tempfile.mkdtemp(prefix="cc-crash-")
+    old_appdata = os.environ.get("APPDATA")
+    os.environ["APPDATA"] = crash_appdata
+    try:
+        try:
+            raise RuntimeError("selftest-crash")
+        except RuntimeError as e:
+            log = app_main.record_crash(type(e), e, e.__traceback__)
+        assert log and Path(log).exists()
+        assert "selftest-crash" in Path(log).read_text(encoding="utf-8")
+    finally:
+        if old_appdata:
+            os.environ["APPDATA"] = old_appdata
+        else:
+            os.environ.pop("APPDATA", None)
+    print("44. 崩溃日志落盘 OK")
 
     print("SELFTEST OK")
 

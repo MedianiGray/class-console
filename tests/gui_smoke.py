@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # 设置文件走临时目录，避免测试改写本机真实偏好
 os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-gui-appdata-")
 import tkinter as tk  # noqa: E402
+from tkinter import ttk  # noqa: E402
 import ui_logs  # noqa: E402
 from ui_empty import EmptyState  # noqa: E402
 from database import LocalRepository  # noqa: E402
@@ -468,6 +469,49 @@ def main():
     root.update()
     assert dash.canvas.yview()[1] >= 0.99, "看板未滚到底部"
     print("空态组件/看板滚动 OK")
+
+    # A3 错误对话框：四段齐全 + 恢复动作，不把堆栈或路径塞进正文
+    from ui_error import ErrorDialog
+    hit = {"n": 0}
+    dlg = ErrorDialog(
+        root, "归档文件没有复制完成",
+        "台账已标记为已归档，但复制到归档文件夹时失败（权限被拒绝）。",
+        "台账记录还在；归档目录里可能缺少文件，原文件没有被移动。",
+        "先打开归档目录检查磁盘空间与写入权限，再重新归档。",
+        "原文件仍在原位置，失败文件不会自动删除。",
+        actions=[("重试归档", lambda: hit.__setitem__("n", hit["n"] + 1))])
+    root.update()
+
+    def texts(widget):
+        found = []
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Label):
+                found.append(child.cget("text"))
+            found.extend(texts(child))
+        return found
+
+    body = texts(dlg.top)
+    for key in ("发生了什么", "影响范围", "下一步", "兜底"):
+        assert key in body, "错误弹窗缺少 %s" % key
+    assert any("权限被拒绝" in t for t in body)
+    assert not any("Traceback" in t or "C:\\Users" in t for t in body)
+    buttons = []
+
+    def walk(widget):
+        for child in widget.winfo_children():
+            if isinstance(child, ttk.Button):
+                buttons.append(child)
+            walk(child)
+
+    walk(dlg.top)
+    assert any(b.cget("text") == "重试归档" for b in buttons), "错误恢复动作缺失"
+    for b in buttons:
+        if b.cget("text") == "重试归档":
+            b.invoke()
+    assert hit["n"] == 1, "错误恢复动作未真正执行"
+    dlg.close()
+    root.update()
+    print("错误四段对话框 OK")
 
     root.destroy()
     print("GUI SMOKE OK")

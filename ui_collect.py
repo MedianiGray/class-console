@@ -9,11 +9,12 @@
 import os
 import time
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog
 
 import archive
 from theme import FONT, C
 from ui_empty import EmptyState
+from ui_error import show_error
 
 
 class CollectView(ttk.Frame):
@@ -121,13 +122,25 @@ class CollectView(ttk.Frame):
         try:
             names = os.listdir(self.folder)
         except OSError as e:
-            self.window.toast("读取文件夹失败：%s" % e)
+            self.tree.delete(*self.tree.get_children())
+            self.hint.config(text="文件夹暂时读不了", foreground=C["red"])
+            self.empty.set(
+                "这个文件夹暂时读不了",
+                "系统拒绝读取（权限、占用或被移走）。台账没有变化；可以重新扫描，或换一个文件夹。",
+                "重新扫描", self.scan)
+            self.empty.show_place()
             return
 
         i = 0
+        skipped = 0
         for name in sorted(names):
             full = os.path.join(self.folder, name)
-            if not os.path.isfile(full) or name.startswith(self.SKIP_PREFIX):
+            try:
+                is_file = os.path.isfile(full)
+            except OSError:
+                skipped += 1
+                continue
+            if not is_file or name.startswith(self.SKIP_PREFIX):
                 continue
             registered = name in existing
             try:
@@ -135,6 +148,7 @@ class CollectView(ttk.Frame):
                 mtime = time.strftime("%m-%d %H:%M", time.localtime(st.st_mtime))
                 size = self._human_size(st.st_size)
             except OSError:
+                skipped += 1
                 mtime, size = "", ""
             iid = "r%d" % i
             status = "已登记" if registered else "未登记"
@@ -145,7 +159,10 @@ class CollectView(ttk.Frame):
                                "registered": registered, "checked": not registered})
             i += 1
         new_count = sum(1 for x in self.items if not x["registered"])
-        self.hint.config(text="共 %d 个文件，未登记 %d 个" % (len(self.items), new_count))
+        hint = "共 %d 个文件，未登记 %d 个" % (len(self.items), new_count)
+        if skipped:
+            hint += "；另有 %d 个文件读不到，已跳过" % skipped
+        self.hint.config(text=hint, foreground=C["sub"])
         if self.items:
             self.empty.hide()
         else:
@@ -171,6 +188,7 @@ class CollectView(ttk.Frame):
             return
 
         ok = 0
+        failed = []
         for x in chosen:
             base = os.path.splitext(x["name"])[0]
             try:
@@ -183,21 +201,41 @@ class CollectView(ttk.Frame):
                 })
                 ok += 1
             except Exception as e:
-                messagebox.showerror("入账失败", "%s：%s" % (x["name"], e), parent=self)
+                failed.append("%s（%s）" % (x["name"], type(e).__name__))
+        log_failed = False
+        index_failed = False
         if ok:
             try:
                 self.repo.add_log("收集入账", "%d 份文件" % ok,
-                                  self.window.operator_name, self.window.role_label())
+                                  self.window.operator_name,
+                                  self.window.role_label())
             except Exception:
-                pass
+                log_failed = True
             try:
-                archive.write_index(self.repo.list_docs())
+                index_path = archive.write_index(self.repo.list_docs())
+                index_failed = not bool(index_path)
             except Exception:
-                pass
+                index_failed = True
         self.window.refresh_all()
-        self.window.toast("已入账 %d 份材料并自动编号" % ok)
+        msg = "已入账 %d 份材料并自动编号" % ok
+        if failed:
+            msg += "，%d 份没有写入台账" % len(failed)
+        if log_failed:
+            msg += "，操作日志写入失败"
+        if index_failed:
+            msg += "，归档索引表写入失败"
+        self.window.toast(msg[:120])
         if ok:
             self.window.mark_first_run(1)
+        if failed:
+            show_error(
+                self, "部分文件没有入账",
+                "有 %d 个文件未能写入台账：%s。" % (len(failed),
+                                                     "；".join(failed[:2])),
+                "已成功的 %d 份照常保留；失败文件没有登记，仍在原文件夹。" % ok,
+                "先确认原文件没有被移走，再重新扫描并单独入账失败项。",
+                "原文件不会被移动或删除；需要时可导出备份留底。",
+                actions=[("重新扫描", self.scan), ("知道了", lambda: None)])
         self.scan()
 
     def refresh(self):

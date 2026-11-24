@@ -10,6 +10,7 @@ import archive
 import theme
 from theme import FONT, C
 from ui_empty import EmptyState
+from ui_error import show_error
 
 
 class DocsView(ttk.Frame):
@@ -755,6 +756,9 @@ class DocsView(ttk.Frame):
             return
         ok = skip = 0
         fail = []
+        place_fail = []
+        log_fail = 0
+        index_fail = False
         note = ""
         for doc in docs:
             if doc.get("status") == "已归档":
@@ -765,53 +769,113 @@ class DocsView(ttk.Frame):
                                               self.window.operator_name,
                                               self.window.role_label())
             except Exception as e:
-                fail.append("%s：%s" % (doc.get("name") or "未命名", e))
+                fail.append("%s（%s）" % (doc.get("name") or "未命名",
+                                         type(e).__name__))
                 continue
-            if saved:
-                try:
-                    self.repo.add_log("归档", saved.get("name", ""),
-                                      self.window.operator_name, self.window.role_label())
-                except Exception:
-                    pass
-                note = self._place_one(saved.get("id"), dict(saved, status="已归档"),
-                                      quiet=True)
-                ok += 1
+            if not saved:
+                fail.append(doc.get("name") or "未命名")
+                continue
+            try:
+                self.repo.add_log("归档", saved.get("name", ""),
+                                  self.window.operator_name,
+                                  self.window.role_label())
+            except Exception:
+                log_fail += 1
+            placed = self._place_one(saved.get("id"),
+                                     dict(saved, status="已归档"), quiet=True)
+            note = placed.get("note", "")
+            if not placed.get("ok"):
+                place_fail.append("%s（%s）" % (
+                    saved.get("name") or "未命名", note))
+            if placed.get("index_error"):
+                index_fail = True
+            ok += 1
         self.window.refresh_all()
         msg = "已归档 %d 条，并写入操作日志" % ok
         if skip:
             msg += "，跳过已归档 %d 条" % skip
         if fail:
-            msg += "，失败 %d 条：%s" % (len(fail), "；".join(fail[:2]))
-        if len(todo) == 1 and not fail:
+            msg += "，台账未写入 %d 条" % len(fail)
+        if log_fail:
+            msg += "，%d 条日志写入失败" % log_fail
+        if index_fail:
+            msg += "，归档索引表写入失败"
+        if len(todo) == 1 and not fail and not place_fail:
             msg += note
         self.window.toast(msg[:120])
         if ok:
             self.window.mark_first_run(3 if self.window.role == "applicant" else 2)
+        if fail:
+            show_error(
+                self.window, "部分材料没有归档成功",
+                "有 %d 条材料未能写入台账：%s。" % (len(fail), "；".join(fail[:2])),
+                "现有台账与文件都没有被删除；这些条目仍是原状态，未计入已归档。",
+                "先单条重试；若连续失败，导出一次备份，再查看崩溃日志。",
+                "原文件仍在原位置；备份导入可以恢复台账，未归档文件不会自动删除。",
+                actions=[("知道了", lambda: None)])
+        if place_fail:
+            show_error(
+                self.window, "归档文件没有全部复制完成",
+                "台账已标记 %d 条为已归档，但其中有 %d 条复制失败：%s。"
+                % (ok, len(place_fail), "；".join(place_fail[:2])),
+                "台账记录还在；对应归档目录里可能缺少这些文件，原文件没有被移动或删除。",
+                "先打开归档目录检查磁盘空间与写入权限，再重新归档这几条。",
+                "本机原文件与网页端备份仍可作为兜底；失败文件不会自动删除。",
+                actions=[("打开归档目录", self._open_archive_dir_safe),
+                         ("知道了", lambda: None)])
 
     def _place_one(self, doc_id, doc, quiet=False):
-        """复制到归档根并按目录归位，返回一句提示。"""
+        """复制到归档根并按目录归位，返回 ok / note / index_error。"""
         res = archive.place(doc)
+        note = res.get("note") or "已处理"
+        index_error = False
         if res.get("path"):
-            self.repo.set_arch(doc_id, res["path"], self.window.operator_name,
-                               self.window.role_label())
-        archive.write_index(self.repo.list_docs())
-        if quiet:
-            return " · " + res.get("note", "")
-        if res.get("copied"):
-            return "文件已归位：%s" % res["path"]
-        return res.get("note") or "已处理"
+            try:
+                self.repo.set_arch(doc_id, res["path"],
+                                   self.window.operator_name,
+                                   self.window.role_label())
+            except Exception as e:
+                return {"ok": False, "note": "台账路径写入失败（%s）"
+                        % type(e).__name__, "index_error": False}
+        try:
+            index_path = archive.write_index(self.repo.list_docs())
+            index_error = not bool(index_path)
+        except Exception:
+            index_error = True
+        return {"ok": bool(res.get("ok")), "note": note,
+                "index_error": index_error}
+
+    def _open_archive_dir_safe(self):
+        base = archive.root()
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            show_error(
+                self.window, "归档目录暂时打不开",
+                "建目录时被系统拒绝（%s）。" % type(e).__name__,
+                "归档文件可能没有写入；台账记录仍保留。",
+                "换一个可写的归档位置，或检查当前目录权限后重试。",
+                "原文件仍在原位置，不会因为打不开目录而丢失。",
+                actions=[("知道了", lambda: None)])
+            return
+        try:
+            opened = archive.open_folder(base)
+        except OSError:
+            opened = False
+        if not opened:
+            show_error(
+                self.window, "归档目录暂时打不开",
+                "系统没有成功打开归档文件夹。",
+                "文件仍在原位置，台账记录未变。",
+                "可以在文件资源管理器里手动打开本机数据目录下的归档文件夹。",
+                "需要时先导出备份，避免继续操作时误判文件位置。",
+                actions=[("知道了", lambda: None)])
 
     def open_archive_dir(self):
         if not self.window.can("docs:archive"):
             self.window.toast("当前视角无权打开归档目录")
             return
-        base = archive.root()
-        try:
-            base.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
-        if not archive.open_folder(base):
-            self.window.toast("无法打开 %s" % base)
+        self._open_archive_dir_safe()
 
     def open_in_files(self):
         """把选中材料带到文件室，直接展开所在目录。"""

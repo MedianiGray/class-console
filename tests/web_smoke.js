@@ -507,5 +507,35 @@ assert("空态按钮保留动作属性", emptySample.indexOf('data-empty-go="das
 assert("文件夹读取失败有恢复路径", html.indexOf("这个文件夹里的文件没有读出来") >= 0 && html.indexOf("watch.failed") >= 0);
 assert("产品界面无裸暂无", !/暂无/.test(html));
 
+// A3 错误态与恢复路径：存储失败、备份不匹配、错误四段、AI 失败脱敏
+const a3Bk = sandbox.backup();
+assert("备份带应用标识与条数", a3Bk.app === "class-console" && a3Bk.counts.docs === a3Bk.docs.length);
+assert("损坏备份被结构校验拦截", sandbox.backupShapeIssue(null) !== "" && sandbox.backupShapeIssue({docs:"x", logs:[]}) !== "");
+const a3Mismatch = JSON.parse(JSON.stringify(a3Bk));
+a3Mismatch.counts.docs = a3Mismatch.docs.length + 1;
+assert("导入预览条数不匹配拦截", sandbox.backupShapeIssue(a3Mismatch).indexOf("实际解析") >= 0);
+const a3BadRow = JSON.parse(JSON.stringify(a3Bk));
+a3BadRow.docs.push("不是对象");
+assert("格式异常记录不导入", sandbox.backupShapeIssue(a3BadRow).indexOf("格式异常") >= 0);
+const a3Copy = sandbox.errorCopyHtml("发生了什么", "影响范围", "下一步", "兜底");
+assert("错误四段齐全", ["发生了什么","影响范围","下一步","兜底"].every(k => a3Copy.indexOf(k) >= 0));
+assert("错误态有恢复动作区", sandbox.errorState("标题", "发生了什么", "影响范围", "下一步", "兜底", "<button>重试</button>").indexOf("重试") >= 0);
+const a3Ai401 = sandbox.aiErrorInfo({status:401, message:"接口返回 401：Bearer sk-secret"});
+assert("AI 401 归类为 Key 失效", a3Ai401.what.indexOf("Key 无效") >= 0);
+assert("AI 错误不泄露 Key 与回包", JSON.stringify(a3Ai401).indexOf("sk-secret") < 0 && JSON.stringify(a3Ai401).indexOf("Bearer") < 0);
+const a3AiNet = sandbox.aiErrorInfo(new TypeError("Failed to fetch"));
+assert("AI 断网归为网络或跨域", a3AiNet.what.indexOf("请求没有到达") >= 0);
+
+const a3OrigSet = localStorageStub.setItem;
+const a3DocsBefore = sandbox.store.docs.length;
+localStorageStub.setItem = function(){ const e = new Error("quota"); e.name = "QuotaExceededError"; throw e; };
+sandbox.saveStore();
+assert("配额满降级为内存态", sandbox.state.persist === false && sandbox.storageState.issue === "quota");
+assert("存储失败不清空现有数据", sandbox.store.docs.length === a3DocsBefore);
+assert("存储失败有常驻提示", sandbox.storageState.issue === "quota" && html.indexOf('id="storageNotice"') >= 0);
+localStorageStub.setItem = a3OrigSet;
+sandbox.saveStore();
+assert("重试写入恢复持久化", sandbox.state.persist === true && sandbox.storageState.issue === null);
+
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);

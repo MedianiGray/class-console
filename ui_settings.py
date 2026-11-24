@@ -16,6 +16,7 @@ import theme
 from theme import FONT, C
 from database import app_data_dir, FORM_TEMPLATES
 from ui_audit import open_integrity
+from ui_error import show_error
 from version import VERSION, VERSION_LABEL
 
 REPO_URL = "https://github.com/MedianiGray/class-console"
@@ -377,7 +378,9 @@ class SettingsDialog:
                  anchor="w").pack(fill="x", padx=14, pady=(0, 4))
         tk.Label(card4, text="数据只存在本机，卸载前请先备份。", bg=C["card"],
                  fg=C["sub"], font=(FONT, 9), anchor="w").pack(fill="x", padx=14,
-                                                              pady=(0, 12))
+                                                              pady=(0, 6))
+        ttk.Button(card4, text="导出崩溃日志", command=self._export_crash).pack(
+            anchor="w", padx=14, pady=(0, 12))
 
     def _bind_wheel(self, on):
         if on:
@@ -552,10 +555,27 @@ class SettingsDialog:
         base = archive.root()
         try:
             base.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            self._data_error(
+                "归档目录暂时打不开",
+                "建目录时被系统拒绝（%s）。" % type(e).__name__,
+                "已经归档的文件没有被移动或删除；本次只是无法打开目录。",
+                "换一个可写的归档位置，或检查当前目录权限后重试。",
+                "原文件仍在原位置；可以先导出备份，再调整归档目录。",
+                actions=[("重试打开", self._open_archive)])
+            return
+        try:
+            opened = archive.open_folder(base)
         except OSError:
-            pass
-        if not archive.open_folder(base):
-            messagebox.showerror("打开失败", "无法打开 %s" % base, parent=self.top)
+            opened = False
+        if not opened:
+            self._data_error(
+                "归档目录暂时打不开",
+                "系统没有成功打开归档文件夹。",
+                "文件仍在原位置，台账记录未变。",
+                "可以在文件资源管理器里手动进入本机归档目录。",
+                "需要时先导出备份，避免继续操作时误判文件位置。",
+                actions=[("重试打开", self._open_archive)])
 
     def _check_integrity(self):
         open_integrity(self.top, self.window.repo, self.window)
@@ -566,17 +586,49 @@ class SettingsDialog:
             messagebox.showinfo("没有可归位材料", "没有已归档材料可归位。", parent=self.top)
             return
         copied = 0
+        placed = 0
+        failed = []
         for d in docs:
             res = archive.place(d)
             if res.get("copied"):
                 copied += 1
+            if res.get("ok"):
+                placed += 1
+            else:
+                failed.append("%s（%s）" % (d.get("name") or "未命名",
+                                         res.get("note") or "复制失败"))
             if res.get("path"):
-                self.window.repo.set_arch(d.get("id"), res["path"],
-                                          self.window.operator_name,
-                                          self.window.role_label())
-        archive.write_index(self.window.repo.list_docs())
+                try:
+                    self.window.repo.set_arch(d.get("id"), res["path"],
+                                              self.window.operator_name,
+                                              self.window.role_label())
+                except Exception as e:
+                    failed.append("%s（台账路径写入失败：%s）"
+                                  % (d.get("name") or "未命名",
+                                     type(e).__name__))
+        index_error = False
+        try:
+            index_error = not bool(archive.write_index(
+                self.window.repo.list_docs()))
+        except Exception:
+            index_error = True
         self.window.refresh_all()
-        self.window.toast("归位 %d 条，复制 %d 个文件" % (len(docs), copied))
+        msg = "已检查 %d 条，成功归位 %d 条，新复制 %d 个文件" % (
+            len(docs), placed, copied)
+        if failed:
+            msg += "，失败 %d 条" % len(failed)
+        if index_error:
+            msg += "，归档索引表写入失败"
+        self.window.toast(msg[:120])
+        if failed:
+            self._data_error(
+                "部分归档文件没有归位",
+                "有 %d 条处理失败：%s。" % (len(failed), "；".join(failed[:2])),
+                "台账记录仍在；对应归档目录可能缺少文件，原文件没有被移动或删除。",
+                "检查归档目录剩余空间与写入权限，再重新归位。",
+                "原文件与备份仍可作为兜底；失败项不会自动删除。",
+                actions=[("重新归位", self._place_all),
+                         ("打开归档目录", self._open_archive)])
 
     def _pick_archive_copy(self, value):
         archive.set_auto_copy(value == "copy")
@@ -642,11 +694,26 @@ class SettingsDialog:
         self._redraw()
         self.window.show_status("归档规则已恢复默认", temp=True)
 
+    def _export_crash(self):
+        from main import export_crash_log
+        export_crash_log(self.top)
+
     def _open_dir(self):
         try:
             os.startfile(str(app_data_dir()))
         except Exception as e:
-            messagebox.showerror("打开失败", str(e), parent=self.top)
+            show_error(
+                self.top, "数据目录暂时打不开",
+                "系统没有成功打开本机数据目录（%s）。" % type(e).__name__,
+                "当前数据仍在原处；设置与台账不会因此丢失。",
+                "稍后重试，或在文件资源管理器里手动进入本机应用数据目录。",
+                "导出一次备份即可绕开目录问题；备份文件可另存到桌面。",
+                actions=[("知道了", lambda: None)])
+
+    def _data_error(self, title, what, impact, next_step, fallback,
+                    actions=None):
+        show_error(self.top, title, what, impact, next_step, fallback,
+                   actions=actions or [("知道了", lambda: None)])
 
     def _backup(self):
         path = filedialog.asksaveasfilename(
@@ -660,7 +727,13 @@ class SettingsDialog:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            messagebox.showerror("备份失败", str(e), parent=self.top)
+            self._data_error(
+                "备份没有写出去",
+                "生成或写入备份文件时失败（%s）。" % type(e).__name__,
+                "本机台账与文件没有变化；这个位置没有生成完整备份。",
+                "换一个可写位置（如桌面），确认磁盘空间后重新导出。",
+                "数据仍在原库；也可以先打开数据目录，把整个库文件复制留底。",
+                actions=[("重新备份", self._backup)])
             return
         self.window.toast("已备份 %d 条材料" % len(data.get("docs", [])))
 
@@ -678,7 +751,13 @@ class SettingsDialog:
                 self.window.repo, path, self.window.operator_name,
                 self.window.role_label())
         except Exception as e:
-            messagebox.showerror("导出交接包失败", str(e), parent=self.top)
+            self._data_error(
+                "交接包没有导出",
+                "打包或写入 ZIP 时失败（%s）。" % type(e).__name__,
+                "本机数据没有变化；目标位置没有生成完整交接包。",
+                "换一个可写位置并确认磁盘空间，再重新导出。",
+                "原台账仍在；可先用“备份到文件”留底，再排查归档目录权限。",
+                actions=[("重新导出", self._export_handover)])
             return
         self.window.refresh_all()
         self.window.toast("交接包已导出：%d 条材料，%.1f KB" % (
@@ -696,11 +775,23 @@ class SettingsDialog:
         try:
             data = handover.read_handover(path)
         except ValueError as e:
-            messagebox.showerror("导入交接包失败", str(e), parent=self.top)
+            self._data_error(
+                "交接包暂时读不了",
+                str(e) + "。",
+                "本机数据没有变化；没有覆盖任何材料或名单。",
+                "重新选一个完整的交接包；先确认文件没有被占用或改过扩展名。",
+                "本机台账仍在；可以先导出当前数据留底，再联系交接人重发。",
+                actions=[("重选文件", self._import_handover)])
             return
         preview = audit.backup_preview(data, self.window.repo)
         if not preview["ok"]:
-            messagebox.showerror("导入交接包失败", preview["text"], parent=self.top)
+            self._data_error(
+                "交接包与当前数据对不上",
+                preview["text"],
+                "本机数据没有变化；导入没有开始。",
+                "让交接人重新导出交接包，或先用普通备份文件恢复。",
+                "先导出当前数据留底，必要时逐条核对材料与名单。",
+                actions=[("重选文件", self._import_handover)])
             return
         text = handover.handover_summary(data) + "\n\n" + preview["text"]
         if not messagebox.askyesno("导入交接包", text, parent=self.top):
@@ -713,11 +804,20 @@ class SettingsDialog:
                 data.get("events", []), data.get("exemptions", []),
                 data.get("followups", []))
         except Exception as e:
-            messagebox.showerror("导入交接包失败", str(e), parent=self.top)
+            self._data_error(
+                "交接包没有导入完成",
+                "写入本机数据库时失败（%s），事务已回滚。" % type(e).__name__,
+                "本机台账与名单保持导入前的状态，没有留下半套数据。",
+                "先导出当前数据留底，再重试；连续失败时查看崩溃日志。",
+                "原数据库仍在；可用普通备份文件恢复，或复制原库留底。",
+                actions=[("重试导入", self._import_handover)])
             return
-        self.window.repo.add_log("交接包", "导入 %s" % os.path.basename(path),
-                                 self.window.operator_name,
-                                 self.window.role_label(), src="本机")
+        try:
+            self.window.repo.add_log("交接包", "导入 %s" % os.path.basename(path),
+                                     self.window.operator_name,
+                                     self.window.role_label(), src="本机")
+        except Exception:
+            self.window.toast("交接包已导入，但操作日志没有写入")
         self.window.refresh_all()
         self.window.toast("交接包已导入，请确认名单与归档目录")
 
@@ -731,12 +831,23 @@ class SettingsDialog:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, json.JSONDecodeError):
-            messagebox.showerror("恢复失败", "备份文件无法读取，或不是有效的 JSON 文件",
-                                 parent=self.top)
+            self._data_error(
+                "备份文件读不出来",
+                "文件无法读取，或内容不是有效的 JSON。",
+                "本机数据没有变化；恢复没有开始。",
+                "重新选择本工作台导出的备份文件；不要手工改扩展名。",
+                "先导出当前数据留底；原台账仍在，可继续正常使用。",
+                actions=[("重选文件", self._restore)])
             return
         preview = audit.backup_preview(data, self.window.repo)
         if not preview["ok"]:
-            messagebox.showerror("恢复失败", preview["text"], parent=self.top)
+            self._data_error(
+                "备份与当前数据对不上",
+                preview["text"],
+                "本机数据没有变化；恢复没有开始。",
+                "换一份完整备份；确认导出后没有被手工编辑。",
+                "先导出当前数据留底，再逐条核对材料与名单。",
+                actions=[("重选文件", self._restore)])
             return
         if not messagebox.askyesno("恢复确认", preview["text"], parent=self.top):
             return
@@ -748,7 +859,13 @@ class SettingsDialog:
                                      data.get("exemptions", []),
                                      data.get("followups", []))
         except Exception as e:
-            messagebox.showerror("恢复失败", str(e), parent=self.top)
+            self._data_error(
+                "恢复没有完成",
+                "写入本机数据库时失败（%s），事务已回滚。" % type(e).__name__,
+                "本机台账与名单保持恢复前的状态，没有留下半套数据。",
+                "先导出当前数据留底，再重试；连续失败时查看崩溃日志。",
+                "原数据库仍在；可复制原库留底，或换一份更早的备份。",
+                actions=[("重试恢复", self._restore)])
             return
         self.window.refresh_all()
         self.window.toast("备份已恢复")

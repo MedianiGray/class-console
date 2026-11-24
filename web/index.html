@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>班级材料操作台 · 浏览器本地版 v0.21.1</title>
+<title>班级材料操作台 · 浏览器本地版 v0.22.0</title>
 <style>
   :root{
     color-scheme:light;
@@ -107,6 +107,33 @@
   .view.active{display:block}
   .statusbar{display:flex;justify-content:space-between;gap:16px;padding:9px 32px;
     background:var(--card);border-top:1px solid var(--line);color:var(--sub);font-size:var(--fs-xs)}
+  /* 常驻错误条：存储/权限这类持续性问题放在顶栏，不打断当前操作 */
+  .sys-banner{display:flex;align-items:flex-start;gap:10px;padding:10px 32px;
+    background:var(--tag-orange);border-bottom:1px solid var(--line);
+    color:var(--text);font-size:12.5px;line-height:1.55}
+  .sys-banner[hidden]{display:none!important}
+  .sys-banner .sb-mark{width:18px;height:18px;border-radius:50%;background:var(--orange);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;
+    font-weight:700;flex-shrink:0;margin-top:1px}
+  .sys-banner .sb-copy{flex:1;min-width:0}
+  .sys-banner .sb-copy b{color:var(--text);font-weight:600}
+  .sys-banner .sb-copy span{color:var(--muted)}
+  .sys-banner .sb-actions{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
+  .sys-banner .sb-actions .btn{background:var(--card);min-height:30px;padding:4px 11px;font-size:12.5px}
+  /* 错误四段：发生了什么 / 影响范围 / 下一步 / 兜底 */
+  .error-copy{display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.65}
+  .error-copy .er-row{display:grid;grid-template-columns:66px 1fr;gap:10px;align-items:start}
+  .error-copy .er-k{color:var(--sub);font-size:12px;padding-top:1px}
+  .error-copy .er-v{color:var(--text);word-break:break-word}
+  .error-copy .er-fallback .er-v{color:var(--muted)}
+  .error-inline{text-align:left;max-width:560px;margin:0 auto;padding:26px 8px}
+  .error-inline .ei-t{font-size:15px;font-weight:600;margin-bottom:10px;color:var(--text)}
+  .ai-error{border:1px solid var(--danger-line);background:var(--danger-bg);border-radius:var(--radius-sm);
+    padding:11px 13px;font-size:12.5px;line-height:1.65;color:var(--text);text-align:left}
+  .ai-error .ae-h{font-weight:600;margin-bottom:6px;color:var(--red)}
+  .ai-error .ae-r{color:var(--muted);margin-top:3px}
+  .ai-error .ae-btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+  .ai-error .btn{background:var(--card);min-height:28px;padding:3px 10px;font-size:12px}
 
   /* 卡片与通用：单平面，靠发丝线与留白分层，不压阴影 */
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
@@ -510,6 +537,9 @@
   }
   @media (max-width:768px){
     .topbar{padding:0 16px}
+    .sys-banner{padding:10px 16px;flex-wrap:wrap}
+    .sys-banner .sb-actions{width:100%;padding-left:28px}
+    .error-copy .er-row{grid-template-columns:1fr;gap:2px}
     .cards{grid-template-columns:repeat(2,1fr)}
     .dash-cards{grid-template-columns:repeat(2,1fr)}
     .kpi-row{grid-template-columns:repeat(2,1fr)}
@@ -946,6 +976,17 @@
         </button>
       </div>
     </div>
+    <div class="sys-banner" id="storageNotice" role="alert" hidden>
+      <span class="sb-mark" aria-hidden="true">!</span>
+      <div class="sb-copy">
+        <b id="storageNoticeTitle"></b>
+        <span id="storageNoticeDesc"></span>
+      </div>
+      <div class="sb-actions">
+        <button class="btn" id="storageNoticeExport">导出备份</button>
+        <button class="btn" id="storageNoticeFix">重试写入</button>
+      </div>
+    </div>
     <div class="content">
       <div class="page-head" id="pageHead"></div>
       <section class="view" id="view-dashboard"></section>
@@ -1021,7 +1062,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.21.1";
+var WEB_VERSION = "0.22.0";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -1164,6 +1205,7 @@ var SEED_TASKS = [
 
 /* ============ 本地缓存存储层（对齐仓库契约） ============ */
 var store = { docs: [], logs: [], roster: [], tasks: [], templates: {}, seq: { doc: 0, log: 0 }, demo: false };
+var storageState = { issue: null, raw: "" };
 var APPLICANT_KEY = "classconsole_web_applicant_sid";
 function loadApplicantSid(){
   try { return clean(localStorage.getItem(APPLICANT_KEY)); } catch(e){ return ""; }
@@ -1410,9 +1452,28 @@ function removeTemplateField(formType, key){
   return true;
 }
 
+function storageErrorKind(e) {
+  var name = e && e.name, code = e && e.code;
+  if (name === "QuotaExceededError" || code === 22 || code === 1014) return "quota";
+  if (name === "SecurityError" || name === "NotAllowedError") return "blocked";
+  return "blocked";
+}
+function markStorageIssue(kind, e) {
+  storageState.issue = kind;
+  if (typeof state !== "undefined" && state) state.persist = false;
+  console.warn("[storage] " + kind + ": " + ((e && (e.name || e.message)) || "unknown"));
+  if (typeof renderStorageNotice === "function") renderStorageNotice();
+}
+function clearStorageIssue() {
+  storageState.issue = null;
+  storageState.raw = "";
+  if (typeof state !== "undefined" && state) state.persist = true;
+  if (typeof renderStorageNotice === "function") renderStorageNotice();
+}
 function loadStore() {
+  var raw = "";
   try {
-    var raw = localStorage.getItem(STORE_KEY);
+    raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       var data = JSON.parse(raw);
       if (data && Array.isArray(data.docs) && Array.isArray(data.logs)) {
@@ -1427,8 +1488,17 @@ function loadStore() {
         saveStore();
         return;
       }
+      throw new Error("备份结构缺少 docs / logs 列表");
     }
-  } catch (e) { /* 缓存损坏则重建种子 */ }
+  } catch (e) {
+    if (raw) {
+      /* 缓存本身损坏：先保留原文，绝不自动覆盖，等用户导出或明确清除 */
+      storageState.raw = raw;
+      markStorageIssue("corrupt", e);
+    } else {
+      markStorageIssue(storageErrorKind(e), e);
+    }
+  }
   store.docs = SEED_DOCS.map(function(d, i){ return Object.assign({id: i+1}, d); });
   store.logs = SEED_LOGS.map(function(l, i){ return Object.assign({id: i+1}, l); });
   store.roster = SEED_ROSTER.map(function(r, i){ return Object.assign({id: i+1}, r); });
@@ -1442,15 +1512,18 @@ function loadStore() {
   store.seq = { doc: store.docs.length, log: store.logs.length };
   store.demo = true;
   backfillCodes();
-  saveStore();
+  /* 缓存损坏时保留原文本，不再把示例数据写回去把原数据顶掉 */
+  if (storageState.issue !== "corrupt") saveStore();
 }
 function saveStore() {
+  if (storageState.issue === "corrupt") return;
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(store));
-    state.persist = true;
+    if (storageState.issue) clearStorageIssue();
+    if (typeof state !== "undefined" && state) state.persist = true;
   } catch (e) {
     // 存储被禁用或配额不足时降级为内存态，不中断当前操作
-    state.persist = false;
+    markStorageIssue(storageErrorKind(e), e);
   }
 }
 
@@ -1721,22 +1794,82 @@ function stats(docs) {
     rejected: docs.filter(function(d){ return d.status === "已驳回"; }).length
   };
 }
-function backup(){ return { docs: store.docs, logs: store.logs, roster: store.roster, tasks: store.tasks, templates: store.templates }; }
+function backup(){
+  var counts = { docs: store.docs.length, logs: store.logs.length,
+    roster: store.roster.length, tasks: store.tasks.length };
+  return { app:"class-console", version:WEB_VERSION,
+    exportedAt:new Date().toISOString(), counts:counts,
+    docs: store.docs, logs: store.logs, roster: store.roster,
+    tasks: store.tasks, templates: store.templates };
+}
+function backupShapeIssue(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "文件内容不是备份对象";
+  if (data.app && data.app !== "class-console") return "不是本工作台导出的备份";
+  if (!Array.isArray(data.docs)) return "docs 应为材料列表";
+  if (!Array.isArray(data.logs)) return "logs 应为操作日志列表";
+  if (data.roster != null && !Array.isArray(data.roster)) return "roster 应为名单列表";
+  if (data.tasks != null && !Array.isArray(data.tasks)) return "tasks 应为任务列表";
+  var badDocs = data.docs.filter(function(d){ return !d || typeof d !== "object" || Array.isArray(d); }).length;
+  var badLogs = data.logs.filter(function(l){ return !l || typeof l !== "object" || Array.isArray(l); }).length;
+  if (badDocs || badLogs) return "有 " + (badDocs + badLogs) + " 条记录格式异常，为避免丢数据未导入";
+  if (data.counts && typeof data.counts === "object") {
+    var pairs = [["docs", data.docs.length], ["logs", data.logs.length],
+      ["roster", Array.isArray(data.roster) ? data.roster.length : 0],
+      ["tasks", Array.isArray(data.tasks) ? data.tasks.length : 0]];
+    for (var i = 0; i < pairs.length; i++) {
+      var key = pairs[i][0], actual = pairs[i][1], declared = data.counts[key];
+      if (declared != null && Number(declared) !== actual) {
+        return "文件记录 " + key + " 为 " + declared + " 条，实际解析 " + actual + " 条；可能选错备份或文件被改动";
+      }
+    }
+  }
+  return "";
+}
+function backupPreviewText(data) {
+  var current = stats();
+  var validDocs = data.docs.length, validLogs = data.logs.length;
+  var roster = Array.isArray(data.roster) ? data.roster.length : 0;
+  var tasks = Array.isArray(data.tasks) ? data.tasks.length : 0;
+  return "导入将覆盖本浏览器当前数据，且不可撤销。\n\n" +
+    "材料：" + current.total + " 条 → " + validDocs + " 条\n" +
+    "操作日志：" + store.logs.length + " 条 → " + validLogs + " 条\n" +
+    "名单：" + store.roster.length + " 人 → " + roster + " 人\n" +
+    "任务：" + store.tasks.length + " 项 → " + tasks + " 项\n\n" +
+    (data.exportedAt ? "备份时间：" + String(data.exportedAt).slice(0, 16).replace("T", " ") + "\n\n" : "") +
+    "确定用备份覆盖当前数据吗？";
+}
 function restore(docs, logs, roster, tasks, templates) {
   if (!Array.isArray(docs) || !Array.isArray(logs)) throw new Error("备份数据结构不正确");
-  store.docs = docs.filter(function(d){ return d && typeof d === "object"; }).map(normalizeDoc);
-  store.logs = logs.filter(function(l){ return l && typeof l === "object"; }).map(function(l,i){
-    return {id: i+1, time:clean(l.time), who:clean(l.who), role:clean(l.role),
-      act:clean(l.act), obj:clean(l.obj), src:clean(l.src) || "本机"};
-  });
-  store.roster = Array.isArray(roster) ? roster.filter(function(r){ return r && typeof r === "object"; }).map(normalizeRoster) : [];
-  store.tasks = Array.isArray(tasks) ? tasks.filter(function(t){ return t && typeof t === "object"; }).map(normalizeTask) : [];
-  if (templates && typeof templates === "object") store.templates = normalizeTemplates(templates);
-  else if (!store.templates || typeof store.templates !== "object") store.templates = {};
-  store.seq = { doc: store.docs.length, log: store.logs.length };
-  store.demo = false;
-  backfillCodes();
-  saveStore();
+  var previous = { docs:store.docs, logs:store.logs, roster:store.roster,
+    tasks:store.tasks, templates:store.templates, seq:store.seq, demo:store.demo };
+  var next = {
+    docs: docs.filter(function(d){ return d && typeof d === "object" && !Array.isArray(d); }).map(normalizeDoc),
+    logs: logs.filter(function(l){ return l && typeof l === "object" && !Array.isArray(l); }).map(function(l,i){
+      return {id: i+1, time:clean(l.time), who:clean(l.who), role:clean(l.role),
+        act:clean(l.act), obj:clean(l.obj), src:clean(l.src) || "本机"};
+    }),
+    roster: Array.isArray(roster) ? roster.filter(function(r){ return r && typeof r === "object" && !Array.isArray(r); }).map(normalizeRoster) : [],
+    tasks: Array.isArray(tasks) ? tasks.filter(function(t){ return t && typeof t === "object" && !Array.isArray(t); }).map(normalizeTask) : [],
+    templates: (templates && typeof templates === "object" && !Array.isArray(templates))
+      ? normalizeTemplates(templates)
+      : (store.templates && typeof store.templates === "object" ? store.templates : {}),
+    seq: { doc: docs.length, log: logs.length },
+    demo: false
+  };
+  try {
+    store.docs = next.docs; store.logs = next.logs; store.roster = next.roster;
+    store.tasks = next.tasks; store.templates = next.templates;
+    store.seq = next.seq; store.demo = next.demo;
+    backfillCodes();
+    saveStore();
+  } catch (e) {
+    store.docs = previous.docs; store.logs = previous.logs;
+    store.roster = previous.roster; store.tasks = previous.tasks;
+    store.templates = previous.templates; store.seq = previous.seq; store.demo = previous.demo;
+    console.warn("[backup] 恢复失败，已回到导入前状态: " + (e && e.name));
+    throw e;
+  }
+  return { persisted: !storageState.issue };
 }
 
 /* ============ 界面状态与通用反馈 ============ */
@@ -1845,6 +1978,77 @@ function confirmModal(title, message, onOk) {
     {label:"取消", cls:"btn", onClick:function(){}},
     {label:"确定", cls:"btn primary", onClick:onOk}
   ]);
+}
+function errorCopyHtml(what, impact, next, fallback) {
+  return '<div class="error-copy">' +
+    '<div class="er-row"><div class="er-k">发生了什么</div><div class="er-v">' + esc(what) + '</div></div>' +
+    '<div class="er-row"><div class="er-k">影响范围</div><div class="er-v">' + esc(impact) + '</div></div>' +
+    '<div class="er-row"><div class="er-k">下一步</div><div class="er-v">' + esc(next) + '</div></div>' +
+    '<div class="er-row er-fallback"><div class="er-k">兜底</div><div class="er-v">' + esc(fallback) + '</div></div>' +
+    '</div>';
+}
+function errorModal(title, what, impact, next, fallback, actions) {
+  showModal(title, errorCopyHtml(what, impact, next, fallback), actions || [{label:"知道了", cls:"btn"}]);
+}
+function errorState(title, what, impact, next, fallback, actionsHtml) {
+  return '<div class="error-inline"><div class="ei-t">' + esc(title) + '</div>' +
+    errorCopyHtml(what, impact, next, fallback) +
+    '<div class="empty-actions" style="justify-content:flex-start;margin-top:12px">' +
+    (actionsHtml || "") + '</div></div>';
+}
+function downloadText(text, filename, mime) {
+  var blob = new Blob([text], {type: mime || "application/json;charset=utf-8"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 200);
+}
+function renderStorageNotice() {
+  var el = document.getElementById("storageNotice");
+  if (!el) return;
+  var issue = storageState.issue;
+  if (!issue) { el.hidden = true; return; }
+  var title = "", desc = "";
+  if (issue === "quota") {
+    title = "本机存储空间已满";
+    desc = "新改动只保留在本次页面，刷新或关闭后会丢失。先导出备份，再清理本浏览器站点数据或换一个浏览器后重试。";
+  } else if (issue === "corrupt") {
+    title = "本机缓存无法读取，已保留原文";
+    desc = "当前显示的是示例数据，原缓存没有被覆盖。先下载原缓存留底，再清除损坏缓存并重载。";
+  } else {
+    title = "本机存储被浏览器禁用";
+    desc = "本次操作可以继续，但改动不会写入本机，刷新或关闭后会丢失。先导出备份，再允许本站存储后重试。";
+  }
+  document.getElementById("storageNoticeTitle").textContent = title;
+  document.getElementById("storageNoticeDesc").textContent = desc;
+  var exp = document.getElementById("storageNoticeExport");
+  var fix = document.getElementById("storageNoticeFix");
+  exp.textContent = issue === "corrupt" ? "下载原缓存" : "导出备份";
+  fix.textContent = issue === "corrupt" ? "清除并重载" : "重试写入";
+  exp.onclick = function(){
+    if (issue === "corrupt") {
+      downloadText(storageState.raw, "class-console-corrupt-cache-" +
+        (new Date().toISOString().slice(0, 10).replace(/-/g, "")) + ".txt");
+      return;
+    }
+    exportBackup();
+  };
+  fix.onclick = function(){
+    if (issue === "corrupt") {
+      confirmModal("清除损坏缓存", "将删除本浏览器里无法读取的那份缓存，并用示例数据重新开始。原缓存请先下载留底。确定继续吗？", function(){
+        try { localStorage.removeItem(STORE_KEY); } catch (e) {
+          console.warn("[storage] 清除损坏缓存失败: " + (e && e.name));
+        }
+        clearStorageIssue();
+        if (typeof location !== "undefined" && location.reload) location.reload();
+      });
+      return;
+    }
+    saveStore();
+    if (!storageState.issue) toast("本机存储已恢复，后续改动会正常保存");
+  };
+  el.hidden = false;
 }
 
 /* ============ 导航与全局刷新 ============ */
@@ -3293,7 +3497,7 @@ function submitDoc() {
 /* ============ 文件夹收集视图（目录扫描 + 变化记录） ============ */
 var watch = {
   dirHandle: null, dirName: "", baseline: {}, timer: null, scanning: false,
-  items: [], removed: [], selected: {}, failed: 0,
+  items: [], removed: [], selected: {}, failed: 0, error: "",
   fsSupported: (typeof window !== "undefined" && typeof window.showDirectoryPicker === "function")
 };
 var WATCH_TAG = {
@@ -3344,12 +3548,19 @@ async function pickDirectory() {
   try {
     var handle = await window.showDirectoryPicker({ mode: "read" });
     var perm = await handle.requestPermission({ mode: "read" });
-    if (perm !== "granted") { toast("未授予文件夹读取权限"); return; }
-    watch.dirHandle = handle; watch.dirName = handle.name; watch.selected = {}; watch.failed = 0;
+    if (perm !== "granted") {
+      watch.error = "permission";
+      renderCollect();
+      return;
+    }
+    watch.dirHandle = handle; watch.dirName = handle.name; watch.selected = {};
+    watch.failed = 0; watch.error = "";
     await scanDirectory();
   } catch (e) {
-    if (e && e.name === "AbortError") return; /* 用户取消选择 */
-    toast("选择文件夹失败：" + ((e && e.message) || e));
+    if (e && e.name === "AbortError") return; /* 用户取消选择，不是错误 */
+    console.warn("[collect] 选择文件夹失败: " + (e && e.name));
+    watch.error = (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) ? "permission" : "read";
+    renderCollect();
   }
 }
 
@@ -3377,14 +3588,21 @@ async function scanDirectory() {
     var perm = await watch.dirHandle.queryPermission({ mode: "read" });
     if (perm !== "granted") perm = await watch.dirHandle.requestPermission({ mode: "read" });
     if (perm !== "granted") {
-      toast("文件夹权限已失效，请重新选择"); stopWatch(); watch.scanning = false; renderCollect(); return;
+      watch.scanning = false; watch.error = "permission"; watch.failed = 0;
+      watch.items = []; watch.removed = []; watch.selected = {};
+      stopWatch(); renderCollect(); return;
     }
     entries = await readDirEntries(watch.dirHandle);
     watch.failed = entries.failed || 0;
+    watch.error = "";
   } catch (e) {
-    watch.scanning = false; watch.failed = 0; toast("读取文件夹失败：" + ((e && e.message) || e)); renderCollect(); return;
+    console.warn("[collect] 读取文件夹失败: " + (e && e.name));
+    watch.scanning = false; watch.failed = 0;
+    watch.error = (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) ? "permission" : "read";
+    watch.items = []; watch.removed = []; watch.selected = {};
+    renderCollect(); return;
   }
-  if (watch.failed) toast(watch.failed + " 个文件读取失败，已跳过；可重新扫描或换一个文件夹");
+  if (watch.failed) console.warn("[collect] " + watch.failed + " 个文件读取失败，已跳过");
   applyScan(entries);
   watch.scanning = false; renderCollect();
 }
@@ -3430,7 +3648,10 @@ function renderCollect() {
   if (!bodyEl) return;
 
   var last = loadWatch().updatedAt;
-  if (watch.dirName) {
+  if (watch.error) {
+    statusEl.textContent = watch.dirName ? "监视目录：" + watch.dirName + " · 读取中断" : "文件夹未授权";
+    $("cRescan").style.display = watch.dirName ? "" : "none";
+  } else if (watch.dirName) {
     statusEl.textContent = "监视目录：" + watch.dirName + (last ? " · 上次扫描 " + last : "") +
       " · 现存 " + watch.items.length + " 个文件";
     $("cRescan").style.display = "";
@@ -3441,7 +3662,8 @@ function renderCollect() {
   noteEl.textContent = (watch.fsSupported
     ? "页面打开期间按快照比对目录变化；页面关闭期间的变动，下次扫描时补录。仅登记文件名、大小与修改时间，不复制文件内容，也不读取磁盘绝对路径。"
     : "当前浏览器不支持目录后台访问，仅可一次性选择目录读取比对；如需自动监视，请使用 Chrome / Edge。") +
-    (watch.failed ? " 另有 " + watch.failed + " 个文件读取失败，已跳过。" : "");
+    (watch.failed ? " 另有 " + watch.failed + " 个文件读取失败，已跳过；重新扫描或换文件夹再试。" : "") +
+    (watch.error === "permission" ? " 读取权限已被浏览器收回。" : "");
 
   var rows = watch.items.map(function(it){
     var tag = WATCH_TAG[it.state] || ["muted", it.state];
@@ -3463,7 +3685,23 @@ function renderCollect() {
       "<td>" + esc(watchFmtMtime(it.mtime)) + "</td>" +
       '<td><span class="tag red">已删除</span></td></tr>');
   });
-  bodyEl.innerHTML = rows.length ? rows.join("")
+  bodyEl.innerHTML = watch.error
+    ? '<tr><td colspan="5" class="empty">' + (watch.error === "permission"
+      ? errorState("文件夹权限已失效",
+          "浏览器收回了对这个文件夹的读取权限，或文件夹被移动、删除。",
+          "当前列表已清空，未登记文件不能入账；台账里已有的材料不受影响。",
+          "重新选择同一个文件夹并允许读取；仍不弹授权就换 Chrome / Edge。",
+          "无法授权时改用「选择文件夹（一次性读取）」，或手动逐份提交。",
+          '<button class="btn primary" data-error-pick="1">重新授权文件夹</button>' +
+          '<button class="btn" data-error-reset="1">换一个文件夹</button>')
+      : errorState("读取文件夹时出错",
+          "浏览器在列出文件时被中断，常见原因是权限、文件占用或目录接口异常。",
+          "这次没有更新列表；之前已入账的材料、名单和日志都不受影响。",
+          "点「重新扫描」再试；连续失败就换一个文件夹。",
+          "仍读不出时改用一次性选择目录，或手动逐份提交，已登记数据不会丢。",
+          '<button class="btn primary" data-empty-rescan="1">重新扫描</button>' +
+          '<button class="btn" data-error-pick="1">换一个文件夹</button>')) + "</td></tr>"
+    : (rows.length ? rows.join("")
     : '<tr><td colspan="5" class="empty">' + (function(){
         if (!watch.dirName) return emptyState("还没有选择文件夹",
           "选择材料文件夹后，这里会列出文件，并与台账比对出新增、修改、已登记。",
@@ -3474,7 +3712,7 @@ function renderCollect() {
         return emptyState("这个文件夹里还没有可登记的文件",
           "扫描只统计文件，跳过隐藏与临时文件；换一个文件夹或重新扫描后再看。",
           emptyBtn("重新扫描", 'data-empty-rescan="1"', "ghost"));
-      })() + "</td></tr>";
+      })() + "</td></tr>");
 
   var emptyPick = bodyEl.querySelector("[data-empty-pick]");
   if (emptyPick) {
@@ -3485,6 +3723,17 @@ function renderCollect() {
   }
   var emptyRescan = bodyEl.querySelector("[data-empty-rescan]");
   if (emptyRescan) emptyRescan.onclick = function(){ scanDirectory(); };
+  var errorPick = bodyEl.querySelector("[data-error-pick]");
+  if (errorPick) errorPick.onclick = function(){
+    if (watch.fsSupported) pickDirectory();
+    else { var legacy = document.getElementById("cLegacy"); if (legacy) legacy.click(); }
+  };
+  var errorReset = bodyEl.querySelector("[data-error-reset]");
+  if (errorReset) errorReset.onclick = function(){
+    watch.dirName = ""; watch.dirHandle = null; watch.items = [];
+    watch.removed = []; watch.selected = {}; watch.failed = 0; watch.error = "";
+    stopWatch(); renderCollect();
+  };
 
   bodyEl.querySelectorAll("tr[data-rel]").forEach(function(tr){
     var rel = tr.dataset.rel;
@@ -4206,15 +4455,11 @@ function renderLogs() {
 }
 
 function exportBackup() {
-  var blob = new Blob([JSON.stringify(backup(), null, 2)], {type:"application/json;charset=utf-8"});
-  var a = document.createElement("a");
   var d = new Date();
   var stamp = d.getFullYear() + ("0"+(d.getMonth()+1)).slice(-2) + ("0"+d.getDate()).slice(-2);
-  a.href = URL.createObjectURL(blob);
-  a.download = "class-console-backup-" + stamp + ".json";
-  document.body.appendChild(a); a.click();
-  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 200);
-  toast("备份已导出");
+  downloadText(JSON.stringify(backup(), null, 2),
+    "class-console-backup-" + stamp + ".json");
+  toast(storageState.issue ? "已导出当前页面数据；存储异常期间请妥善保存" : "备份已导出");
 }
 
 function csvCell(v) {
@@ -4312,25 +4557,74 @@ function importCsv(e) {
 function importBackup(e) {
   var file = e.target.files && e.target.files[0];
   if (!file) return;
+  var input = e.target;
+  function reset(){ try { input.value = ""; } catch (err) { console.warn("[backup] 无法重置文件选择: " + err); } }
+  function reselect(){ reset(); var pick = document.getElementById("importFile"); if (pick) pick.click(); }
+  function failed(title, what, next) {
+    errorModal(title, what,
+      "当前浏览器里的材料、名单、任务和日志都没有改动。",
+      next || "重选一份本工作台导出的 JSON 备份，再确认导入。",
+      "导入前先点「导出备份」留一份当前数据；确认备份内容无误后再覆盖。",
+      [{label:"重选文件", cls:"btn primary", onClick:reselect},
+       {label:"导出当前数据", cls:"btn", onClick:exportBackup},
+       {label:"取消", cls:"btn"}]);
+  }
+  if (file.size > 30 * 1024 * 1024) {
+    failed("备份文件过大", "这个文件超过 30 MB，浏览器没有读取；可能是选错了文件。",
+      "确认文件是本工作台导出的 JSON 备份，再重新选择。");
+    reset();
+    return;
+  }
   var reader = new FileReader();
+  reader.onerror = function(){
+    reset();
+    failed("备份文件没有读出来", "浏览器在读取时被中断，常见原因是文件被占用、移动或没有读取权限。",
+      "把备份文件拷到桌面后重新选择；仍失败就换一个浏览器。");
+  };
   reader.onload = function(){
+    reset();
     var data;
     try { data = JSON.parse(reader.result); }
-    catch (err) { toast("导入失败：不是有效的 JSON 文件"); return; }
-    if (!data || typeof data !== "object" || !Array.isArray(data.docs) || !Array.isArray(data.logs)) {
-      toast("导入失败：备份结构不正确，docs / logs 应为列表"); return;
+    catch (err) {
+      console.warn("[backup] JSON 解析失败: " + (err && err.name));
+      failed("备份文件不是有效 JSON", "文件内容不是完整的 JSON，可能下载中断、被编辑器改坏，或选错了文件。",
+        "重新下载或换一份备份；不要手工改扩展名。");
+      return;
     }
-    confirmModal("导入确认", "导入将覆盖本浏览器当前全部材料与操作日志，且不可撤销。确定继续导入吗？", function(){
-      try { restore(data.docs, data.logs, data.roster, data.tasks, data.templates); }
-      catch (err) { toast("导入失败：" + err.message); return; }
-      state.selected = {}; state.selectedId = null;
-      state.tplDirty = true;
-      closeDrawer();
-      refreshAll(); toast("备份数据已导入");
-    });
+    var shape = backupShapeIssue(data);
+    if (shape) {
+      failed("备份内容与预期不一致", shape + "。", "换一份备份，或先核对文件里的条数与当前数据。");
+      return;
+    }
+    var body = '<div style="white-space:pre-wrap;font-size:13px;line-height:1.75">' +
+      esc(backupPreviewText(data)) + "</div>";
+    showModal("导入预览", body, [
+      {label:"取消", cls:"btn"},
+      {label:"导出当前数据", cls:"btn", onClick:exportBackup},
+      {label:"覆盖并导入", cls:"btn danger", onClick:function(){
+        try {
+          var result = restore(data.docs, data.logs, data.roster, data.tasks, data.templates);
+          state.selected = {}; state.selectedId = null;
+          state.tplDirty = true;
+          closeDrawer();
+          refreshAll();
+          toast(result && result.persisted === false
+            ? "备份已导入本次页面，但写入本机失败；请立即导出备份"
+            : "备份数据已导入");
+        } catch (err) {
+          console.warn("[backup] 导入失败: " + (err && err.name));
+          errorModal("导入没有完成", "恢复过程中出现错误，已回到导入前的数据。",
+            "当前浏览器的材料、名单和任务仍是导入前的内容。",
+            "重新选择备份再试；连续失败就换一个浏览器。",
+            "导入前的数据仍在当前页面，可先导出备份再排查。",
+            [{label:"重选文件", cls:"btn primary", onClick:reselect},
+             {label:"导出当前数据", cls:"btn", onClick:exportBackup},
+             {label:"关闭", cls:"btn"}]);
+        }
+      }}
+    ]);
   };
   reader.readAsText(file, "utf-8");
-  e.target.value = "";
 }
 
 /* ============ 初始化 ============ */
@@ -4693,7 +4987,7 @@ var aiState = {
   apiKey:"", apiModel:"deepseek-flash", apiBase:"https://api.deepseek.com",
   includeDocs:true, includeRoster:true, includeTasks:true, taskNote:"",
   messages:[], engine:null, loading:false, busy:false, stopFlag:false,
-  controller:null, lastError:""
+  controller:null, lastError:"", lastPrompt:""
 };
 
 function aiLoadPrefs(){
@@ -4771,6 +5065,71 @@ function aiSetBusy(on){
 function aiFmt(text){
   return esc(text).replace(/\n/g, "<br>");
 }
+function aiErrorInfo(e) {
+  var msg = clean(e && e.message) || "未知错误";
+  var status = e && e.status;
+  if (!status) {
+    var m = msg.match(/接口返回\s*(\d{3})/);
+    if (m) status = Number(m[1]);
+  }
+  var what, next, fix = "key";
+  if (/请先填写 API Key/.test(msg)) {
+    what = "API 模式还没有填 Key，请求没有发出。";
+    next = "在右侧填 Key 后重发；只处理当前问题，不影响台账。";
+    fix = "key";
+  } else if (status === 401 || status === 403) {
+    what = "API Key 无效，或这个 Key 没有调用当前模型的权限。";
+    next = "核对 Key 和模型名称；也可以先切到本地模型，或直接关掉 AI 继续用台账。";
+  } else if (status === 404) {
+    what = "接口地址或模型名称不对，服务端没有找到对应入口。";
+    next = "核对接口地址是否以 /chat/completions 结尾，以及模型名是否在服务商列表里。";
+  } else if (status === 429) {
+    what = "请求太频繁，或当前账号的调用额度已经用尽。";
+    next = "等几分钟再试，或换一个 Key；本次没有改动任何数据。";
+  } else if (status && status >= 500) {
+    what = "AI 服务端暂时不可用，返回了 " + status + "。";
+    next = "稍后重试或切到本地模型；台账、名单、任务都不受影响。";
+  } else if (status && status >= 400) {
+    what = "接口拒绝了这次请求（" + status + "），常见原因是模型名或参数不匹配。";
+    next = "核对模型名与接口地址，或切到本地模型再试。";
+  } else if (/WebGPU|GPU 适配器|显卡驱动/i.test(msg)) {
+    what = "当前浏览器没有可用的 WebGPU，本地模型加载不了。";
+    next = "换 Chrome / Edge 并确认显卡驱动正常，或切到 API 模式。";
+    fix = "local";
+  } else if (/CORS|跨域|请求发不出去|Failed to fetch|NetworkError|网络/i.test(msg)) {
+    what = "请求没有到达 AI 接口，常见是断网或接口不允许浏览器跨域。";
+    next = "先检查网络；接口侧加 CORS 或改用本地模型 / 自建代理。";
+  } else if (/加载模型|模型加载|模型正在加载/i.test(msg)) {
+    what = "本地模型没有加载成功，可能是首次下载中断或显存不足。";
+    next = "保持页面打开重试；仍失败就换较小的模型或切到 API 模式。";
+    fix = "local";
+  } else if (/没有返回内容/.test(msg)) {
+    what = "模型这次没有返回内容，请求本身已经结束。";
+    next = "换个问法或重试；不影响已保存的材料和任务。";
+  } else {
+    what = "AI 生成中途失败，原始回包已隐藏（可能含请求信息）。";
+    next = "重试一次；仍失败就切到本地模型，或关掉 AI 继续用台账。";
+  }
+  return {
+    what: what,
+    impact: "这段对话没有完成；台账、名单、任务和本机已保存的数据都没有改动。",
+    next: next,
+    fallback: "AI 只是辅助。关掉它仍可提交、归档、催交和导出备份。",
+    fix: fix
+  };
+}
+function aiErrorHtml(info, canRetry) {
+  return '<div class="ai-error"><div class="ae-h">这次没有生成</div>' +
+    '<div><b>发生了什么：</b>' + esc(info.what) + '</div>' +
+    '<div class="ae-r"><b>影响范围：</b>' + esc(info.impact) + '</div>' +
+    '<div class="ae-r"><b>下一步：</b>' + esc(info.next) + '</div>' +
+    '<div class="ae-r"><b>兜底：</b>' + esc(info.fallback) + '</div>' +
+    '<div class="ae-btns">' +
+      (canRetry ? '<button class="btn primary" data-ai-retry="1">重试</button>' : "") +
+      '<button class="btn" data-ai-fix="' + esc(info.fix) + '">' +
+        (info.fix === "key" ? "去填 Key" : "切到本地模型") + '</button>' +
+    '</div></div>';
+}
 function aiChatHtml(){
   if (!aiState.messages.length) {
     var action;
@@ -4791,6 +5150,10 @@ function aiChatHtml(){
   }
   return aiState.messages.map(function(m, i){
     var who = m.role === "user" ? "你" : "助手";
+    if (m.role === "assistant" && m.error) {
+      return '<div class="ai-msg"><div class="who">' + who + '</div><div class="bubble">' +
+        aiErrorHtml(m.error, i === aiState.messages.length - 1) + '</div></div>';
+    }
     var copy = m.role === "assistant" ? '<button class="copy" data-copy="' + i + '">复制</button>' : "";
     return '<div class="ai-msg ' + (m.role === "user" ? "user" : "") + '">' +
       '<div class="who">' + who + '</div><div class="bubble">' + aiFmt(m.content || "…") + '</div>' + copy + '</div>';
@@ -4804,6 +5167,29 @@ function aiRenderChat(){
   var box = document.getElementById("aiChat");
   if (!box) return;
   box.innerHTML = aiChatHtml();
+  box.querySelectorAll("[data-ai-retry]").forEach(function(b){
+    b.onclick = function(){
+      var inputEl = document.getElementById("aiInput");
+      if (!inputEl || !aiState.lastPrompt) { toast("没有可重试的问题"); return; }
+      if (aiState.messages.length && aiState.messages[aiState.messages.length - 1].error) {
+        aiState.messages.pop();
+      }
+      inputEl.value = aiState.lastPrompt;
+      aiSend();
+    };
+  });
+  box.querySelectorAll("[data-ai-fix]").forEach(function(b){
+    b.onclick = function(){
+      var kind = b.dataset.aiFix;
+      if (kind === "local") {
+        aiProvider("local");
+        toast("已切到本地模型；首次使用需要先加载模型");
+      } else {
+        var keyEl = document.getElementById("aiKey");
+        if (keyEl) { keyEl.focus(); aiSetStatus("API 模式要先填 Key，再重试。", "err"); }
+      }
+    };
+  });
   box.querySelectorAll("[data-copy]").forEach(function(b){
     b.onclick = function(){
       var idx = Number(b.dataset.copy);
@@ -4982,8 +5368,9 @@ function aiEnsureLocal(){
     return engine;
   }).catch(function(e){
     aiState.loading = false;
-    aiSetStatus("本地模型加载失败：" + (e && e.message ? e.message : e), "err");
-    throw e;
+    var info = aiErrorInfo(e);
+    aiSetStatus("本地模型加载失败：" + info.what, "err");
+    throw new Error(info.what);
   });
 }
 function aiLoadModel(){
@@ -5012,7 +5399,11 @@ function aiApiEndpoint(){
   return base + "/chat/completions";
 }
 function aiApiChat(messages, onDelta){
-  if (!clean(aiState.apiKey)) return Promise.reject(new Error("请先填写 API Key"));
+  if (!clean(aiState.apiKey)) {
+    var keyErr = new Error("请先填写 API Key");
+    keyErr.status = 401;
+    return Promise.reject(keyErr);
+  }
   var controller = new AbortController();
   aiState.controller = controller;
   return fetch(aiApiEndpoint(), {
@@ -5026,11 +5417,10 @@ function aiApiChat(messages, onDelta){
     signal:controller.signal
   }).then(function(resp){
     if (!resp.ok) {
-      return resp.text().then(function(t){
-        var msg = t;
-        try { var j = JSON.parse(t); msg = (j.error && (j.error.message || j.error.code)) || t; } catch(e){}
-        throw new Error("接口返回 " + resp.status + "：" + clean(msg).slice(0, 300));
-      });
+      /* 不回显接口原始回包：可能含请求参数、组织信息或 Key 痕迹 */
+      var httpErr = new Error("接口返回 " + resp.status);
+      httpErr.status = resp.status;
+      throw httpErr;
     }
     var ct = (resp.headers.get("content-type") || "").toLowerCase();
     if (ct.indexOf("text/event-stream") < 0) {
@@ -5069,8 +5459,8 @@ function aiApiChat(messages, onDelta){
     })();
   }).catch(function(e){
     if (e && e.name === "AbortError") return;
-    if (e && e instanceof TypeError) {
-      throw new Error("请求发不出去：可能是接口未允许浏览器跨域（CORS）。请在接口侧加 CORS，或改用本地模型 / 自建代理。" + (e.message ? "（" + e.message + "）" : ""));
+    if (e && e.name === "TypeError") {
+      throw new Error("请求发不出去：可能是断网，或接口未允许浏览器跨域（CORS）。请在接口侧加 CORS，或改用本地模型 / 自建代理。");
     }
     throw e;
   }).finally(function(){ aiState.controller = null; });
@@ -5101,6 +5491,7 @@ function aiSend(){
   }
   aiSavePrefs();
   input.value = "";
+  aiState.lastPrompt = text;
   aiAppend("user", text);
   var assistant = aiAppend("assistant", "");
   aiSetBusy(true);
@@ -5124,12 +5515,13 @@ function aiSend(){
     try { addLog("AI 生成建议", text.slice(0, 40), roleLabel(), aiState.provider === "local" ? "本地模型" : "API"); } catch(e){}
     aiSavePrefs();
   }).catch(function(e){
-    var msg = e && e.message ? e.message : String(e);
-    aiState.lastError = msg;
-    assistant.content = "生成失败：" + msg;
-    aiUpdateLast();
+    var info = aiErrorInfo(e);
+    aiState.lastError = info.what;
+    assistant.content = "";
+    assistant.error = info;
+    aiRenderChat();
     aiSetBusy(false);
-    aiSetStatus("生成失败：" + msg, "err");
+    aiSetStatus("生成失败：" + info.what, "err");
   });
 }
 function aiShowContext(){

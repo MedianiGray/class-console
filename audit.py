@@ -377,11 +377,17 @@ def backup_preview(data, repo) -> dict:
     """导入前的覆盖预览：只算数量与风险，不改库。"""
     if not isinstance(data, dict):
         return {"ok": False, "text": "备份文件结构不正确，缺少 docs / logs 数据段。"}
+    if data.get("app") and data.get("app") != "class-console":
+        return {"ok": False, "text": "这不是本工作台导出的备份，已拒绝导入。"}
     docs, logs = data.get("docs"), data.get("logs")
     if not isinstance(docs, list) or not isinstance(logs, list):
         return {"ok": False, "text": "备份文件结构不正确，docs / logs 应为列表。"}
     valid_docs = [d for d in docs if isinstance(d, dict)]
     valid_logs = [l for l in logs if isinstance(l, dict)]
+    if len(valid_docs) != len(docs) or len(valid_logs) != len(logs):
+        return {"ok": False,
+                "text": "有 %d 条记录格式异常，为避免丢数据未导入。"
+                        % (len(docs) - len(valid_docs) + len(logs) - len(valid_logs))}
     attachments = data.get("attachments") if isinstance(
         data.get("attachments"), list) else []
     roster = data.get("roster") if isinstance(data.get("roster"), list) else []
@@ -392,6 +398,28 @@ def backup_preview(data, repo) -> dict:
         data.get("exemptions"), list) else []
     followups = data.get("followups") if isinstance(
         data.get("followups"), list) else []
+    counts = data.get("counts")
+    if counts is not None:
+        if not isinstance(counts, dict):
+            return {"ok": False, "text": "备份声明的 counts 元数据格式不正确，已拒绝导入。"}
+        actual = {"docs": len(valid_docs), "logs": len(valid_logs),
+                  "roster": len(roster), "tasks": len(tasks),
+                  "attachments": len(attachments),
+                  "templates": len(templates),
+                  "exemptions": len(exemptions),
+                  "followups": len(followups)}
+        for key, now in actual.items():
+            if key not in counts:
+                continue
+            try:
+                declared = int(counts.get(key))
+            except (TypeError, ValueError):
+                return {"ok": False,
+                        "text": "备份声明的 %s 条数不是整数，已拒绝导入。" % key}
+            if declared != now:
+                return {"ok": False,
+                        "text": "备份条数对不上：%s 声明 %d 条，实际 %d 条；"
+                                "为避免丢数据未导入。" % (key, declared, now)}
     current = repo.stats()
     current_logs = len(repo.list_logs())
     codes = [str(d.get("code") or "").strip() for d in valid_docs]

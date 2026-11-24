@@ -22,6 +22,7 @@ BAD_CHARS = re.compile(r'[\\/:*?"<>|\r\n\t]')
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 INDEX_NAME = "_归档索引.csv"
 RULE_KEY = "archive_rule"
+LAST_INDEX_ERROR = ""
 
 DEFAULT_RULE = {
     "dir_template": "{category}/{student}",
@@ -263,31 +264,51 @@ def target_for(doc, base=None, rules=None):
     return folder_for(doc, base, rules) / file_name(doc, os.path.splitext(src)[1], rules)
 
 
+def _io_hint(e):
+    """把系统异常收敛成可读原因，不带用户名、盘符或完整路径。"""
+    code = getattr(e, "errno", None)
+    if isinstance(e, PermissionError) or code == 13:
+        return "权限被拒绝"
+    if code == 28:
+        return "磁盘空间不足"
+    if code == 2:
+        return "目标路径不存在"
+    if code == 3:
+        return "路径过长"
+    if isinstance(e, shutil.Error):
+        return "文件复制失败"
+    return "系统拒绝写入（%s）" % type(e).__name__
+
+
 def place(doc, base=None, copy_files=None):
     """把一条材料归位：建目录 + 复制文件（同名同大小视为已归位）。
 
-    返回 dict：dir / path / copied / note
+    返回 dict：ok / dir / path / copied / note；ok=False 时调用方必须提示。
     """
     do_copy = auto_copy() if copy_files is None else bool(copy_files)
     try:
         pdir = folder_for(doc, base)
         pdir.mkdir(parents=True, exist_ok=True)
     except (OSError, ValueError) as e:
-        return {"dir": "", "path": "", "copied": False, "note": "建目录失败：%s" % e}
+        return {"ok": False, "dir": "", "path": "", "copied": False,
+                "note": "建目录失败：%s" % _io_hint(e)}
     try:
         tgt = target_for(doc, base)
     except ValueError as e:
-        return {"dir": str(pdir), "path": "", "copied": False, "note": str(e)}
+        return {"ok": False, "dir": str(pdir), "path": "", "copied": False,
+                "note": str(e)}
     if not tgt:
-        return {"dir": str(pdir), "path": "", "copied": False, "note": "无本地文件，仅建目录"}
+        return {"ok": True, "dir": str(pdir), "path": "", "copied": False,
+                "note": "无本地文件，仅建目录"}
     if not do_copy:
-        return {"dir": str(pdir), "path": str(tgt), "copied": False, "note": "已关闭自动复制"}
+        return {"ok": True, "dir": str(pdir), "path": str(tgt), "copied": False,
+                "note": "已关闭自动复制"}
     src = source_file(doc)
     try:
         if os.path.exists(tgt):
             if os.path.getsize(tgt) == os.path.getsize(src):
-                return {"dir": str(pdir), "path": str(tgt), "copied": False,
-                        "note": "已存在，跳过"}
+                return {"ok": True, "dir": str(pdir), "path": str(tgt),
+                        "copied": False, "note": "已存在，跳过"}
             # 同名不同内容：递进编号，绝不覆盖已有归档文件
             stem, ext = os.path.splitext(str(tgt))
             n = 2
@@ -299,12 +320,16 @@ def place(doc, base=None, copy_files=None):
                 n += 1
         shutil.copy2(src, tgt)
     except (OSError, shutil.Error) as e:
-        return {"dir": str(pdir), "path": "", "copied": False, "note": "复制失败：%s" % e}
-    return {"dir": str(pdir), "path": str(tgt), "copied": True, "note": "已复制"}
+        return {"ok": False, "dir": str(pdir), "path": "", "copied": False,
+                "note": "复制失败：%s" % _io_hint(e)}
+    return {"ok": True, "dir": str(pdir), "path": str(tgt), "copied": True,
+            "note": "已复制"}
 
 
 def write_index(docs, base=None):
     """在归档根写一份台账对照表，方便脱离软件也能按文件找材料。"""
+    global LAST_INDEX_ERROR
+    LAST_INDEX_ERROR = ""
     base = Path(base) if base else root()
     try:
         base.mkdir(parents=True, exist_ok=True)
@@ -317,7 +342,8 @@ def write_index(docs, base=None):
                             d.get("sid", ""), d.get("who", ""), d.get("status", ""),
                             d.get("path") or d.get("file") or "", d.get("arch") or ""])
         return str(base / INDEX_NAME)
-    except OSError:
+    except OSError as e:
+        LAST_INDEX_ERROR = _io_hint(e)
         return ""
 
 

@@ -127,8 +127,10 @@ def read_handover(path):
             return data
     except zipfile.BadZipFile:
         raise ValueError("不是有效的交接包 ZIP 文件")
-    except OSError as e:
-        raise ValueError("交接包无法读取：%s" % e)
+    except OSError:
+        raise ValueError("交接包无法读取（文件被占用或没有读取权限）")
+    except (UnicodeError, json.JSONDecodeError):
+        raise ValueError("交接包里的数据备份不是有效的 UTF-8 JSON")
 
 
 def handover_summary(data):

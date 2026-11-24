@@ -16,9 +16,14 @@ import json
 import sqlite3
 import datetime
 import uuid
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from seed import SEED_DOCS, SEED_LOGS, SEED_ROSTER, SEED_TASKS
+from version import VERSION
+
+LAST_STARTUP_ISSUE = None
 
 # 预留开关：local = 本地 SQLite；remote = 未来对接远程服务（待实现）
 DATA_BACKEND = "local"
@@ -224,86 +229,88 @@ class LocalRepository:
 
     def _init_db(self):
         conn = self._conn()
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS docs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT, cat TEXT, who TEXT, sid TEXT, note TEXT,
-                file TEXT, path TEXT, code TEXT, time TEXT,
-                status TEXT, scope TEXT, reason TEXT
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                time TEXT, who TEXT, role TEXT, act TEXT, obj TEXT, src TEXT
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS roster (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sid TEXT, who TEXT
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT, cat TEXT, scope TEXT, deadline TEXT,
-                note TEXT, done INTEGER
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS attachments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id INTEGER, name TEXT, path TEXT, kind TEXT, time TEXT
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS template_fields (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                form_type TEXT, key TEXT, label TEXT, type TEXT,
-                required INTEGER, options TEXT,
-                UNIQUE(form_type, key)
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS doc_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                doc_id INTEGER, time TEXT, act TEXT,
-                who TEXT, role TEXT, detail TEXT
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS exemptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sid TEXT, who TEXT, cat TEXT, kind TEXT,
-                reason TEXT, until TEXT, time TEXT, actor TEXT, role TEXT,
-                UNIQUE(sid, cat)
-            )""")
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS followups (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sid TEXT, who TEXT, cat TEXT, act TEXT, channel TEXT,
-                msg TEXT, time TEXT, response TEXT, note TEXT, actor TEXT
-            )""")
-        # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
-        cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
-        for miss in ("reason", "code", "path", "form_type", "extra", "arch"):
-            if miss not in cols:
-                c.execute("ALTER TABLE docs ADD COLUMN %s TEXT" % miss)
-        conn.commit()
-        if c.execute("SELECT COUNT(*) AS n FROM docs").fetchone()["n"] == 0:
-            for row in SEED_DOCS:
-                c.execute("""INSERT INTO docs
-                    (name,cat,who,sid,note,file,time,status,scope)
-                    VALUES (?,?,?,?,?,?,?,?,?)""", row)
-        if c.execute("SELECT COUNT(*) AS n FROM logs").fetchone()["n"] == 0:
-            for row in SEED_LOGS:
-                c.execute("""INSERT INTO logs
-                    (time,who,role,act,obj,src) VALUES (?,?,?,?,?,?)""", row)
-        if c.execute("SELECT COUNT(*) AS n FROM roster").fetchone()["n"] == 0:
-            for sid, who in SEED_ROSTER:
-                c.execute("INSERT INTO roster (sid, who) VALUES (?,?)", (sid, who))
-        if c.execute("SELECT COUNT(*) AS n FROM tasks").fetchone()["n"] == 0:
-            for title, cat, scope, note, done, offset in SEED_TASKS:
-                c.execute("""INSERT INTO tasks
-                    (title,cat,scope,deadline,note,done) VALUES (?,?,?,?,?,?)""",
-                    (title, cat, scope, _deadline(offset), note, done))
-        conn.commit()
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS docs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT, cat TEXT, who TEXT, sid TEXT, note TEXT,
+                    file TEXT, path TEXT, code TEXT, time TEXT,
+                    status TEXT, scope TEXT, reason TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    time TEXT, who TEXT, role TEXT, act TEXT, obj TEXT, src TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS roster (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sid TEXT, who TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT, cat TEXT, scope TEXT, deadline TEXT,
+                    note TEXT, done INTEGER
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS attachments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    doc_id INTEGER, name TEXT, path TEXT, kind TEXT, time TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS template_fields (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    form_type TEXT, key TEXT, label TEXT, type TEXT,
+                    required INTEGER, options TEXT,
+                    UNIQUE(form_type, key)
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS doc_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    doc_id INTEGER, time TEXT, act TEXT,
+                    who TEXT, role TEXT, detail TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS exemptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sid TEXT, who TEXT, cat TEXT, kind TEXT,
+                    reason TEXT, until TEXT, time TEXT, actor TEXT, role TEXT,
+                    UNIQUE(sid, cat)
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS followups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sid TEXT, who TEXT, cat TEXT, act TEXT, channel TEXT,
+                    msg TEXT, time TEXT, response TEXT, note TEXT, actor TEXT
+                )""")
+            # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
+            cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
+            for miss in ("reason", "code", "path", "form_type", "extra", "arch"):
+                if miss not in cols:
+                    c.execute("ALTER TABLE docs ADD COLUMN %s TEXT" % miss)
+            conn.commit()
+            if c.execute("SELECT COUNT(*) AS n FROM docs").fetchone()["n"] == 0:
+                for row in SEED_DOCS:
+                    c.execute("""INSERT INTO docs
+                        (name,cat,who,sid,note,file,time,status,scope)
+                        VALUES (?,?,?,?,?,?,?,?,?)""", row)
+            if c.execute("SELECT COUNT(*) AS n FROM logs").fetchone()["n"] == 0:
+                for row in SEED_LOGS:
+                    c.execute("""INSERT INTO logs
+                        (time,who,role,act,obj,src) VALUES (?,?,?,?,?,?)""", row)
+            if c.execute("SELECT COUNT(*) AS n FROM roster").fetchone()["n"] == 0:
+                for sid, who in SEED_ROSTER:
+                    c.execute("INSERT INTO roster (sid, who) VALUES (?,?)", (sid, who))
+            if c.execute("SELECT COUNT(*) AS n FROM tasks").fetchone()["n"] == 0:
+                for title, cat, scope, note, done, offset in SEED_TASKS:
+                    c.execute("""INSERT INTO tasks
+                        (title,cat,scope,deadline,note,done) VALUES (?,?,?,?,?,?)""",
+                        (title, cat, scope, _deadline(offset), note, done))
+            conn.commit()
+        finally:
+            conn.close()
 
     # ---------- 模板附加字段 ----------
     def template_custom(self, form_type: str) -> list:
@@ -1188,7 +1195,14 @@ class LocalRepository:
         templates = []
         for ft in FORM_TYPES:
             templates.extend(self.template_custom(ft))
-        return {"docs": docs, "logs": self.list_logs(),
+        return {"app": "class-console", "version": VERSION,
+                "exportedAt": datetime.datetime.now().isoformat(timespec="seconds"),
+                "counts": {"docs": len(docs), "logs": len(self.list_logs()),
+                           "roster": len(self.list_roster()),
+                           "tasks": len(self.list_tasks()),
+                           "attachments": len(atts),
+                           "templates": len(templates)},
+                "docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
                 "attachments": atts, "templates": templates,
                 "events": self.list_all_events(),
@@ -1336,14 +1350,28 @@ def build_repository():
     若库文件损坏导致初始化失败，先把损坏文件隔离改名，再重建空库，
     避免程序因旧库损坏而无法启动；隔离文件保留在本机便于排查。
     """
+    global LAST_STARTUP_ISSUE
+    LAST_STARTUP_ISSUE = None
     db_path = app_data_dir() / "console.db"
     try:
         return LocalRepository(db_path)
-    except Exception:
+    except Exception as e:
+        isolated = ""
         try:
             if db_path.exists():
                 stamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                db_path.rename(db_path.with_name("console.corrupt-%s.db" % stamp))
-        except Exception:
-            pass
+                target = db_path.with_name("console.corrupt-%s.db" % stamp)
+                db_path.rename(target)
+                isolated = target.name
+        except Exception as rename_error:
+            print("隔离损坏数据库失败：%s" % type(rename_error).__name__,
+                  file=sys.stderr)
+        impact = ("程序已把原库改名为 %s 并新建空库；原数据没有被删除。"
+                  % isolated) if isolated else \
+                 "程序未能改名隔离；原库仍原样保留，没有被删除。"
+        LAST_STARTUP_ISSUE = SimpleNamespace(
+            what="启动时发现本机数据库损坏或无法打开（%s）。" % type(e).__name__,
+            impact=impact,
+            next_step="先到数据目录复制隔离文件留底，再从备份恢复或重新导入。",
+            fallback="当前空库可以继续用；不要直接覆盖隔离文件。")
         return LocalRepository(db_path)
