@@ -2,24 +2,25 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-const PROFILE = 'C:\\Users\\35342\\AppData\\Local\\Temp\\cc-v024-edge';
+const PORT = Number(process.env.PORT || 9225);
+const PROFILE = `C:\\Users\\35342\\AppData\\Local\\Temp\\cc-v024-edge-${PORT}`;
 const OUT = process.env.OUT || 'C:\\Users\\35342\\Doubao\\chats\\2026-11-14\\new-chat\\v024-Bento借鉴版.png';
-const URL = 'http://127.0.0.1:8781/lab/v024/';
+const PAGE_URL = process.env.URL || 'http://127.0.0.1:8781/lab/v024/';
 const WIDTH = Number(process.env.WIDTH || 1440);
 const HEIGHT = Number(process.env.HEIGHT || 1000);
 rmSync(PROFILE, { recursive: true, force: true });
 mkdirSync(PROFILE, { recursive: true });
 const proc = spawn(EDGE, [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-  '--remote-debugging-port=9225', `--user-data-dir=${PROFILE}`,
-  `--window-size=${WIDTH},${HEIGHT}`, URL,
+  `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
+  `--window-size=${WIDTH},${HEIGHT}`, PAGE_URL,
 ], { stdio: 'ignore' });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let wsUrl;
 for (let i = 0; i < 60; i++) {
   try {
-    const list = await (await fetch('http://127.0.0.1:9225/json/list')).json();
+    const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
     const page = list.find((x) => x.type === 'page');
     if (page) { wsUrl = page.webSocketDebuggerUrl; break; }
   } catch {}
@@ -50,7 +51,12 @@ const evalJS = async (expression) => {
 await send('Runtime.enable');
 await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1, mobile: false });
-await sleep(2500);
+await sleep(1000);
+for (let i = 0; i < 30; i++) {
+  const ready = await evalJS(`document.readyState`);
+  if (ready === 'complete' && await evalJS(`!!document.querySelector('button[data-theme-mode="light"]')`)) break;
+  await sleep(500);
+}
 if (process.env.LIGHT) {
   await evalJS(`document.querySelector('button[data-theme-mode="light"]').click(); true`);
   await sleep(400);
@@ -85,8 +91,30 @@ console.log('DOCS', docs);
 await evalJS(`document.querySelector('.nav button[data-key="dashboard"]').click(); true`);
 await sleep(600);
 
+// 申请人视角：常用入口必须按权限收窄，不能露出名单/任务/文件夹收集
+await evalJS(`
+  document.getElementById('applicantSid').value='250201';
+  document.getElementById('applicantSid').oninput();
+  var sel=document.getElementById('roleSelect'); sel.value='applicant'; sel.onchange();
+  true`);
+await sleep(700);
+const applicant = await evalJS(`JSON.stringify({
+  role:document.getElementById('roleSelect').value,
+  entries:Array.from(document.querySelectorAll('#view-dashboard .b-entry a')).map(a=>a.textContent.replace('→','').trim()),
+  collect:!!document.querySelector('#view-dashboard .b-entry a[data-go="collect"]')
+})`);
+console.log('APPLICANT', applicant);
+await evalJS(`var sel=document.getElementById('roleSelect'); sel.value='handler'; sel.onchange(); true`);
+await sleep(700);
+
 const swReady = await evalJS(`Promise.race([navigator.serviceWorker.ready.then(()=>true), new Promise(r=>setTimeout(()=>r(false),3000))])`);
 console.log('SW_READY', swReady);
+const controlled = await evalJS(`!!navigator.serviceWorker.controller`);
+console.log('SW_CONTROLLED', controlled);
+if (!controlled) {
+  await send('Page.reload');
+  await sleep(1800);
+}
 
 const metrics = await send('Page.getLayoutMetrics');
 const height = Math.max(HEIGHT, Math.min(3200, Math.ceil(metrics.result.cssContentSize?.height || HEIGHT)));
@@ -101,9 +129,29 @@ console.log('SHOT', OUT, 'height=' + height);
 await send('Network.enable');
 await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
 await send('Page.reload', { ignoreCache: true });
-await sleep(2500);
-const offline = await evalJS(`JSON.stringify({title:document.title, bento:!!document.querySelector('#view-dashboard .bento'), current:document.querySelector('.nav button.active')?.textContent.trim()})`);
+let offlineReady = false;
+for (let i = 0; i < 24; i++) {
+  try {
+    const ok = await evalJS(`document.readyState === 'complete' && !!document.querySelector('#view-dashboard')`);
+    if (ok) { offlineReady = true; break; }
+  } catch {}
+  await sleep(500);
+}
+console.log('OFFLINE_READY', offlineReady);
+const offline = await evalJS(`JSON.stringify({
+  title:document.title,
+  bento:!!document.querySelector('#view-dashboard .bento'),
+  current:document.querySelector('.nav button.active')?.textContent.trim(),
+  ready:document.readyState,
+  firstRun:!!document.querySelector('.first-run'),
+  counts:Array.from(document.querySelectorAll('#view-dashboard .kpi .num')).map(x=>x.textContent),
+  cards:document.querySelectorAll('#view-dashboard .b-card').length,
+  dash:document.querySelector('#view-dashboard')?.innerHTML.length,
+  store:(localStorage.getItem('classconsole_web_v1')||'').length
+})`);
 console.log('OFFLINE', offline);
+const offShot = await send('Page.captureScreenshot', { format: 'png' });
+writeFileSync(OUT.replace(/\.png$/i, '-offline.png'), Buffer.from(offShot.result.data, 'base64'));
 await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 console.log('CONSOLE', logs.join('\n'));
 proc.kill();

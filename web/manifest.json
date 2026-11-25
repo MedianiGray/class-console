@@ -1,0 +1,15 @@
+{
+  "name": "班级材料操作台 · 浏览器本地版",
+  "short_name": "班级操作台",
+  "description": "班级材料提交、审核、归档与留痕；数据只在本机浏览器。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F1F4F9",
+  "theme_color": "#4F63EE",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -3,7 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>班级材料操作台 · 浏览器本地版 v0.23.0</title>
+<meta name="theme-color" content="#4F63EE">
+<meta name="description" content="班级材料提交、审核、归档与留痕；数据只在本机浏览器。">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>班级材料操作台 · 浏览器本地版 v0.24.0</title>
 <style>
   :root{
     color-scheme:light;
@@ -317,6 +322,52 @@
   .cat-row .fill{position:absolute;left:0;top:0;bottom:0;background:var(--primary);border-radius:6px}
   .cat-row .cnt{width:26px;text-align:right;font-size:13px;color:var(--muted)}
   .panel + .panel{margin-top:14px}
+
+  /* v0.24：Bento 首屏 */
+  .bento{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;align-items:stretch}
+  .b-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px;min-width:0;display:flex;flex-direction:column}
+  .b-card h3{font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .b-card > .card,.b-card > .panel{border:0;border-radius:0;background:transparent;padding:0;margin:0}
+  .b-card > .card > h3,.b-card > .panel > h3{margin-bottom:12px}
+  .b-hero{grid-column:span 8;justify-content:center}
+  .b-kpis{grid-column:span 4;padding:16px 0 0}
+  .b-kpis h3{padding:0 18px}
+  .b-queue{grid-column:span 8}
+  .b-side{grid-column:span 4}
+  .b-cat{grid-column:span 4}
+  .b-entry{grid-column:span 4}
+  .b-local{grid-column:span 4}
+  .b-span-12{grid-column:span 12}
+  .b-hero .action-bar{margin:0}
+  .b-hero .aux-line{margin:12px 0 0}
+  .b-hero-note{font-size:12px;color:var(--sub);line-height:1.55;margin-top:10px}
+  .b-queue .panel,.b-side .panel{padding:0}
+  .b-queue-foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11.5px;color:var(--sub)}
+  .b-queue-flow{display:flex;align-items:center;gap:6px}
+  .b-queue-flow span{color:var(--muted)}
+  .b-queue-foot a{color:var(--primary);text-decoration:none;cursor:pointer;white-space:nowrap}
+  .b-queue-foot a:hover{text-decoration:underline}
+  .b-kpi-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line);margin-top:2px}
+  .b-kpi-grid .kpi{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 16px}
+  .b-kpi-grid .kpi:nth-child(2n){border-right:0}
+  .b-kpi-grid .kpi:nth-last-child(-n+2){border-bottom:0}
+  .b-kpi-grid .kpi .num{font-size:26px}
+  .b-links{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .b-links a{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:38px;
+    padding:0 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-soft);
+    color:var(--text);text-decoration:none;font-size:13px;cursor:pointer}
+  .b-links a:hover{border-color:var(--line-strong);background:var(--card)}
+  .b-links a span{color:var(--sub);font-size:11px}
+  .b-local .b-local-copy{font-size:12.5px;line-height:1.6;color:var(--muted);margin:0 0 12px}
+  .b-local .b-local-meta{font-size:11px;color:var(--sub);margin-top:auto;padding-top:12px;
+    border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+  .b-local .btn{align-self:flex-start}
+  .b-tag{font-size:10.5px;font-weight:500;color:var(--primary);background:var(--primary-soft);
+    border-radius:999px;padding:2px 8px;white-space:nowrap}
+  .b-first-run{margin-bottom:14px}
+  .b-empty-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 
   /* 表格 */
   .table-wrap{overflow:auto;border:0;border-radius:var(--radius);background:var(--card)}
@@ -904,6 +955,24 @@
   .ai-warn{border-left:3px solid var(--orange);padding-left:9px;color:var(--muted);font-size:11px;line-height:1.6}
   @media (max-width:1100px){.ai-wrap{grid-template-columns:1fr}.ai-card{max-height:none}.ai-side{display:grid;grid-template-columns:1fr 1fr}}
   @media (max-width:768px){.ai-side{grid-template-columns:1fr}.ai-config input[type=password],.ai-config input[type=url],.ai-config input[type=text]{width:100%}.ai-config .aic-field{flex:1 1 100%}.ai-msg{max-width:94%}}
+  @media (max-width:1200px){
+    .b-hero{grid-column:span 7}.b-kpis{grid-column:span 5}
+    .b-queue{grid-column:span 7}.b-side{grid-column:span 5}
+  }
+  @media (max-width:980px){
+    .b-hero,.b-kpis,.b-queue,.b-side,.b-cat,.b-entry,.b-local{grid-column:span 6}
+    .b-hero{grid-column:span 12}
+    .b-empty-grid{grid-template-columns:1fr}
+  }
+  @media (max-width:760px){
+    .bento{grid-template-columns:1fr;gap:12px}
+    .b-hero,.b-kpis,.b-queue,.b-side,.b-cat,.b-entry,.b-local{grid-column:1/-1}
+    .b-card{padding:15px}
+    .b-kpi-grid .kpi{padding:12px 13px}
+    .b-links{grid-template-columns:1fr}
+    .b-hero .action-bar{flex-wrap:wrap;align-items:flex-start}
+    .b-hero .action-bar .btn{width:100%;justify-content:center}
+  }
 </style>
 </head>
 <body>
@@ -1062,7 +1131,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.23.0";
+var WEB_VERSION = "0.24.0";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -2477,18 +2546,43 @@ function renderDashboard() {
       '<button class="btn primary" data-go="' + (canCreate ? "submit" : "docs") + '">' + (canCreate ? "提交第一份" : "查看台账") + '</button></div>'
     : "";
 
-  var queueHtml = '<div class="card panel" style="margin-bottom:14px"><h3>' + queueTitle + "</h3>" +
+  var queueHtml = '<div class="card panel"><h3>' + queueTitle + "</h3>" +
       '<div class="table-wrap"><table><colgroup><col><col style="width:18%"><col style="width:18%"><col style="width:22%"></colgroup>' +
       "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
     "</div>";
-  var gridHtml = '<div class="grid-2">' +
-      '<div class="card panel"><h3>类别分布</h3>' + catHtml + "</div>" +
-      rightPanel +
-    "</div>";
+
+  var kpiCard = '<div class="b-card b-kpis"><h3>当前指标</h3><div class="b-kpi-grid">' + kpiHtml + "</div></div>";
+  var heroCard = '<div class="b-card b-hero">' + actionHtml + auxHtml +
+    '<div class="b-hero-note">材料与日志只在本机浏览器；提交、审核、归档全程留痕，不依赖账号。</div></div>';
+  var queueCard = '<div class="b-card b-queue">' + queueHtml +
+      '<div class="b-queue-foot"><div class="b-queue-flow"><span>提交</span><span>→</span><span>审核</span><span>→</span><span>归档</span></div>' +
+      '<a data-go="docs">查看全部台账 →</a></div></div>';
+  var sideCard = rightPanel ? '<div class="b-card b-side">' + rightPanel + "</div>" : "";
+  var catCard = '<div class="b-card b-cat"><h3>类别分布</h3>' + catHtml + "</div>";
+  var entryDefs = [
+    {key:"docs", label:"材料台账"},
+    {key:"roster", label:"名单核对"},
+    {key:"tasks", label:"任务跟踪"},
+    {key:"submit", label:"提交材料"},
+    {key:"collect", label:"文件夹收集"},
+    {key:"ai", label:"AI 助手"}
+  ];
+  var entryLinks = "";
+  entryDefs.forEach(function(e){
+    var item = null;
+    for (var i = 0; i < NAV.length; i++) if (NAV[i].key === e.key) { item = NAV[i]; break; }
+    if (item && navVisible(item)) entryLinks += '<a data-go="' + e.key + '">' + e.label + '<span>→</span></a>';
+  });
+  var entryCard = '<div class="b-card b-entry"><h3>常用入口</h3><div class="b-links">' + entryLinks + "</div></div>";
+  var localCard = '<div class="b-card b-local"><h3>本地处理器 <span class="b-tag">实验</span></h3>' +
+      '<p class="b-local-copy">PDF、音视频这类重活再启动；不在首屏加载 11.26 MB 内核。</p>' +
+      '<a class="btn mini" href="../lab/unkernel/unkernel-本地引擎验证台.html">打开内核实验室</a>' +
+      '<div class="b-local-meta">unkernel 0.2 · Linux 7.3.4 · JSPI</div></div>';
+  var bentoHtml = '<div class="bento">' + heroCard + kpiCard + queueCard + sideCard + catCard + entryCard + localCard + "</div>";
 
   document.getElementById("view-dashboard").innerHTML = empty
-    ? firstRunCard + emptyStartHtml + (rightPanel ? '<div class="grid-2">' + rightPanel + "</div>" : "")
-    : firstRunCard + actionHtml + queueHtml + '<div class="kpi-row">' + kpiHtml + "</div>" + auxHtml + gridHtml;
+    ? firstRunCard + emptyStartHtml + (rightPanel ? '<div class="bento"><div class="b-card b-span-12">' + rightPanel + "</div></div>" : "")
+    : (firstRunCard ? '<div class="b-first-run">' + firstRunCard + "</div>" : "") + bentoHtml;
 
   document.querySelectorAll("#view-dashboard .kpi").forEach(function(card){
     var go = function(){ drillByStatus(card.dataset.filter); };
@@ -5674,6 +5768,9 @@ initSidebar();
 initTheme();
 applyRoleDefaults();
 switchView("dashboard");
+if (typeof navigator !== "undefined" && navigator.serviceWorker && typeof location !== "undefined" && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(function(){});
+}
 </script>
 </body>
 </html>
