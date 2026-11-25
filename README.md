@@ -81,7 +81,9 @@ class-console/
 ├── CHANGELOG.md             # 版本更新记录
 ├── tests/
 │   ├── selftest.py          # 数据层回归自检（临时库，不碰本机数据）
-│   └── gui_smoke.py         # 界面冒烟回归
+│   ├── gui_smoke.py         # 界面冒烟回归
+│   ├── perf_web.js          # 5000 条网页性能基线（独立 Edge + CDP）
+│   └── perf_desktop.py      # 5000 条桌面性能基线（临时库 + 启动计时）
 ├── index.html               # GitHub Pages 官网落地页：在线使用入口与桌面版下载入口
 ├── web/
 │   └── index.html           # 浏览器本地缓存版（单文件，localStorage 持久化，可挂 Pages 预览）
@@ -148,9 +150,13 @@ py -3.14 tests/selftest.py
 
 # 界面冒烟回归（需要图形界面环境）
 py -3.14 tests/gui_smoke.py
+
+# 5000 条性能基线（网页会自动启动独立浏览器；桌面会启动源码与 EXE）
+node tests/perf_web.js
+py -3.14 tests/perf_desktop.py
 ```
 
-全部通过会打印 `SELFTEST OK` / `GUI SMOKE OK`。
+自检与 GUI 冒烟通过会打印 `SELFTEST OK` / `GUI SMOKE OK`；性能脚本打印逐项 `PASS/FAIL`，未达标项按不通过退出。
 
 ## 五、网页原型说明
 
