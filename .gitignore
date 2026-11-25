@@ -33,3 +33,6 @@ Desktop.ini
 .DS_Store
 .idea/
 .vscode/
+
+# ---- JS 依赖（技术验证）----
+node_modules/

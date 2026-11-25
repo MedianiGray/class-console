@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>unkernel 本地引擎验证台 · 班级操作台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23152027'/%3E%3Cpath d='M7 22V10h4l5 7V10h4v12h-4l-5-7v7z' fill='%23d9e4e3'/%3E%3C/svg%3E">
+<style>
+:root{
+  --paper:#e8edef;
+  --panel:#f5f8f8;
+  --ink:#152027;
+  --muted:#5c6b72;
+  --line:#b9c6ca;
+  --line-strong:#7f9299;
+  --signal:#0b6b62;
+  --signal-soft:#d7e8e4;
+  --warm:#a94f27;
+  --term:#10181c;
+  --term-line:#2b3b40;
+  --term-text:#d8e4e2;
+  --term-dim:#8ba09f;
+  --mono:"Cascadia Mono","SFMono-Regular","Consolas",monospace;
+  --sans:"Bahnschrift","Segoe UI Variable","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{
+  margin:0;
+  color:var(--ink);
+  font-family:var(--sans);
+  background:
+    linear-gradient(90deg,rgba(21,32,39,.045) 1px,transparent 1px) 0 0/48px 48px,
+    linear-gradient(rgba(21,32,39,.035) 1px,transparent 1px) 0 0/48px 48px,
+    var(--paper);
+}
+a{color:inherit}
+button,input{font:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
+.wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+.top{
+  border-bottom:1px solid var(--ink);
+  background:rgba(232,237,239,.92);
+  backdrop-filter:blur(8px);
+  position:sticky;top:0;z-index:5;
+}
+.top-inner{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:64px}
+.brand{display:flex;align-items:center;gap:12px;font-size:14px;letter-spacing:.01em}
+.brand-mark{
+  display:grid;place-items:center;width:28px;height:28px;
+  background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:12px;font-weight:700
+}
+.top-meta{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.pill{
+  border:1px solid var(--line-strong);padding:4px 8px;color:var(--ink);background:var(--panel);
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap
+}
+.pill::before{content:"";width:6px;height:6px;background:var(--line-strong);display:block}
+.pill.ok::before{background:var(--signal)}
+.pill.bad::before{background:var(--warm)}
+.intro{
+  display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.8fr);
+  gap:40px;align-items:end;padding:44px 0 28px;border-bottom:1px solid var(--line)
+}
+.kicker{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.06em}
+h1{
+  margin:12px 0 16px;font-weight:600;
+  font-size:clamp(32px,3.8vw,56px);line-height:1.12;letter-spacing:-.025em;
+  max-width:760px
+}
+h1 span{color:var(--signal)}
+.lede{max-width:620px;margin:0;color:#35444b;font-size:15.5px;line-height:1.7}
+.boot-readout{border-left:2px solid var(--ink);padding-left:20px;align-self:stretch;display:flex;flex-direction:column;justify-content:flex-end}
+.boot-number{font-family:var(--mono);font-weight:700;font-size:clamp(52px,6vw,84px);line-height:.9;letter-spacing:-.06em}
+.boot-number small{font-size:18px;font-weight:400;letter-spacing:0;color:var(--muted);margin-left:6px}
+.boot-readout p{margin:12px 0 0;font-size:12px;line-height:1.6;color:var(--muted);max-width:260px}
+.board{display:grid;grid-template-columns:360px minmax(0,1fr);gap:0;border-bottom:1px solid var(--line)}
+.verdict{border-right:1px solid var(--line);padding:30px 28px 30px 0}
+.verdict h2,.plan h2{margin:0 0 18px;font-size:20px;font-weight:600;letter-spacing:-.01em}
+.metric-list{display:grid;gap:0;border-top:1px solid var(--line)}
+.metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;padding:13px 0;border-bottom:1px solid var(--line)}
+.metric label{font-size:13px;color:var(--ink)}
+.metric b{font-family:var(--mono);font-size:15px;text-align:right}
+.metric span{grid-column:1/-1;font-size:11px;line-height:1.55;color:var(--muted)}
+.gate{margin-top:24px}
+.gate h3{margin:0 0 10px;font-size:13px;font-weight:600}
+.gate ol{margin:0;padding:0;list-style:none;counter-reset:gate}
+.gate li{
+  counter-increment:gate;display:grid;grid-template-columns:24px minmax(0,1fr);gap:4px 8px;
+  padding:10px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.55
+}
+.gate li::before{
+  grid-row:1 / span 2;content:counter(gate,decimal-leading-zero);font-family:var(--mono);font-size:11px;color:var(--muted);padding-top:2px
+}
+.gate li b{grid-column:2;display:block;font-size:12px;color:var(--ink)}
+.gate li span{grid-column:2;color:var(--muted)}
+.gate .pass b::after{content:"  本机通过";color:var(--signal);font-family:var(--mono);font-size:10px;font-weight:400}
+.gate .pending b::after{content:"  待验证";color:var(--warm);font-family:var(--mono);font-size:10px;font-weight:400}
+.note{margin:22px 0 0;padding-top:14px;border-top:1px solid var(--ink);font-size:11px;line-height:1.7;color:var(--muted)}
+.terminal-panel{min-width:0;padding:24px 0 26px 26px}
+.term{
+  background:var(--term);border:1px solid var(--ink);box-shadow:10px 10px 0 rgba(21,32,39,.08);
+  display:flex;flex-direction:column;min-height:460px
+}
+.term-head{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:10px 12px;border-bottom:1px solid var(--term-line);color:var(--term-text);
+  font-family:var(--mono);font-size:11px;background:#0b1215
+}
+.term-state{display:flex;align-items:center;gap:8px;min-width:0}
+.dot{width:7px;height:7px;background:#5b6d70;flex:none}
+.dot.live{background:#57b4a6}
+.dot.dead{background:#c1714c}
+.term-state b{font-weight:400;white-space:nowrap}
+.uptime{color:var(--term-dim);white-space:nowrap}
+.term-actions{display:flex;gap:8px}
+.term-actions button{
+  border:1px solid #4a5d61;background:transparent;color:var(--term-text);padding:7px 12px;
+  font-family:var(--sans);font-size:12px;white-space:nowrap
+}
+.term-actions button:hover:not(:disabled){border-color:var(--term-text);background:#162227}
+.term-actions button.primary{border-color:#57b4a6;color:#dff6f1;background:#14322e}
+.term-actions button:disabled{opacity:.4;cursor:not-allowed}
+.term-body{
+  flex:1;overflow:auto;padding:16px 16px 22px;color:var(--term-text);
+  font-family:var(--mono);font-size:12.5px;line-height:1.65;min-height:300px;max-height:420px
+}
+.term-body .line{white-space:pre-wrap;overflow-wrap:anywhere}
+.term-body .dim{color:var(--term-dim)}
+.term-body .ok{color:#7fd1c4}
+.term-body .warn{color:#e0a06e}
+.term-body .err{color:#ef9b7d}
+.term-body .cmd{color:#f0d2a8}
+.cmd-form{display:flex;align-items:center;gap:8px;border-top:1px solid var(--term-line);padding:10px 12px;background:#0b1215}
+.cmd-form .prompt{color:#7fd1c4;font-family:var(--mono);font-size:12px;white-space:nowrap}
+.cmd-form input{
+  flex:1;min-width:0;background:transparent;border:0;color:var(--term-text);
+  font-family:var(--mono);font-size:16px;padding:7px 2px
+}
+.cmd-form input::placeholder{color:#61777a}
+.cmd-form input:disabled{opacity:.45}
+.cmd-form button{
+  border:1px solid #4a5d61;background:#162227;color:var(--term-text);padding:7px 12px;font-size:12px
+}
+.quick{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px 12px;border-top:1px solid var(--term-line);background:#0b1215}
+.quick button{
+  border:1px solid #35484d;background:transparent;color:#a9bfbe;padding:5px 8px;
+  font-family:var(--mono);font-size:10.5px
+}
+.quick button:hover:not(:disabled){color:#e6f2f0;border-color:#6d8589}
+.quick button:disabled{opacity:.35;cursor:not-allowed}
+.term-foot{
+  display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border-top:1px solid var(--term-line);
+  color:var(--term-dim);font-family:var(--mono);font-size:10px;background:#0b1215
+}
+.plan{padding:34px 0 40px}
+.plan-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;border-bottom:1px solid var(--ink);padding-bottom:12px}
+.plan-head p{margin:0;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-bottom:1px solid var(--line)}
+.step{padding:20px 22px 24px 0;border-right:1px solid var(--line);min-width:0}
+.step:last-child{border-right:0;padding-right:0}
+.step:not(:first-child){padding-left:22px}
+.step .no{font-family:var(--mono);font-size:11px;color:var(--warm)}
+.step h3{margin:9px 0 8px;font-size:15px;font-weight:600}
+.step p{margin:0;font-size:12.5px;line-height:1.7;color:var(--muted)}
+.foot{border-top:1px solid var(--ink);padding:18px 0 26px;display:flex;justify-content:space-between;gap:20px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.errbox{
+  border:1px solid var(--warm);background:#f7eee8;padding:14px 16px;margin-top:18px;font-size:12px;line-height:1.65;display:none
+}
+.errbox b{display:block;margin-bottom:4px;color:var(--warm)}
+@media (max-width:900px){
+  .wrap{padding:0 18px}
+  .intro{grid-template-columns:1fr;gap:24px;padding-top:36px}
+  .boot-readout{border-left:0;border-top:1px solid var(--ink);padding:18px 0 0}
+  .board{grid-template-columns:1fr}
+  .verdict{border-right:0;border-bottom:1px solid var(--line);padding:24px 0}
+  .terminal-panel{padding:22px 0 26px}
+  .plan-grid{grid-template-columns:1fr}
+  .step,.step:not(:first-child){border-right:0;border-bottom:1px solid var(--line);padding:18px 0}
+  .step:last-child{border-bottom:0}
+  .top-meta .ver{display:none}
+}
+@media (max-width:520px){
+  .top{position:static}
+  h1{font-size:31px}
+  .term{min-height:0}
+  .term-body{max-height:340px;min-height:260px;font-size:11.5px}
+  .term-head{flex-wrap:wrap}
+  .term-actions{width:100%;justify-content:flex-end}
+  .term-foot{flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand"><span class="brand-mark">CC</span><span>班级操作台 · 内核实验室</span></div>
+    <div class="top-meta">
+      <span class="ver">v0.23.0 / 未接入正式版</span>
+      <span id="supportPill" class="pill">检测中</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="intro">
+    <div>
+      <span class="kicker">实验 01 · 真实 Linux 内核，不是终端模拟</span>
+      <h1>把内核接在<span>“更多”</span>里，<br>不把整台工作台搬进去。</h1>
+      <p class="lede">unkernel 把 Linux 内核直接编译成 WebAssembly，用户态程序仍走 CPU 模拟。它适合做浏览器里的本地重活引擎，不适合替换材料主流程。先验证启动、终端与边界，再谈接入。</p>
+    </div>
+    <div class="boot-readout">
+      <div class="boot-number"><span id="bootNumber">--</span><small>ms</small></div>
+      <p id="bootCaption">到内核就绪的实测耗时；本地回环热缓存，含 WASM 编译，不含整页首屏。</p>
+    </div>
+  </section>
+
+  <section class="board">
+    <aside class="verdict">
+      <h2>接入判断</h2>
+      <div class="metric-list">
+        <div class="metric"><label>内核本体</label><b>11.26 MB</b><span>WASM 单文件，未含 Alpine / Debian 镜像。</span></div>
+        <div class="metric"><label>客户机内存</label><b>256 MiB</b><span>本次实测配置；官方默认会更高。</span></div>
+        <div class="metric"><label>与主流程关系</label><b>按需</b><span>主工作台照常先开；重活才启动内核。</span></div>
+      </div>
+      <div class="gate">
+        <h3>三个闸门</h3>
+        <ol>
+          <li class="pass"><b>浏览器能力</b><span>Edge 158 通过 JSPI；Node 22 不支持，不能当命令行运行。</span></li>
+          <li class="pending"><b>发行版与工具</b><span>基础 busybox 已跑通；Python / PDF / 音视频需 Distro 镜像，尚未验证。</span></li>
+          <li class="pending"><b>数据与文件</b><span>客户机磁盘可持久化；本机文件必须显式挂载，不能自动扫描。</span></li>
+        </ol>
+      </div>
+      <div class="errbox" id="errbox"><b>内核没有启动</b><span id="errtext"></span></div>
+      <p class="note">结论：把它放在“更多 → 本地处理器”，不要放进首屏。旧浏览器不启动内核，保留现有材料流程。</p>
+    </aside>
+
+    <section class="terminal-panel">
+      <div class="term">
+        <div class="term-head">
+          <div class="term-state"><span class="dot" id="dot"></span><b id="status">未启动</b><span class="uptime" id="uptime">—</span></div>
+          <div class="term-actions">
+            <button class="primary" id="bootBtn" type="button">启动内核</button>
+            <button id="stopBtn" type="button" disabled>停止</button>
+          </div>
+        </div>
+        <div class="term-body" id="term" aria-live="polite">
+          <div class="line dim">本地验证台，不连接服务器。点“启动内核”后才会加载 11.26 MB WASM。</div>
+          <div class="line">可用命令：uname -a / cat /proc/version / free / df -h / ls / / ps / help</div>
+          <div class="line dim">当前只启动 busybox 基础系统；没有 apk、没有网络、没有 Python。</div>
+        </div>
+        <form class="cmd-form" id="cmdForm">
+          <span class="prompt">cc:~$</span>
+          <input id="cmdInput" type="text" autocomplete="off" spellcheck="false" placeholder="启动内核后输入命令" disabled>
+          <button type="submit" disabled id="sendBtn">发送</button>
+        </form>
+        <div class="quick" id="quick">
+          <button type="button" data-cmd="uname -a" disabled>uname -a</button>
+          <button type="button" data-cmd="cat /proc/version" disabled>cat /proc/version</button>
+          <button type="button" data-cmd="free" disabled>free</button>
+          <button type="button" data-cmd="df -h" disabled>df -h</button>
+          <button type="button" data-cmd="ls /" disabled>ls /</button>
+          <button type="button" data-cmd="ps" disabled>ps</button>
+        </div>
+        <div class="term-foot"><span>1 vCPU · 256 MiB guest · no network</span><span id="stats">stats —</span></div>
+      </div>
+    </section>
+  </section>
+
+  <section class="plan">
+    <div class="plan-head">
+      <h2>如果接入正式版</h2>
+      <p>先做加法，不先做拆迁</p>
+    </div>
+    <div class="plan-grid">
+      <article class="step">
+        <span class="no">01</span>
+        <h3>先做一个“本地处理器”入口</h3>
+        <p>放在“更多功能”里，只在用户点开时加载内核。主工作台首屏、台账、名单、提交都不受 11 MB 影响。</p>
+      </article>
+      <article class="step">
+        <span class="no">02</span>
+        <h3>只接现在桌面才能做的重活</h3>
+        <p>PDF 拆页、音视频转码、批量改名、脚本校验。材料增删改查仍走现有数据层，不经过 Linux。</p>
+      </article>
+      <article class="step">
+        <span class="no">03</span>
+        <h3>旧浏览器保留退路</h3>
+        <p>没有 JSPI 就显示“当前浏览器不支持本地内核”，继续用现有网页版；不把整台工作台押在一个新特性上。</p>
+      </article>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <span>unkernel 0.2.0 · Linux 7.3.4 · 仅技术验证，未接入正式工作台</span>
+  <span>本页数据来自本机 Edge 158 实测</span>
+</footer>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const term = $('term');
+const bootBtn = $('bootBtn');
+const stopBtn = $('stopBtn');
+const cmdForm = $('cmdForm');
+const cmdInput = $('cmdInput');
+const sendBtn = $('sendBtn');
+const quick = $('quick');
+const statusEl = $('status');
+const dot = $('dot');
+const uptimeEl = $('uptime');
+const statsEl = $('stats');
+const supportPill = $('supportPill');
+const bootNumber = $('bootNumber');
+const bootCaption = $('bootCaption');
+const errbox = $('errbox');
+const errtext = $('errtext');
+
+let mod = null;
+let vm = null;
+let sh = null;
+let timer = null;
+let startedAt = 0;
+let bootBusy = false;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function line(text, cls = '') {
+  const el = document.createElement('div');
+  el.className = 'line' + (cls ? ' ' + cls : '');
+  el.textContent = text;
+  term.appendChild(el);
+  while (term.children.length > 600) term.removeChild(term.firstChild);
+  term.scrollTop = term.scrollHeight;
+}
+
+function setStatus(text, kind = 'idle') {
+  statusEl.textContent = text;
+  dot.className = 'dot' + (kind === 'live' ? ' live' : kind === 'dead' ? ' dead' : '');
+}
+
+function setRunning(on) {
+  cmdInput.disabled = !on;
+  sendBtn.disabled = !on;
+  for (const b of quick.querySelectorAll('button')) b.disabled = !on;
+  stopBtn.disabled = !on;
+  bootBtn.disabled = on || bootBusy;
+  bootBtn.textContent = on ? '内核运行中' : (vm ? '重新启动' : '启动内核');
+  if (on) cmdInput.focus();
+}
+
+function stripAnsi(text) {
+  return text
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/\x1b\][^\x07]*\x07/g, '')
+    .replace(/\r/g, '');
+}
+
+async function pump(stream) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += stripAnsi(decoder.decode(value, { stream: true }));
+      let cut = buf.indexOf('\n');
+      while (cut >= 0) {
+        const part = buf.slice(0, cut).replace(/\r/g, '');
+        buf = buf.slice(cut + 1);
+        if (part.includes('stty -echo') || part.includes('export PS1=')) continue;
+        if (part.trim()) line(part);
+        cut = buf.indexOf('\n');
+      }
+    }
+  } catch (e) {
+    line('[host] 终端流已关闭：' + e.message, 'dim');
+  }
+}
+
+async function loadModule() {
+  if (!mod) mod = await import('./node_modules/unkernel/dist/web.mjs');
+  return mod;
+}
+
+async function checkSupport() {
+  try {
+    const m = await loadModule();
+    const support = await m.checkSupport();
+    if (support.ok) {
+      supportPill.className = 'pill ok';
+      supportPill.textContent = 'JSPI 可用';
+      line('[host] WebAssembly / JSPI / Memory64 检查通过。', 'ok');
+    } else {
+      supportPill.className = 'pill bad';
+      supportPill.textContent = '浏览器不满足';
+      line('[host] 浏览器能力不足：' + support.problems.join('；'), 'err');
+    }
+    return support;
+  } catch (e) {
+    supportPill.className = 'pill bad';
+    supportPill.textContent = '依赖未安装';
+    line('[host] 找不到 unkernel：' + e.message, 'err');
+    return { ok: false, problems: ['先在 lab/unkernel 目录执行 npm install'] };
+  }
+}
+
+async function boot() {
+  if (bootBusy || vm) return;
+  bootBusy = true;
+  bootBtn.disabled = true;
+  bootBtn.textContent = '正在加载…';
+  errbox.style.display = 'none';
+  setStatus('加载内核', 'idle');
+  const t0 = performance.now();
+  try {
+    const m = await loadModule();
+    const support = await m.checkSupport();
+    if (!support.ok) {
+      throw new Error(support.problems.join('；'));
+    }
+    supportPill.className = 'pill ok';
+    supportPill.textContent = 'JSPI 可用';
+    line('[host] 启动请求已发出；加载 11.26 MB kernel.wasm。', 'dim');
+    vm = await m.createKernel({ memoryMiB: 256 });
+    const bootMs = Math.round(performance.now() - t0);
+    bootNumber.textContent = String(bootMs);
+    bootCaption.textContent = '到内核就绪的实测耗时；本地回环热缓存，含 WASM 编译，不含整页首屏。';
+    line(`[boot] 内核就绪：${bootMs} ms，256 MiB guest，1 vCPU。`, 'ok');
+
+    const uname = await vm.exec('uname', ['-a']);
+    line('[kernel] ' + uname.stdout.toString().trim(), 'ok');
+    const release = await vm.exec('cat', ['/proc/version']);
+    line('[kernel] ' + release.stdout.toString().trim());
+
+    sh = await vm.spawn();
+    pump(sh.output);
+    await sleep(120);
+    await sh.write("stty -echo 2>/dev/null; export PS1=''\n");
+    startedAt = performance.now();
+    setStatus('运行中', 'live');
+    timer = setInterval(() => {
+      if (!vm) return;
+      const s = vm.stats();
+      uptimeEl.textContent = 'uptime ' + (s.uptimeMs / 1000).toFixed(1) + 's';
+      statsEl.textContent = `${s.cpus} CPU · JIT ${s.jit.compiled} · heap ${Math.round(performance.memory?.usedJSHeapSize / 1048576 || 0)}MB`;
+    }, 500);
+    setRunning(true);
+    line('[host] 输入 help 查看可用命令；poweroff 结束。', 'dim');
+    cmdInput.focus();
+  } catch (e) {
+    setStatus('启动失败', 'dead');
+    errbox.style.display = 'block';
+    errtext.textContent = String(e.message || e) + '。下一步：确认浏览器为 Chrome / Edge 137+，在 lab/unkernel 执行 npm install 后重试。';
+    line('[host] 启动失败：' + String(e.message || e), 'err');
+    bootBtn.textContent = '重试启动';
+    bootBtn.disabled = false;
+  } finally {
+    bootBusy = false;
+  }
+}
+
+async function stop() {
+  if (!vm) return;
+  setStatus('正在停止', 'idle');
+  try {
+    await vm.exec('poweroff', []);
+  } catch {}
+  await sleep(200);
+  try { vm.stop(); } catch {}
+  if (timer) clearInterval(timer);
+  timer = null;
+  vm = null;
+  sh = null;
+  setStatus('已停止', 'dead');
+  uptimeEl.textContent = '—';
+  statsEl.textContent = 'stats —';
+  line('[host] 内核已停止；数据未落盘。', 'warn');
+  setRunning(false);
+}
+
+async function runCommand(cmd) {
+  if (!sh || !cmd) return;
+  line('cc:~$ ' + cmd, 'cmd');
+  if (cmd === 'help') {
+    line('可用命令：uname -a · cat /proc/version · free · df -h · ls / · ps · clear · poweroff', 'dim');
+    line('这里只有 busybox 基础系统，没有 apk / 网络 / Python。', 'dim');
+    return;
+  }
+  if (cmd === 'clear') {
+    term.replaceChildren();
+    return;
+  }
+  await sh.write(cmd + '\n');
+  if (cmd === 'poweroff' || cmd === 'halt') {
+    setTimeout(stop, 500);
+  }
+}
+
+bootBtn.addEventListener('click', boot);
+stopBtn.addEventListener('click', stop);
+cmdForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const cmd = cmdInput.value.trim();
+  if (!cmd) return;
+  cmdInput.value = '';
+  runCommand(cmd);
+});
+quick.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-cmd]');
+  if (!btn || btn.disabled) return;
+  runCommand(btn.dataset.cmd);
+});
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
+});
+
+checkSupport();
+</script>
+</body>
+</html>

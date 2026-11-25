@@ -1,0 +1,13 @@
+{
+  "name": "cc-unkernel-lab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "班级操作台 unkernel 本地引擎技术验证",
+  "scripts": {
+    "start": "node serve.mjs"
+  },
+  "dependencies": {
+    "unkernel": "0.2.0-261124-75694e2"
+  }
+}
