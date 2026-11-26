@@ -63,6 +63,30 @@ class ServiceView(ttk.Frame):
             val.pack(fill="x", padx=12, pady=(0, 8))
             self.stat_labels[key] = val
 
+        # 先占底栏与详情条：两者用 side="bottom" 提前分配高度，
+        # 否则下方大表格先按请求高度吃掉空间，底栏的「朗读内容」会被挤出窗口。
+        bar = ttk.Frame(self)
+        bar.pack(side="bottom", fill="x", padx=18, pady=10)
+        self.btn_copy = ttk.Button(bar, text="复制内容", style="Ghost.TButton",
+                                   command=self._copy)
+        self.btn_speak = ttk.Button(bar, text="朗读内容", style="Ghost.TButton",
+                                    command=self._speak)
+        self.btn_export = ttk.Button(bar, text="导出服务记录", style="Accent.TButton",
+                                     command=self.export_csv)
+        self.btn_copy.pack(side="left")
+        self.btn_speak.pack(side="left", padx=8)
+        self.btn_export.pack(side="right")
+
+        detail = tk.Frame(self, bg=C["card"], highlightthickness=1,
+                          highlightbackground=C["line"])
+        detail.pack(side="bottom", fill="x", padx=18, pady=(8, 0))
+        tk.Label(detail, text="这一条的内容", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 9), anchor="w").pack(fill="x", padx=12, pady=(8, 2))
+        self.detail = tk.Text(detail, height=3, wrap="word", relief="flat", bd=0,
+                              bg=C["card"], fg=C["text"], font=(FONT, 9),
+                              padx=0, pady=0, highlightthickness=0)
+        self.detail.pack(fill="x", padx=12, pady=(0, 8))
+
         wrap = ttk.Frame(self)
         wrap.pack(fill="both", expand=True, padx=18)
         tree_box = tk.Frame(wrap, bg=C["card"], highlightthickness=1,
@@ -86,28 +110,6 @@ class ServiceView(ttk.Frame):
         xsb.pack(side="bottom", fill="x")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
         self.empty = EmptyState(tree_box, wraplength=420)
-
-        detail = tk.Frame(self, bg=C["card"], highlightthickness=1,
-                          highlightbackground=C["line"])
-        detail.pack(fill="x", padx=18, pady=(8, 0))
-        tk.Label(detail, text="这一条的内容", bg=C["card"], fg=C["sub"],
-                 font=(FONT, 9), anchor="w").pack(fill="x", padx=12, pady=(8, 2))
-        self.detail = tk.Text(detail, height=3, wrap="word", relief="flat", bd=0,
-                              bg=C["card"], fg=C["text"], font=(FONT, 9),
-                              padx=0, pady=0, highlightthickness=0)
-        self.detail.pack(fill="x", padx=12, pady=(0, 8))
-
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=18, pady=10)
-        self.btn_copy = ttk.Button(bar, text="复制内容", style="Ghost.TButton",
-                                   command=self._copy)
-        self.btn_speak = ttk.Button(bar, text="朗读内容", style="Ghost.TButton",
-                                    command=self._speak)
-        self.btn_export = ttk.Button(bar, text="导出服务记录", style="Accent.TButton",
-                                     command=self.export_csv)
-        self.btn_copy.pack(side="left")
-        self.btn_speak.pack(side="left", padx=8)
-        self.btn_export.pack(side="right")
 
     def _clear(self):
         self.var_q.set("")
