@@ -856,6 +856,42 @@ def main():
     assert ok2 is False and why2, "空白文本同样应拒绝"
     assert tts.is_speaking() is False, "未朗读时不应处于朗读态"
 
+    # 51. 助手路由：本地规则命中、动作边界、无 AI 时不联网
+    import assistant
+    switches = []
+    a = assistant.Assistant(r, open_view=switches.append)
+    assert a.handle("")["ok"] is False
+    help_r = a.handle("你都能做什么")
+    assert help_r["action"] == "help" and "台账概览" in help_r["text"], help_r
+    ov = a.handle("现在台账什么情况")
+    assert ov["action"] == "overview" and "待审" in ov["text"], ov
+    assert a.handle("谁还没交材料")["action"] == "missing_people"
+    pd = a.handle("有哪些待审的")
+    assert pd["action"] == "pending" and "待审" in pd["text"], pd
+    roster = r.list_roster()
+    sid = roster[0]["sid"] if roster else "250201"
+    st = a.handle("%s 还缺什么" % sid)
+    assert st["action"] == "status" and "还缺" in st["text"], st
+    if roster:
+        st2 = a.handle("%s还缺什么" % roster[0]["who"])
+        assert st2["action"] == "status", st2
+    ch = a.handle("给%s写催交话术" % sid)
+    assert ch["action"] == "chase" and "入口：" in ch["text"], ch
+    op = a.handle("打开服务留痕")
+    assert op["action"] == "open_view" and switches[-1] == "service", (op, switches)
+    # 只读边界：说归档/删除也不会真写
+    for risky in ("把这份材料直接归档", "帮我把台账清空"):
+        res = a.handle(risky)
+        assert res["ok"] is False and res["action"] == "unknown", (risky, res)
+    assert a.handle("今天天气怎么样")["action"] == "unknown"
+    # 未配 API 时一律本地，不发网络请求
+    for q in ("台账概览", "谁还没交材料"):
+        assert a.handle(q)["source"] == "local", q
+    # 朗读入口在无语音层时给原因而不是崩
+    said = assistant.Assistant(r).handle("念一下")
+    assert said["action"] == "speak" and said["text"], said
+    print("51. 助手路由 OK")
+
     print("SELFTEST OK")
 
 

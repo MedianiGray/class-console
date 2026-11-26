@@ -240,6 +240,62 @@ def suggest_category(name, categories, cfg=None):
     return local_suggest(name, categories)
 
 
+def chat_json(system, user, cfg=None, max_tokens=240):
+    """通用一次问答，要求模型只回一个 JSON 对象。
+
+    返回 (dict, "") 或 (None, 原因)。原因沿用分类建议那套口径，
+    不把 Key、也不把服务端原文带回界面。
+    """
+    cfg = cfg or load_config()
+    if not api_ready(cfg):
+        return None, "API 未启用"
+    url = cfg["base_url"] + "/chat/completions"
+    payload = {
+        "model": cfg["model"],
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": 0,
+        "max_tokens": max_tokens,
+    }
+    req = urllib.request.Request(
+        url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": "Bearer " + cfg["api_key"],
+        }, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=cfg.get("timeout", 20)) as resp:
+            body = resp.read(65536).decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return None, "鉴权失败"
+        if e.code == 429:
+            return None, "限流或额度不足"
+        if e.code >= 500:
+            return None, "服务端错误"
+        return None, "HTTP %d" % e.code
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, TimeoutError):
+            return None, "超时"
+        return None, "网络不可达"
+    except TimeoutError:
+        return None, "超时"
+    except (OSError, ValueError):
+        return None, "请求失败"
+    try:
+        data = json.loads(body)
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None, "回包缺字段"
+    parsed = _extract_json(content)
+    if not isinstance(parsed, dict):
+        return None, "内容不是 JSON"
+    return parsed, ""
+
+
 def format_lines(results):
     """把建议整理成可复制的纯文本，不包含路径与 Key。"""
     lines = []

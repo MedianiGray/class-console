@@ -640,6 +640,40 @@ def main():
     assert app.more_btn.cget("fg") == theme.C["primary"], "折叠态当前页未联动高亮"
     print("更多功能/折叠导航 OK")
 
+    # 悬浮助手：顶栏入口 → 展开 → 本地问答 → 切页面 → 收起 → 关闭
+    app.assistant_btn.invoke()
+    root.update()
+    pet = app.assistant_pet
+    assert pet is not None and pet.alive(), "顶栏助手入口没有拉起悬浮窗"
+    assert pet.expanded and pet.win.winfo_width() >= 300, (
+        pet.expanded, pet.win.winfo_width())
+    pet._ask("谁还没交材料")
+    deadline = time.time() + 4
+    while time.time() < deadline and pet.busy:
+        root.update()
+        time.sleep(0.05)
+    assert not pet.busy, "助手问答没有在 4 秒内返回"
+    assert pet.last_reply and ("人" in pet.last_reply or "交" in pet.last_reply), pet.last_reply
+    assert "你：" in pet.text.get("1.0", "end"), "对话没有落到面板里"
+    before = app.current
+    pet._ask("打开服务留痕")
+    deadline = time.time() + 4
+    while time.time() < deadline and pet.busy:
+        root.update()
+        time.sleep(0.05)
+    assert app.current == "service", (before, app.current)
+    pet.collapse()
+    root.update()
+    assert not pet.expanded and pet.win.winfo_height() <= 90, (
+        pet.expanded, pet.win.winfo_height())
+    texts = [pet.canvas.itemcget(i, "text") for i in pet.canvas.find_all()
+             if pet.canvas.type(i) == "text"]
+    assert any(pet.last_reply[:6] in t for t in texts), (pet.last_reply[:6], texts)
+    pet.destroy()
+    root.update()
+    assert getattr(app, "assistant_pet", None) is pet and not pet.alive()
+    print("悬浮助手问答/切页/收起 OK")
+
     root.destroy()
     print("GUI SMOKE OK")
 

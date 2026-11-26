@@ -221,6 +221,18 @@ def main():
             win.finish_shell_extras()
             root.update_idletasks()
             _trace("extras-ready")
+            root.after(500, _start_pet)
+
+        def _start_pet():
+            """设了「开机显示助手」才拉起悬浮卡；失败不影响主窗口。"""
+            try:
+                import theme
+                if not theme.load_ui("pet_on", False):
+                    return
+                from ui_pet import open_pet
+                win.assistant_pet = open_pet(win, repo)
+            except Exception:
+                pass
 
         def _mark_content_ready():
             """仅性能测试用：CC_STARTUP_READY_FILE 存在时落一个标记，便于外部计时。"""

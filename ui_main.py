@@ -451,6 +451,16 @@ class MainWindow(ttk.Frame):
                          cursor="hand2", command=self.open_settings)
         gear.pack(side="right", padx=(0, 14))
 
+        # 助手：悬浮卡片的入口；桌面版常驻，可拖动
+        self.assistant_btn = tk.Button(bar, text="✦ 助手", relief="flat", bd=0,
+                                       bg=C["topbar"], fg=C["primary"],
+                                       activebackground=C["primary_soft"],
+                                       activeforeground=C["primary"],
+                                       font=(FONT, 9), padx=9, pady=3,
+                                       cursor="hand2",
+                                       command=self.toggle_assistant)
+        self.assistant_btn.pack(side="right", padx=(0, 6))
+
         # 提醒中心：常驻入口 + 未读角标；弱实现，不做推送
         rem = tk.Frame(bar, bg=C["topbar"])
         rem.pack(side="right", padx=(0, 6), pady=12)
@@ -505,6 +515,19 @@ class MainWindow(ttk.Frame):
                 self.reminder_badge.pack(side="left", padx=(4, 0))
         else:
             self.reminder_badge.pack_forget()
+
+    def toggle_assistant(self, event=None):
+        """顶栏入口：没开就开并展开；已开就收起/展开来回切。"""
+        pet = getattr(self, "assistant_pet", None)
+        if pet is not None and pet.alive():
+            pet.toggle()
+            return pet
+        from ui_pet import open_pet
+        pet = open_pet(self, self.repo)
+        theme.save_ui("pet_on", True)
+        if pet is not None and pet.alive():
+            pet.expand()
+        return pet
 
     def _open_reminders(self):
         from ui_reminders import open_reminders

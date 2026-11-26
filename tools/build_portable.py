@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """打包便携目录版：onedir + 版本化目录 + zip。
 
 解压一次后不再每次解包，启动更接近源码运行；
@@ -19,7 +19,7 @@ HIDDEN = [
     "ui_ai", "ui_audit", "ui_cmdk", "ui_collect", "ui_dashboard", "ui_docs",
     "ui_empty", "ui_error", "ui_files", "ui_logs", "ui_more", "ui_reminders",
     "ui_roster", "ui_service", "ui_settings", "ui_submit", "ui_tasks",
-    "ui_filetools", "filetools", "tts",
+    "ui_filetools", "filetools", "tts", "assistant", "ui_pet",
 ]
 
 
@@ -75,3 +75,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

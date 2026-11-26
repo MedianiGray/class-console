@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """打包单文件 exe，并复制为版本化发布资产。
 
 单文件每次启动要解包，适合 U 盘带走；
@@ -18,7 +18,7 @@ HIDDEN = [
     "ui_ai", "ui_audit", "ui_cmdk", "ui_collect", "ui_dashboard", "ui_docs",
     "ui_empty", "ui_error", "ui_files", "ui_logs", "ui_more", "ui_reminders",
     "ui_roster", "ui_service", "ui_settings", "ui_submit", "ui_tasks",
-    "ui_filetools", "filetools", "tts",
+    "ui_filetools", "filetools", "tts", "assistant", "ui_pet",
 ]
 
 
@@ -56,3 +56,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
