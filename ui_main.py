@@ -9,6 +9,7 @@
   卡片内嵌     → surface_alt 再降/或提一档
 """
 
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -100,7 +101,8 @@ class MainWindow(ttk.Frame):
     GROUPS = [("flow", "办理材料"), ("crew", "跟进核对")]
     MORE_GROUP = "aux"
 
-    def __init__(self, master, repo):
+    def __init__(self, master, repo, staged=False):
+        """staged=True 时先建外壳出首帧，视图与数据交给 start_content 在窗口可见后补上。"""
         super().__init__(master)
         self.repo = repo
         self.role = "handler"
@@ -128,7 +130,7 @@ class MainWindow(ttk.Frame):
             pass
         theme.apply_tk_defaults(top)
         theme.setup_ttk(top)
-        self._build()
+        self._build(staged=staged)
         self._enable_file_drop()
 
     def _skip_first_run_for_old_users(self):
@@ -150,6 +152,9 @@ class MainWindow(ttk.Frame):
     def _enable_file_drop(self):
         """等窗口真正映射后再挂 WM_DROPFILES，避免拿不到顶层 HWND。"""
         if getattr(self, "_drop_ready", None) is not None:
+            return
+        if sys.platform != "win32":
+            self._drop_ready = False
             return
         self._drop_ready = "pending"
         self.after(260, self._install_file_drop)
@@ -206,7 +211,7 @@ class MainWindow(ttk.Frame):
         return ROLES.get(self.role, ROLES["handler"])["label"]
 
     # ---------- 界面搭建 ----------
-    def _build(self):
+    def _build(self, staged=False):
         self.pack(fill="both", expand=True)
 
         # 状态栏先占位（上沿发丝线），避免内容区请求高度把状态栏挤出窗口
@@ -258,11 +263,59 @@ class MainWindow(ttk.Frame):
         body.pack(fill="both", expand=True, padx=24, pady=(12, 12))
 
         self.views = LazyViews(body, self)
+        self.body = body
 
         self._sync_role_hint()
         self.bind_all("<Control-f>", self._focus_search)
         self.bind_all("<Control-k>", self._open_cmdk)
-        self.switch(self.current if self._nav_visible(self.current) else "dashboard")
+        if staged:
+            self._build_content_placeholder()
+        else:
+            self._content_ready = True
+            self.switch(self.current if self._nav_visible(self.current) else "dashboard")
+
+    def _build_content_placeholder(self):
+        """首帧的占位：只交代正在载入，不画空表格，也不假装数据已就绪。"""
+        self._content_ready = False
+        holder = tk.Frame(self.body, bg=C["bg"])
+        holder.pack(fill="both", expand=True)
+        card = tk.Frame(holder, bg=C["card"], highlightthickness=1,
+                        highlightbackground=C["line"])
+        card.pack(fill="both", expand=True)
+        inner = tk.Frame(card, bg=C["card"])
+        inner.place(relx=0.5, rely=0.42, anchor="center")
+        tk.Label(inner, text="正在载入工作台…", bg=C["card"], fg=C["text"],
+                 font=(FONT, 12, "bold")).pack(anchor="center")
+        tk.Label(inner, text="本机数据已就绪，正在把这一页铺开",
+                 bg=C["card"], fg=C["muted"], font=(FONT, 9)).pack(anchor="center",
+                                                                 pady=(6, 0))
+        self._content_placeholder = holder
+
+    def _dismiss_placeholder(self):
+        holder = getattr(self, "_content_placeholder", None)
+        if holder is None:
+            return
+        try:
+            holder.destroy()
+        except tk.TclError:
+            pass
+        self._content_placeholder = None
+
+    def start_content(self):
+        """窗口外壳已画好后再建当前视图；重复调用安全，中途跳转也不会留下占位。"""
+        if getattr(self, "_content_ready", False):
+            return
+        key = self.current if self._nav_visible(self.current) else "dashboard"
+        # 先在占位卡后面把这一页建好，建完再撤占位，中间不会出现空白帧。
+        try:
+            self.views[key]
+        except Exception:
+            self._content_ready = True
+            self._dismiss_placeholder()
+            raise
+        self._content_ready = True
+        self._dismiss_placeholder()
+        self.switch(key)
 
     def _build_topbar(self):
         bar = tk.Frame(self, bg=C["topbar"], height=56)
@@ -832,6 +885,9 @@ class MainWindow(ttk.Frame):
         return "工作台 · %s" % glabel
 
     def switch(self, key):
+        if not getattr(self, "_content_ready", True):
+            self._content_ready = True
+        self._dismiss_placeholder()
         if not self._nav_visible(key):
             if self.current != "dashboard":
                 self.toast("当前视角无权访问该模块")

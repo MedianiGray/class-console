@@ -193,8 +193,9 @@ def main():
         loading = _show_loading_shell(root)
         repo = build_repository()
         _trace("repository-ready")
-        MainWindow(root, repo)
-        _trace("main-window-built")
+        # 分帧启动：先只建顶栏/侧栏/标题/状态栏，首帧立即可见；视图随后补。
+        win = MainWindow(root, repo, staged=True)
+        _trace("window-shell-built")
         loading.destroy()
         root.title("班级操作台 · v%s %s" % (VERSION, VERSION_LABEL))
         issue = getattr(database, "LAST_STARTUP_ISSUE", None)
@@ -204,7 +205,16 @@ def main():
         center_window(root, min(1220, max(960, sw - 80)),
                       min(860, max(620, sh - 70)))
         root.minsize(960, 640)
-        root.after(20, lambda: _trace("main-window-painted"))
+        root.update_idletasks()
+        root.update()
+        _trace("window-shell-painted")
+        # 外壳已经在屏幕上，再补当前视图；放在主循环里跑，避免首帧被挡住。
+        def _finish_startup():
+            _trace("content-start")
+            win.start_content()
+            _trace("content-ready")
+
+        root.after(1, _finish_startup)
         root.mainloop()
     except Exception as e:
         path = record_crash(type(e), e, e.__traceback__)

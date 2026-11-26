@@ -155,7 +155,9 @@ class DashboardView(ttk.Frame):
             self.doc_tree.column(c, width=widths[c], anchor="w", stretch=(c == "name"))
         self.doc_tree.pack(fill="both", expand=True)
         self.doc_tree.bind("<Double-1>", lambda e: self.window.switch("docs"))
-        self.doc_empty = EmptyState(body, wraplength=420)
+        # 空态按需创建：有材料时它从头到尾都用不上，不必占首帧的构建时间
+        self._doc_empty_parent = body
+        self.doc_empty = None
 
         # ---- 类别分布（侧栏）----
         self.cat_card, cat_body = self._card(content, "类别分布", "", "台账",
@@ -173,7 +175,8 @@ class DashboardView(ttk.Frame):
         self.log_card.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         self.log_box = tk.Frame(log_body, bg=C["card"])
         self.log_box.pack(fill="x")
-        self.log_empty = EmptyState(log_body, wraplength=520)
+        self._log_empty_parent = log_body
+        self.log_empty = None
 
     # ---------- 滚动 ----------
     def _on_inner_config(self, _event=None):
@@ -200,6 +203,54 @@ class DashboardView(ttk.Frame):
             self.canvas.yview_scroll(delta, "units")
 
     # ---------- 数据 ----------
+    def _ensure_cat_rows(self):
+        """类别分布最多六行，建一次就够；后续刷新只改文字和比例。"""
+        if getattr(self, "_cat_rows", None):
+            return
+        self._cat_rows = []
+        for cat in self.CATS:
+            row = tk.Frame(self.cat_box, bg=C["card"])
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=cat, width=9, anchor="w", bg=C["card"],
+                     fg=C["text"], font=(FONT, 9)).pack(side="left")
+            bar_bg = tk.Frame(row, bg=C["surface_alt"], height=6)
+            bar_bg.pack(side="left", fill="x", expand=True, padx=(0, 8))
+            bar = tk.Frame(bar_bg, bg=C["primary"], height=6)
+            num = tk.Label(row, text="0", width=3, anchor="e", bg=C["card"],
+                           fg=C["text"], font=(FONT, 9))
+            num.pack(side="right")
+            self._cat_rows.append((cat, 0, bar, num))
+
+    def _ensure_log_rows(self):
+        """近期动态固定四行，行内四个单元格只建一次。"""
+        if getattr(self, "_log_rows", None):
+            return
+        self._log_rows = []
+        for _i in range(4):
+            row = tk.Frame(self.log_box, bg=C["card"])
+            row.columnconfigure(3, weight=1)
+            cells = [
+                tk.Label(row, text="", bg=C["card"], fg=C["sub"], font=(FONT, 9),
+                         width=13, anchor="w"),
+                tk.Label(row, text="", bg=C["card"], fg=C["text"], font=(FONT, 9),
+                         width=7, anchor="w"),
+                tk.Label(row, text="", bg=C["card"], fg=C["accent_ink"], font=(FONT, 9),
+                         width=5, anchor="w"),
+                tk.Label(row, text="", bg=C["card"], fg=C["muted"], font=(FONT, 9),
+                         anchor="w"),
+            ]
+            for col, lbl in enumerate(cells):
+                lbl.grid(row=0, column=col, sticky="w")
+            self._log_rows.append(cells)
+
+    def _empty_state(self, name, parent, wraplength):
+        """空态只在真的要显示时才建，避免每次启动都为它付控件构建开销。"""
+        state = getattr(self, name, None)
+        if state is None:
+            state = EmptyState(parent, wraplength=wraplength)
+            setattr(self, name, state)
+        return state
+
     def _build_first_run(self):
         """首次需要显示引导时再建控件，避免已完成用户每次启动都付这份 Tk 开销。"""
         if self._first_run_built:
@@ -307,8 +358,6 @@ class DashboardView(ttk.Frame):
         except Exception as e:
             self.window.show_status("看板加载失败：%s" % e)
             return
-            self.window.show_status("看板加载失败：%s" % e)
-            return
 
         can_archive = self.window.can("docs:archive")
         can_roster = self.window.can("roster:manage")
@@ -378,8 +427,10 @@ class DashboardView(ttk.Frame):
             self.doc_tree.insert("", "end", tags=(d.get("id"),), values=(
                 d.get("name", ""), d.get("who", ""), d.get("time", "")))
         if focus:
-            self.doc_empty.hide_pack()
+            if self.doc_empty is not None:
+                self.doc_empty.hide_pack()
         else:
+            self.doc_empty = self._empty_state("doc_empty", self._doc_empty_parent, 420)
             if is_applicant and not sid:
                 self.doc_empty.set("请先填写申请人学号",
                                    "未填写时不展示任何人的材料；填好后这里只显示你自己的进度。",
@@ -400,23 +451,16 @@ class DashboardView(ttk.Frame):
                                    "查看台账", lambda: self.window.switch("docs"))
             self.doc_empty.show_pack(pady=(6, 0))
 
-        # 类别分布：横条 + 百分比，数字右对齐
-        for w in self.cat_box.winfo_children():
-            w.destroy()
+        # 类别分布：行只建一次，之后只改数字与横条宽度，避免每次刷新重建控件
+        self._ensure_cat_rows()
         total = len(display_docs) or 1
-        for cat in self.CATS:
-            n = sum(1 for d in display_docs if d.get("cat") == cat)
-            row = tk.Frame(self.cat_box, bg=C["card"])
-            row.pack(fill="x", pady=3)
-            tk.Label(row, text=cat, width=9, anchor="w", bg=C["card"],
-                     fg=C["text"], font=(FONT, 9)).pack(side="left")
-            bar_bg = tk.Frame(row, bg=C["surface_alt"], height=6)
-            bar_bg.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        for cat, n, bar, num in self._cat_rows:
+            num.config(text=str(n))
             if n > 0:
-                bar = tk.Frame(bar_bg, bg=C["primary"], height=6)
                 bar.place(relwidth=n / total, relheight=1, rely=0)
-            tk.Label(row, text=str(n), width=3, anchor="e", bg=C["card"],
-                     fg=C["text"], font=(FONT, 9)).pack(side="right")
+                bar.lift()
+            else:
+                bar.place_forget()
         self.cat_total.config(text="共 %d 条 · 覆盖 %d 类" %
                               (len(display_docs), len([c for c in self.CATS
                                                        if any(d.get("cat") == c for d in display_docs)])))
@@ -424,22 +468,22 @@ class DashboardView(ttk.Frame):
         # 近期动态
         if can_logs:
             self.log_card.grid()
-            self.log_empty.pack_forget()
-            for w in self.log_box.winfo_children():
-                w.destroy()
-            for l in logs[:4]:
-                row = tk.Frame(self.log_box, bg=C["card"])
-                row.pack(fill="x", pady=2)
-                row.columnconfigure(3, weight=1)
-                tk.Label(row, text=l.get("time", ""), bg=C["card"], fg=C["sub"],
-                         font=(FONT, 9), width=13, anchor="w").grid(row=0, column=0, sticky="w")
-                tk.Label(row, text=l.get("who", ""), bg=C["card"], fg=C["text"],
-                         font=(FONT, 9), width=7, anchor="w").grid(row=0, column=1, sticky="w")
-                tk.Label(row, text=l.get("act", ""), bg=C["card"], fg=C["accent_ink"],
-                         font=(FONT, 9), width=5, anchor="w").grid(row=0, column=2, sticky="w")
-                tk.Label(row, text=l.get("obj", ""), bg=C["card"], fg=C["muted"],
-                         font=(FONT, 9), anchor="w").grid(row=0, column=3, sticky="w")
+            if self.log_empty is not None:
+                self.log_empty.pack_forget()
+            self._ensure_log_rows()
+            for i, row in enumerate(self._log_rows):
+                item = logs[i] if i < len(logs) else None
+                for col, lbl in enumerate(row):
+                    lbl.config(text=item.get(("time", "who", "act", "obj")[col], "")
+                               if item else "")
+                parent = row[0].master
+                if item:
+                    if not parent.winfo_ismapped():
+                        parent.pack(fill="x", pady=2)
+                else:
+                    parent.pack_forget()
             if not logs:
+                self.log_empty = self._empty_state("log_empty", self._log_empty_parent, 520)
                 self.log_empty.set("还没有操作动态",
                                    "提交、审核、归档后会在这里留下最近几条记录。",
                                    "查看全部日志", lambda: self.window.switch("logs"))

@@ -406,46 +406,50 @@ def main():
     rd.top.destroy(); root.update()
     print("文件室视图/预览/缺失反查 OK")
 
-    # Windows 原生拖入：真实 WM_DROPFILES 消息应触发当前文件室登记回调
-    import ctypes
-    import time
-    from ctypes import wintypes
-    import drop_target
-    if app._drop_ready in (None, False, "pending"):
-        app._install_file_drop()
+    # Windows 原生拖入：仅 Windows 注册 WM_DROPFILES，其他平台明确跳过
+    if sys.platform != "win32":
+        print("Windows 原生拖入 SKIP（非 Windows 平台）")
+    else:
+        # Windows 原生拖入：真实 WM_DROPFILES 消息应触发当前文件室登记回调
+        import ctypes
+        import time
+        from ctypes import wintypes
+        import drop_target
+        if app._drop_ready in (None, False, "pending"):
+            app._install_file_drop()
+            root.update()
+        assert app._drop_ready is True, "拖入注册失败"
+        got = []
+        fv.accept_drop = lambda paths: got.extend(paths)
+        drop_file = base / "拖入消息.txt"
+        drop_file.write_text("drop", encoding="utf-8")
+        class DROPFILES(ctypes.Structure):
+            _fields_ = [("pFiles", wintypes.DWORD), ("pt", wintypes.POINT),
+                        ("fNC", wintypes.BOOL), ("fWide", wintypes.BOOL)]
+        text = (str(drop_file) + "\0\0").encode("utf-16-le")
+        size = ctypes.sizeof(DROPFILES) + len(text)
+        k32 = ctypes.windll.kernel32
+        k32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+        k32.GlobalAlloc.restype = wintypes.HGLOBAL
+        k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        k32.GlobalLock.restype = ctypes.c_void_p
+        k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        hdrop = k32.GlobalAlloc(0x42, size)
+        ptr = k32.GlobalLock(hdrop)
+        df = DROPFILES()
+        df.pFiles = ctypes.sizeof(DROPFILES)
+        df.fWide = True
+        ctypes.memmove(ptr, ctypes.byref(df), ctypes.sizeof(DROPFILES))
+        ctypes.memmove(ptr + ctypes.sizeof(DROPFILES), text, len(text))
+        k32.GlobalUnlock(hdrop)
+        ctypes.windll.user32.SendMessageW(
+            drop_target._state["hwnd"], drop_target.WM_DROPFILES,
+            wintypes.WPARAM(hdrop), 0)
         root.update()
-    assert app._drop_ready is True, "拖入注册失败"
-    got = []
-    fv.accept_drop = lambda paths: got.extend(paths)
-    drop_file = base / "拖入消息.txt"
-    drop_file.write_text("drop", encoding="utf-8")
-    class DROPFILES(ctypes.Structure):
-        _fields_ = [("pFiles", wintypes.DWORD), ("pt", wintypes.POINT),
-                    ("fNC", wintypes.BOOL), ("fWide", wintypes.BOOL)]
-    text = (str(drop_file) + "\0\0").encode("utf-16-le")
-    size = ctypes.sizeof(DROPFILES) + len(text)
-    k32 = ctypes.windll.kernel32
-    k32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
-    k32.GlobalAlloc.restype = wintypes.HGLOBAL
-    k32.GlobalLock.argtypes = [wintypes.HGLOBAL]
-    k32.GlobalLock.restype = ctypes.c_void_p
-    k32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
-    hdrop = k32.GlobalAlloc(0x42, size)
-    ptr = k32.GlobalLock(hdrop)
-    df = DROPFILES()
-    df.pFiles = ctypes.sizeof(DROPFILES)
-    df.fWide = True
-    ctypes.memmove(ptr, ctypes.byref(df), ctypes.sizeof(DROPFILES))
-    ctypes.memmove(ptr + ctypes.sizeof(DROPFILES), text, len(text))
-    k32.GlobalUnlock(hdrop)
-    ctypes.windll.user32.SendMessageW(
-        drop_target._state["hwnd"], drop_target.WM_DROPFILES,
-        wintypes.WPARAM(hdrop), 0)
-    root.update()
-    time.sleep(0.1)
-    root.update()
-    assert got and os.path.normcase(got[0]) == os.path.normcase(str(drop_file)), got
-    print("Windows 原生拖入 OK")
+        time.sleep(0.1)
+        root.update()
+        assert got and os.path.normcase(got[0]) == os.path.normcase(str(drop_file)), got
+        print("Windows 原生拖入 OK")
 
     # 主题切换：深色 / 浅色各重建一次，数据与视图保持不变
     import theme
