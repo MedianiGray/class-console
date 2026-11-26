@@ -223,7 +223,7 @@ def window_width(hwnd):
     return int(rect.right - rect.left)
 
 
-def measure_startup(label, command, runs=3, prepare=True):
+def measure_startup(label, command, runs=3, prepare=True, ready=False):
     results = []
     if os.name != "nt":
         return {"label": label, "skipped": "非 Windows", "runs": []}
@@ -235,6 +235,9 @@ def measure_startup(label, command, runs=3, prepare=True):
         else:
             appdata, prep_ms = Path(tempfile.mkdtemp(prefix="cc-perf-clean-")), 0
         env = dict(os.environ, APPDATA=str(appdata))
+        marker = Path(tempfile.mkdtemp(prefix="cc-ready-")) / "ready.txt"
+        if ready:
+            env["CC_STARTUP_READY_FILE"] = str(marker)
         before = {item[0] for item in all_windows()}
         t0 = time.perf_counter()
         proc = subprocess.Popen(command, cwd=str(ROOT), env=env,
@@ -253,6 +256,15 @@ def measure_startup(label, command, runs=3, prepare=True):
                 break
             time.sleep(0.05)
         elapsed = round((time.perf_counter() - t0) * 1000, 1)
+        content_ms = None
+        if ready:
+            while time.perf_counter() - t0 < 15:
+                if marker.exists():
+                    content_ms = round((time.perf_counter() - t0) * 1000, 1)
+                    break
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.02)
         if not found:
             results.append({"startupMs": elapsed, "memoryMB": None,
                             "window": None, "ok": False,
@@ -264,6 +276,7 @@ def measure_startup(label, command, runs=3, prepare=True):
         crash = appdata / "ClassConsole" / "crash.log"
         results.append({
             "startupMs": elapsed,
+            "contentReadyMs": content_ms,
             "memoryMB": mem,
             "window": found[1],
             "pid": found[2],
@@ -349,10 +362,12 @@ def main():
     print("\n桌面台账刷新：%s ms（最慢 %s ms，%d 行，常驻 %s MB，初始化 %s ms）"
           % (ui["refreshMs"], ui["refreshMaxMs"], ui["rows"], ui["memoryMB"], ui["initMs"]))
 
-    source = measure_startup("源码", [sys.executable, str(ROOT / "main.py")])
+    source = measure_startup("源码", [sys.executable, str(ROOT / "main.py")], ready=True)
     print("\n源码冷启动：%s" % json.dumps(source, ensure_ascii=False))
     print("源码首次建库：%s ms（不计入冷启动）"
           % statistics.median([r["prepareMs"] for r in source["runs"]]))
+    print("源码内容就绪：%s ms（窗口可见之后补当前视图）"
+          % statistics.median([r["contentReadyMs"] or 0 for r in source["runs"]]))
 
     packaged = None
     exe = locate_exe()
@@ -360,10 +375,12 @@ def main():
         run_exe = TEST_TMP / exe.name
         if Path(exe).resolve() != run_exe.resolve():
             shutil.copy2(str(exe), str(run_exe))
-        packaged = measure_startup("打包 EXE", [str(run_exe)])
+        packaged = measure_startup("打包 EXE", [str(run_exe)], ready=True)
         print("打包冷启动：%s" % json.dumps(packaged, ensure_ascii=False))
         print("打包首次建库：%s ms（不计入冷启动）"
               % statistics.median([r["prepareMs"] for r in packaged["runs"]]))
+        print("打包内容就绪：%s ms"
+              % statistics.median([r["contentReadyMs"] or 0 for r in packaged["runs"]]))
 
     checks = [
         ("5000 条全部查询", query[0]["medianMs"], LIMITS["query_ms"], "ms",

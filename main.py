@@ -14,9 +14,8 @@ import datetime
 import tkinter as tk
 from tkinter import messagebox
 
-from database import build_repository, app_data_dir
-from ui_main import MainWindow
-import database
+# 数据层与界面层在「品牌加载页已经画出来之后」再导入：
+# 这两个模块连同 pathlib/json 约 70–120ms 的导入时间可以落到用户已经看到反馈之后。
 import theme
 from version import VERSION, VERSION_LABEL
 
@@ -69,6 +68,7 @@ def _show_loading_shell(root):
 
 
 def crash_log_path():
+    from database import app_data_dir
     return app_data_dir() / CRASH_LOG_NAME
 
 
@@ -191,6 +191,11 @@ def main():
     _install_error_logger(root)
     try:
         loading = _show_loading_shell(root)
+        # 首帧已经落在屏幕上，再付数据层与界面层的导入成本。
+        from database import build_repository
+        from ui_main import MainWindow
+        import database
+        _trace("imports-ready")
         repo = build_repository()
         _trace("repository-ready")
         # 分帧启动：先只建顶栏/侧栏/标题/状态栏，首帧立即可见；视图随后补。
@@ -213,6 +218,18 @@ def main():
             _trace("content-start")
             win.start_content()
             _trace("content-ready")
+            _mark_content_ready()
+
+        def _mark_content_ready():
+            """仅性能测试用：CC_STARTUP_READY_FILE 存在时落一个标记，便于外部计时。"""
+            path = os.environ.get("CC_STARTUP_READY_FILE")
+            if not path:
+                return
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write("%.0f\n" % ((time.perf_counter() - _TRACE_T0) * 1000))
+            except OSError:
+                pass
 
         root.after(1, _finish_startup)
         root.mainloop()

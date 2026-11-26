@@ -30,15 +30,19 @@ def main():
     if not exe.exists():
         raise SystemExit("找不到可执行文件：%s" % exe)
 
-    existing = p.measure_startup("已有数据", [str(exe)], runs=args.runs)
+    existing = p.measure_startup("已有数据", [str(exe)], runs=args.runs, ready=True)
     print(json.dumps(existing, ensure_ascii=False, indent=2))
     values = [r["startupMs"] for r in existing["runs"]]
+    ready_values = [r["contentReadyMs"] for r in existing["runs"] if r.get("contentReadyMs")]
     print("已有数据中位：%.1f ms（%s）" % (statistics.median(values), values))
+    if ready_values:
+        print("内容就绪中位：%.1f ms（%s）" % (statistics.median(ready_values), ready_values))
 
     if args.clean_first:
-        clean = p.measure_startup("干净目录首次", [str(exe)], runs=1, prepare=False)
+        clean = p.measure_startup("干净目录首次", [str(exe)], runs=1, prepare=False, ready=True)
         print(json.dumps(clean, ensure_ascii=False, indent=2))
         print("干净目录首次：%.1f ms" % clean["runs"][0]["startupMs"])
+        print("干净目录内容就绪：%s ms" % clean["runs"][0].get("contentReadyMs"))
 
 
 if __name__ == "__main__":
