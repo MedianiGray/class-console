@@ -1,4 +1,4 @@
-/* v0.26 PWA 更新链路走查：旧 SW 控制页面 → 换新 SW → 弹更新提示。
+/* PWA 更新链路走查：旧 SW 控制页面 → 换仓库当前 SW → 弹更新提示。
  * 用法：node tests/web_pwa_update_smoke.mjs
  * 用本地 HTTP 服务从 web/ 读文件，只把 sw.js 在测试中临时换成旧版本；
  * 不改仓库文件，不用真实账号，不调用模型。
@@ -11,8 +11,13 @@ import path from "node:path";
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const PORT = Number(process.env.PORT || 9251);
 const CDP_PORT = PORT + 1;
-const PROFILE = `C:\\Users\\35342\\AppData\\Local\\Temp\\cc-v026-pwa-edge-${PORT}`;
+const PROFILE = `C:\\Users\\35342\\AppData\\Local\\Temp\\cc-pwa-edge-${PORT}`;
 const WEB = path.resolve("web");
+const SW_SOURCE = readFileSync(path.join(WEB, "sw.js"), "utf8");
+const NEW_CACHE = /const\s+CACHE\s*=\s*'([^']+)'/.exec(SW_SOURCE)?.[1];
+if (!NEW_CACHE) {
+  console.log("FAIL SW_CACHE_NAME"); process.exit(1);
+}
 const OLD_SW = `const CACHE = 'cc-web-v025-shell-v1';
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE)
@@ -142,7 +147,7 @@ if (!controlled.controller || !controlled.hadController || !controlled.hidden) {
   console.log("FAIL CONTROLLED"); proc.kill(); server.close(); process.exit(1);
 }
 
-// 换成仓库里的 v026 sw.js，强制检查更新
+// 换成仓库当前的 sw.js，强制检查更新
 phase = "new";
 const update = JSON.parse(await evalJS(`(async () => {
   const reg = await navigator.serviceWorker.getRegistration();
@@ -172,8 +177,8 @@ const update = JSON.parse(await evalJS(`(async () => {
   });
 })()`));
 console.log("UPDATE", JSON.stringify(update));
-const hasNewCache = update.keys.includes("cc-web-v026-shell-v1");
-const hasOldCache = update.keys.includes("cc-web-pwa-old-test");
+const hasNewCache = update.keys.includes(NEW_CACHE);
+const hasOldCache = update.keys.includes("cc-web-v025-shell-v1");
 if (!update.changed || !update.shown || update.hidden || update.text !== "新版本已准备好" ||
     !update.hadController || !hasNewCache || hasOldCache) {
   console.log("FAIL UPDATE_PROMPT"); proc.kill(); server.close(); process.exit(1);

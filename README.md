@@ -2,7 +2,7 @@
 
 > 面向班级学委 / 辅导员的**离线优先**材料工作台：把材料从提交、审核、归档到留痕的流程收拢在一个本地程序里闭环。
 >
-> 当前版本：**网页版 v0.26.0 · 桌面端 v0.26.0（上下文版）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
+> 当前版本：**网页版 v0.27.0 · 桌面端 v0.27.0（静默版候选）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
 
 ## 一、项目简介
 
@@ -116,9 +116,9 @@ class-console/
 
 ### 下载现成程序（Windows）
 
-前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.26.0)
-下载附件 `class-console-v0.26.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
-SHA256：`00318EA73155CEDE726A64CA2C94F38C6B35D09BBE9B1155E201862F704F6B44`（32,353,326 字节）。
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.27.0)
+下载附件 `class-console-v0.27.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
+SHA256：`58B05926E677A0F7A2B56DF2BBE6F921F87A67BC5BF334E7C71C1D171F04B559`（32,356,277 字节）。
 安装、SmartScreen、首启、数据位置、迁移与卸载见 [`docs/安装与首启说明.md`](docs/安装与首启说明.md)。
 
 ### 浏览器本地缓存版
@@ -143,11 +143,11 @@ python main.py
 详见 `release/发布说明.md`。在 Windows 上：
 
 ```bat
-py -3.14 -m pip install "pyinstaller>=6.0"
-py -3.14 -m PyInstaller --noconfirm --onefile --windowed --name "班级操作台" main.py
+py -3.14 -m pip install "pyinstaller>=6.0" "Pillow>=10.0"
+build_exe.bat
 ```
 
-产物在 `dist\班级操作台.exe`。打包必须在 Windows 上进行。
+`build_exe.bat` 已把懒加载视图列入 `--hidden-import`，不要退回只写 `main.py` 的一条命令，否则 EXE 会缺视图模块与 Pillow。脚本先产出 `dist\班级操作台.exe`，再按 `version.py` 复制出 `dist\class-console-v<版本>.exe` 作为 Release 资产。打包必须在 Windows 上进行。
 
 ### 回归自检
 

@@ -360,7 +360,7 @@ def main():
          query[2]["medianMs"] <= LIMITS["query_ms"]),
         ("统计", query[3]["medianMs"], LIMITS["query_ms"], "ms",
          query[3]["medianMs"] <= LIMITS["query_ms"]),
-        ("桌面台账刷新 5000 条", ui["refreshMs"], LIMITS["query_ms"], "ms",
+        ("桌面台账首屏 300 条刷新", ui["refreshMs"], LIMITS["query_ms"], "ms",
          ui["refreshMs"] <= LIMITS["query_ms"]),
         ("常驻内存", ui["memoryMB"], LIMITS["memory_mb"], "MB",
          ui["memoryMB"] is not None and ui["memoryMB"] <= LIMITS["memory_mb"]),

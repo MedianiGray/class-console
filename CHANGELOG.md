@@ -3,6 +3,33 @@
 版本号遵循语义化版本 MAJOR.MINOR.PATCH：
 PATCH = 缺陷修复 / 稳定性加固；MINOR = 兼容的新功能或体验改进；MAJOR = 不兼容改动。
 
+## 0.27.0 — 静默版性能与安装说明（两端候选，2026-11-26）
+
+桌面九个视图改为按需构建、按需导入，台账由一次渲染 5000 行改为 300 条首屏 + 加载更多；数据刷新只刷当前页，待审数与日志数走 SQL 统计。网页与桌面版本号、SW 缓存名同步到 0.27.0，网页功能未变。冷启动仍高于 1 秒，按发布门禁写明例外，不宣称达标。
+
+### 桌面端
+- `MainWindow` 首屏只构建概览；视图按 `import_module` 懒加载，切到哪页建哪页。
+- `switch()` 先构建目标页再统一显隐，修复懒加载后切页空白。
+- `refresh_all()` 只刷新当前视图；待审数用 `repo.stats()["pending"]`，日志数用新增 `repo.count_logs()`。
+- 台账 `PAGE_SIZE=300`，底部「加载更多」每次追加 300 条；搜索、类别、类型、状态筛选与套用视图重置首屏。
+- `list_docs` 补 `status` / `form_type` / `limit` / `offset`，新增 `count_docs()`；附件只查当前页。
+- `days_until()` 改用 `date.fromisoformat()`，避开启动时首次编译 `_strptime`；事件回填改一次 `SELECT DISTINCT`。
+- 新增 `tests/gui_paging_smoke.py`：700 条验证 300 / 600 / 700、筛选回首屏、状态筛选与总数一致；GUI 冒烟补视图 `pack` 断言。
+- `tests/perf_desktop.py` 拆分首次建库 `prepareMs` 与“已有数据冷启动”，不再把建库算进启动。
+
+### 文档与门禁
+- 新增 `docs/安装与首启说明.md`：下载校验、SmartScreen、首启、数据位置、换机、更新、卸载与问题表。
+- 新增 `docs/v1.0-发布门禁与走查签署.md`：自动门禁、性能例外、20 项人工走查与空白签字页。
+- 更新业务验收对照、阶段 A 清单、最佳形态蓝图、README 与发布说明。
+- PWA 更新链测试改为从 `web/sw.js` 读取当前缓存名，并真实断言旧 `v025` 缓存被清。
+
+### 验证
+- 网页 `node tests/web_smoke.js`：264 项通过；PWA 更新链 `ERRORS 0`。
+- 桌面 `tests/selftest.py`：45 组通过；`gui_smoke.py`、`gui_paging_smoke.py`、`ai_smoke.py` 40 项通过。
+- 5000 条数据层：全部 55.7ms、关键词 4.3ms、类别 12.2ms、统计 3.2ms、日志 19.0ms。
+- 台账首屏 300 条 18.4ms；常驻 39.7MB；已有数据冷启动中位 1551.9ms（已知例外）。
+- 版本：网页 `WEB_VERSION=0.27.0`，桌面 `VERSION=0.27.0`；SW `cc-web-v027-shell-v1`。
+
 ## 0.26.0 — 材料上下文 + 桌面 AI 建议（两端，2026-11-26）
 
 网页端补齐收材料、矩阵催交、全局搜索与右栏上下文；桌面端新增 API-only 分类建议，两端统一到 0.26.0。网页数据仍各自留在浏览器与 SQLite，不做云同步或账号体系。
