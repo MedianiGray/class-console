@@ -2,7 +2,7 @@
 
 > 面向班级学委 / 辅导员的**离线优先**材料工作台：把材料从提交、审核、归档到留痕的流程收拢在一个本地程序里闭环。
 >
-> 当前版本：**网页版 v0.27.1 · 桌面端 v0.28.0（文件工具版，源码；安装包待 Windows 重打包）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
+> 当前版本：**网页版 v0.27.1 · 桌面端 v0.28.0（文件工具版，已发布，含便携包与单文件）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
 
 ## 一、项目简介
 
@@ -119,13 +119,13 @@ class-console/
 
 ### 下载现成程序（Windows）
 
-前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.27.2) 选包：
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.28.0) 选包：
 
-- **推荐**：`class-console-v0.27.2-portable.zip`，解压一次，之后双击 `班级操作台.exe`；同机已有数据窗口约 1 秒出现（中位 0.98 秒），当前页约 1.5 秒补齐。
-- **备选**：`class-console-v0.27.2.exe`，单文件免解压，适合 U 盘带走；每次启动约 3–8 秒。
+- **推荐**：`class-console-v0.28.0-portable.zip`，解压一次，之后双击 `班级操作台.exe`；同机已有数据窗口 1.25–1.56 秒出现（6 次，中位约 1.40 秒），当前页 1.84–2.32 秒补齐（中位约 2.12 秒）。比 0.27.2 慢约 0.4 秒，如实记在性能页，列为 0.27.3 收口项。
+- **备选**：`class-console-v0.28.0.exe`，单文件免解压，适合 U 盘带走；二次启动约 2–3 秒，新文件第一次可能被杀软全量扫描，最慢超过 30 秒。
 
-便携包 SHA256：`8E7F232037AE23FACA6CF6131DBADA0E6B0920B75DB509A1C4807902827843CE`（32,994,326 字节）。
-单文件 SHA256：`550B03A0FD5B524492ACD38507E923A84AF7C8B7EFC82A5819ECD9CE1DAE9691`（32,362,641 字节）。
+便携包 SHA256：`4CEA2160F03083EE1652646EB9D55505F28B828FEAD7FEB7262D1771460E8EAF`（33,022,547 字节）。
+单文件 SHA256：`F3C5120916D4F3A69350B844E936CF56617AC74383210A2D7AFD9940EF168E4D`（32,392,545 字节）。
 安装、SmartScreen、首启、数据位置、迁移与卸载见 [`docs/安装与首启说明.md`](docs/安装与首启说明.md)。
 
 ### 浏览器本地缓存版

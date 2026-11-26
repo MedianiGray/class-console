@@ -21,11 +21,14 @@ PATCH = 缺陷修复 / 稳定性加固；MINOR = 兼容的新功能或体验改�
 
 ### 测试
 - `tests/selftest.py` 45 → 49 组：新增改名预览不落盘 / 根外拒绝 / 执行与撤销、互换改名、图片转换（结构、尺寸、原件保留、同名避让）、按类别归位与台账同步。
-- `tests/gui_smoke.py` 新增「批量文件工具入口 / 三页预览」段；本机 Linux Xvfb 实跑通过（49 组自检 + GUI 冒烟全绿）。
+- `tests/gui_smoke.py` 新增「批量文件工具入口 / 三页预览」段；Windows 真机实跑 26 段全绿（含 Windows 原生拖入、三页预览），Linux Xvfb 也通过。
 - `tools/build_onefile.py` / `build_portable.py` 的 hidden-import 补 `ui_filetools`、`filetools`，避免打包后点「批量工具」缺模块。
 
 ### 口径
-- 本轮在 Linux 云主机完成代码、自检与界面核验，**Windows EXE 尚未重打包**：`0.28.0` 的安装包需在 Windows（Python 3.14 + PyInstaller）上执行 `build_portable.bat` / `build_exe.bat` 后发布，落地页与下载链接暂维持 `v0.27.2`，不做提前宣传。
+- 2026-11-26 在 Windows 11 真机重打包：便携包 `class-console-v0.28.0-portable.zip` 33,022,547 字节，SHA256 `4CEA2160F03083EE1652646EB9D55505F28B828FEAD7FEB7262D1771460E8EAF`（77 个文件，解压后 71,639,812 字节）；单文件 `class-console-v0.28.0.exe` 32,392,545 字节，SHA256 `F3C5120916D4F3A69350B844E936CF56617AC74383210A2D7AFD9940EF168E4D`（PyInstaller 6.22.3 / Python 3.14.7）。
+- 启动实测：便携版窗口可见 6 次 1250.3–1555.4ms（中位 1404.2ms）、内容就绪 1841.2–2315.6ms（中位 2117.6ms）；单文件二次启动窗口 2207ms、出正式标题 2921ms，新文件首次启动因安全软件全量扫描超过 30 秒。**比 0.27.2 的 977.8 / 1514.9ms 慢约 0.4 秒**，本轮不记“达标”，列为 0.27.3 外壳分层收口项。
+- 启动核验：便携版与单文件窗口标题均为「班级操作台 · v0.28.0 文件工具版」。
+- 已推送 main、打 tag `v0.28.0`，发布 Release 并上传两个安装包；落地页与下载链接同步切到 v0.28.0。
 
 ## 0.27.2 — 分帧启动：窗口约 1 秒出现（桌面端，2026-11-26）
 
