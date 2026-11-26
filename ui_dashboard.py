@@ -73,53 +73,12 @@ class DashboardView(ttk.Frame):
         content.columnconfigure(1, weight=1, uniform="g")
         content.rowconfigure(2, weight=1)
 
-        # ---- 首次引导：一张可收起的卡，不做多页 tour ----
+        # ---- 首次引导：先留占位；已完成/已收起的用户不再构建内部控件 ----
         self.first_card = tk.Frame(content, bg=C["card"], highlightthickness=1,
                                    highlightbackground=C["line"])
         self.first_card.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
-        fr_head = tk.Frame(self.first_card, bg=C["card"])
-        fr_head.pack(fill="x", padx=18, pady=(14, 0))
-        tk.Label(fr_head, text="三步上手", bg=C["card"], fg=C["text"],
-                 font=(FONT, 10, "bold")).pack(side="left")
-        self.fr_count = tk.Label(fr_head, text="0 / 3", bg=C["primary_soft"], fg=C["primary"],
-                                 font=(FONT, 8, "bold"), padx=8, pady=2)
-        self.fr_count.pack(side="left", padx=(8, 0))
-        self.fr_dismiss = tk.Button(fr_head, text="收起", relief="flat", bd=0,
-                                    bg=C["card"], fg=C["sub"], activebackground=C["bg_soft"],
-                                    activeforeground=C["text"], font=(FONT, 9), cursor="hand2",
-                                    command=self.window.dismiss_first_run)
-        self.fr_dismiss.pack(side="right")
-        help_lbl = tk.Label(fr_head, text="使用帮助 →", bg=C["card"], fg=C["primary"],
-                            font=(FONT, 9), cursor="hand2")
-        help_lbl.pack(side="right", padx=(0, 14))
-        help_lbl.bind("<Button-1>", lambda e: self.window.open_help())
-        tk.Label(self.first_card, text="不弹欢迎页。完成一次提交 → 审核 → 归档，这张卡会自动收起。",
-                 bg=C["card"], fg=C["muted"], font=(FONT, 9), anchor="w").pack(
-                     fill="x", padx=18, pady=(2, 10))
-
-        self.fr_steps = tk.Frame(self.first_card, bg=C["card"])
-        self.fr_steps.pack(fill="x", padx=18, pady=(0, 14))
+        self._first_run_built = False
         self.fr_rows = []
-        for i in range(3):
-            self.fr_steps.columnconfigure(i, weight=1, uniform="fr")
-            cell = tk.Frame(self.fr_steps, bg=C["bg_soft"], highlightthickness=1,
-                            highlightbackground=C["line"])
-            cell.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0))
-            no = tk.Label(cell, text=str(i + 1), bg=C["primary_soft"], fg=C["primary"],
-                          font=(FONT, 9, "bold"), width=2, height=1)
-            no.pack(anchor="w", padx=12, pady=(10, 0))
-            title = tk.Label(cell, text="", bg=C["bg_soft"], fg=C["text"],
-                             font=(FONT, 9, "bold"), anchor="w", justify="left")
-            title.pack(fill="x", padx=12, pady=(6, 0))
-            desc = tk.Label(cell, text="", bg=C["bg_soft"], fg=C["muted"],
-                            font=(FONT, 8), anchor="w", justify="left", wraplength=220)
-            desc.pack(fill="x", padx=12, pady=(2, 8))
-            btn = tk.Button(cell, text="", relief="flat", bd=0, bg=C["bg_soft"],
-                            fg=C["primary"], activebackground=C["bg_soft"],
-                            activeforeground=C["primary"], font=(FONT, 8, "bold"),
-                            cursor="hand2", anchor="w", padx=0, pady=0)
-            btn.pack(fill="x", padx=12, pady=(0, 10))
-            self.fr_rows.append((no, title, desc, btn))
 
         # ---- 主视觉带：待办 + 指标，同一表面，避免四个白盒并排 ----
         hero = tk.Frame(content, bg=C["hero"], highlightthickness=1,
@@ -241,10 +200,59 @@ class DashboardView(ttk.Frame):
             self.canvas.yview_scroll(delta, "units")
 
     # ---------- 数据 ----------
+    def _build_first_run(self):
+        """首次需要显示引导时再建控件，避免已完成用户每次启动都付这份 Tk 开销。"""
+        if self._first_run_built:
+            return
+        fr_head = tk.Frame(self.first_card, bg=C["card"])
+        fr_head.pack(fill="x", padx=18, pady=(14, 0))
+        tk.Label(fr_head, text="三步上手", bg=C["card"], fg=C["text"],
+                 font=(FONT, 10, "bold")).pack(side="left")
+        self.fr_count = tk.Label(fr_head, text="0 / 3", bg=C["primary_soft"], fg=C["primary"],
+                                 font=(FONT, 8, "bold"), padx=8, pady=2)
+        self.fr_count.pack(side="left", padx=(8, 0))
+        self.fr_dismiss = tk.Button(fr_head, text="收起", relief="flat", bd=0,
+                                    bg=C["card"], fg=C["sub"], activebackground=C["bg_soft"],
+                                    activeforeground=C["text"], font=(FONT, 9), cursor="hand2",
+                                    command=self.window.dismiss_first_run)
+        self.fr_dismiss.pack(side="right")
+        help_lbl = tk.Label(fr_head, text="使用帮助 →", bg=C["card"], fg=C["primary"],
+                            font=(FONT, 9), cursor="hand2")
+        help_lbl.pack(side="right", padx=(0, 14))
+        help_lbl.bind("<Button-1>", lambda e: self.window.open_help())
+        tk.Label(self.first_card, text="不弹欢迎页。完成一次提交 → 审核 → 归档，这张卡会自动收起。",
+                 bg=C["card"], fg=C["muted"], font=(FONT, 9), anchor="w").pack(
+                     fill="x", padx=18, pady=(2, 10))
+
+        self.fr_steps = tk.Frame(self.first_card, bg=C["card"])
+        self.fr_steps.pack(fill="x", padx=18, pady=(0, 14))
+        for i in range(3):
+            self.fr_steps.columnconfigure(i, weight=1, uniform="fr")
+            cell = tk.Frame(self.fr_steps, bg=C["bg_soft"], highlightthickness=1,
+                            highlightbackground=C["line"])
+            cell.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0))
+            no = tk.Label(cell, text=str(i + 1), bg=C["primary_soft"], fg=C["primary"],
+                          font=(FONT, 9, "bold"), width=2, height=1)
+            no.pack(anchor="w", padx=12, pady=(10, 0))
+            title = tk.Label(cell, text="", bg=C["bg_soft"], fg=C["text"],
+                             font=(FONT, 9, "bold"), anchor="w", justify="left")
+            title.pack(fill="x", padx=12, pady=(6, 0))
+            desc = tk.Label(cell, text="", bg=C["bg_soft"], fg=C["muted"],
+                            font=(FONT, 8), anchor="w", justify="left", wraplength=220)
+            desc.pack(fill="x", padx=12, pady=(2, 8))
+            btn = tk.Button(cell, text="", relief="flat", bd=0, bg=C["bg_soft"],
+                            fg=C["primary"], activebackground=C["bg_soft"],
+                            activeforeground=C["primary"], font=(FONT, 8, "bold"),
+                            cursor="hand2", anchor="w", padx=0, pady=0)
+            btn.pack(fill="x", padx=12, pady=(0, 10))
+            self.fr_rows.append((no, title, desc, btn))
+        self._first_run_built = True
+
     def _sync_first_run(self):
         if not self.window.first_run_visible():
             self.first_card.grid_remove()
             return
+        self._build_first_run()
         self.first_card.grid()
         steps = self.window.first_run_steps()
         done = [("1" in steps), ("2" in steps), ("3" in steps)]

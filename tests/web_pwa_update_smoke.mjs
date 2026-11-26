@@ -6,12 +6,27 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
-const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+const BROWSER_CANDIDATES = [
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  "microsoft-edge",
+  "msedge",
+  "google-chrome",
+  "chromium",
+  "chromium-browser",
+];
+const BROWSER = BROWSER_CANDIDATES.find((candidate) => path.isAbsolute(candidate)
+  ? existsSync(candidate)
+  : process.env.PATH.split(path.delimiter).some((dir) => existsSync(path.join(dir, candidate))));
+if (!BROWSER) {
+  console.error("FAIL NO_BROWSER"); process.exit(1);
+}
 const PORT = Number(process.env.PORT || 9251);
 const CDP_PORT = PORT + 1;
-const PROFILE = `C:\\Users\\35342\\AppData\\Local\\Temp\\cc-pwa-edge-${PORT}`;
+const PROFILE = path.join(os.tmpdir(), `cc-pwa-browser-${PORT}`);
 const WEB = path.resolve("web");
 const SW_SOURCE = readFileSync(path.join(WEB, "sw.js"), "utf8");
 const NEW_CACHE = /const\s+CACHE\s*=\s*'([^']+)'/.exec(SW_SOURCE)?.[1];
@@ -69,7 +84,7 @@ await new Promise((resolve, reject) => {
 });
 const PAGE_URL = `http://127.0.0.1:${PORT}/web/`;
 
-const proc = spawn(EDGE, [
+const proc = spawn(BROWSER, [
   "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
   `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${PROFILE}`,
   "--window-size=1280,900", PAGE_URL,

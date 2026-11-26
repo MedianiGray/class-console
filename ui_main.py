@@ -258,7 +258,6 @@ class MainWindow(ttk.Frame):
         body.pack(fill="both", expand=True, padx=24, pady=(12, 12))
 
         self.views = LazyViews(body, self)
-        self.views["dashboard"]
 
         self._sync_role_hint()
         self.bind_all("<Control-f>", self._focus_search)

@@ -683,9 +683,14 @@ def main():
 
     # 43. 损坏数据库被隔离改名，启动不中断并留下说明
     old_appdata = os.environ.get("APPDATA")
+    old_home = os.environ.get("HOME")
     corrupt_appdata = tempfile.mkdtemp(prefix="cc-corrupt-")
-    os.environ["APPDATA"] = corrupt_appdata
-    cc_dir = Path(corrupt_appdata) / "ClassConsole"
+    if os.name == "nt":
+        os.environ["APPDATA"] = corrupt_appdata
+        cc_dir = Path(corrupt_appdata) / "ClassConsole"
+    else:
+        os.environ["HOME"] = corrupt_appdata
+        cc_dir = Path(corrupt_appdata) / ".class-console"
     cc_dir.mkdir(parents=True)
     (cc_dir / "console.db").write_bytes(b"this is not a sqlite database")
     try:
@@ -696,16 +701,26 @@ def main():
         assert "没有被删除" in issue.impact
         assert list(cc_dir.glob("console.corrupt-*.db"))
     finally:
-        if old_appdata:
-            os.environ["APPDATA"] = old_appdata
+        if os.name == "nt":
+            if old_appdata:
+                os.environ["APPDATA"] = old_appdata
+            else:
+                os.environ.pop("APPDATA", None)
         else:
-            os.environ.pop("APPDATA", None)
+            if old_home:
+                os.environ["HOME"] = old_home
+            else:
+                os.environ.pop("HOME", None)
     print("43. 损坏数据库隔离 OK")
 
     # 44. 未捕获异常写崩溃日志，且日志落在本机数据目录
     crash_appdata = tempfile.mkdtemp(prefix="cc-crash-")
     old_appdata = os.environ.get("APPDATA")
-    os.environ["APPDATA"] = crash_appdata
+    old_home = os.environ.get("HOME")
+    if os.name == "nt":
+        os.environ["APPDATA"] = crash_appdata
+    else:
+        os.environ["HOME"] = crash_appdata
     try:
         try:
             raise RuntimeError("selftest-crash")
@@ -714,10 +729,16 @@ def main():
         assert log and Path(log).exists()
         assert "selftest-crash" in Path(log).read_text(encoding="utf-8")
     finally:
-        if old_appdata:
-            os.environ["APPDATA"] = old_appdata
+        if os.name == "nt":
+            if old_appdata:
+                os.environ["APPDATA"] = old_appdata
+            else:
+                os.environ.pop("APPDATA", None)
         else:
-            os.environ.pop("APPDATA", None)
+            if old_home:
+                os.environ["HOME"] = old_home
+            else:
+                os.environ.pop("HOME", None)
     print("44. 崩溃日志落盘 OK")
 
     # 45. 台账分页与 SQL 侧筛选：页大小、偏移、状态/类型条件与总数一致
