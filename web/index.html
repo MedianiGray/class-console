@@ -660,7 +660,8 @@
   .mx-table{table-layout:fixed}
   .mx-table th:first-child,.mx-table td:first-child{width:110px}
   .mx-table th:nth-child(2),.mx-table td:nth-child(2){width:96px}
-  .mx-table .mx-cell{text-align:center;font-size:12.5px;letter-spacing:.02em}
+  .mx-table .mx-cell{text-align:center;font-size:12.5px;letter-spacing:.02em;cursor:pointer;transition:background .12s}
+  .mx-table .mx-cell:hover{background:var(--bg-soft)}
   .mx-ok{color:var(--green);font-weight:600}
   .mx-pend{color:var(--orange)}
   .mx-rej{color:var(--red)}
@@ -1860,8 +1861,62 @@ function updateTask(id, data){
 function removeTask(id){ store.tasks = store.tasks.filter(function(t){ return t.id !== id; }); saveStore(); }
 function toggleTask(id){ var t = findTask(id); if (t) { t.done = !t.done; saveStore(); } }
 
+/* ---- 从完成矩阵格子生成催交任务（只写任务台账与日志，不改材料状态） ---- */
+function matrixTaskPlan(cat){
+  var same = store.tasks.find(function(t){
+    return !t.demo && !t.done && t.cat === cat && t.deadline && t.title.indexOf("催交：") !== 0;
+  });
+  return same
+    ? { deadline: same.deadline, inherited: true, sourceTitle: same.title }
+    : { deadline: datePlusDays(3), inherited: false, sourceTitle: "" };
+}
+function matrixTaskTitle(who, cat){ return "催交：" + clean(who) + " · " + clean(cat); }
+function matrixTaskExisting(sid, cat){
+  var r = findRosterBySid(sid);
+  if (!r) return null;
+  var title = matrixTaskTitle(r.who, cat);
+  return store.tasks.find(function(t){
+    return !t.demo && !t.done && t.title === title && t.cat === cat;
+  }) || null;
+}
+function matrixTaskNote(sid, who, cat, st){
+  var label = st === "补交" ? "需补交" : "无记录";
+  return "矩阵格：" + clean(who) + "（" + clean(sid) + "）· " + clean(cat) + " · " +
+    label + "。确认后补交，已交请忽略。";
+}
+function matrixNudgeText(who, cat, st, deadline){
+  var due = clean(deadline) || matrixTaskPlan(cat).deadline;
+  if (st === "补交")
+    return clean(who) + "同学你好，之前提交的「" + clean(cat) + "」被退回了，麻烦在 " +
+      due + " 前补齐后重新提交；如果已经补交，请忽略这条消息。";
+  return clean(who) + "同学你好，台账里还没看到「" + clean(cat) + "」的提交记录，麻烦在 " +
+    due + " 前补交；如果已经提交，请忽略这条消息。";
+}
+function generateMatrixTask(sid, cat, st){
+  var r = findRosterBySid(sid);
+  if (!r) throw new Error("名单里找不到这个学号");
+  var plan = matrixTaskPlan(cat);
+  var title = matrixTaskTitle(r.who, cat);
+  var note = matrixTaskNote(sid, r.who, cat, st);
+  var existing = matrixTaskExisting(sid, cat);
+  if (existing){
+    updateTask(existing.id, { deadline: existing.deadline, note: note, done: false });
+    try { addLog("更新催交任务", title, state.operatorName, roleLabel(), "完成矩阵"); } catch(e){}
+    return { created:false, task:existing, plan:plan };
+  }
+  var task = addTask({ title:title, cat:cat, scope:"本人", deadline:plan.deadline, note:note });
+  try { addLog("生成催交任务", title, state.operatorName, roleLabel(), "完成矩阵"); } catch(e){}
+  return { created:true, task:task, plan:plan };
+}
+
 function dateToday(){ var d = new Date(); function p(n){ return (n<10?"0":"")+n; }
   return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate()); }
+function datePlusDays(n){
+  var d = new Date(dateToday() + "T00:00:00");
+  d.setDate(d.getDate() + (Number(n) || 0));
+  function p(x){ return (x < 10 ? "0" : "") + x; }
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
 function daysUntil(deadline){
   if (!deadline) return null;
   var today = new Date(dateToday()); var dl = new Date(deadline + "T00:00:00");
@@ -4168,7 +4223,8 @@ function rosterMatrix(rows){
         var s = cell(r.sid, cat);
         counts[s] = (counts[s] || 0) + 1;
         var cls = s === "已交" ? "mx-ok" : (s === "待审" ? "mx-pend" : (s === "补交" ? "mx-rej" : "mx-none"));
-        return '<td class="mx-cell ' + cls + '" title="' + esc(cat) + " · " + esc(s) + '">' + s + "</td>";
+        return '<td class="mx-cell ' + cls + '" data-sid="' + esc(r.sid) + '" data-cat="' + esc(cat) +
+          '" data-st="' + esc(s) + '" title="' + esc(cat) + " · " + esc(s) + '">' + s + "</td>";
       }).join("") + "</tr>";
   }).join("");
   var head = "<tr><th>学号</th><th>姓名</th>" + CATS.map(function(c){ return "<th>" + esc(c) + "</th>"; }).join("") + "</tr>";
@@ -4179,13 +4235,69 @@ function rosterMatrix(rows){
               : emptyBtn("切换岗位", 'data-empty-focus="roleSelect"')) + "</td></tr>";
   var html = '<div class="card panel"><div class="toolbar" style="padding:0 0 10px">' +
     "<h3 style='margin:0'>完成矩阵（" + rows.length + " 人 × " + CATS.length + " 类）</h3>" +
-    '<span class="spacer"></span><span class="hint">双击一行查看该生全部材料</span></div>' +
+    '<span class="spacer"></span><span class="hint">点格处理 · 双击行看全部材料</span></div>' +
     '<div class="table-wrap"><table class="mx-table"><colgroup><col style="width:110px"><col style="width:96px">' +
     CATS.map(function(){ return '<col style="width:17%">'; }).join("") +
     "</colgroup><thead>" + head + "</thead><tbody>" + (body || empty) + "</tbody></table></div>" +
     '<div class="mx-note">已交 ' + counts["已交"] + " 格 · 待审 " + counts["待审"] + " 格 · 补交 " +
-    counts["补交"] + " 格 · 无记录 " + counts["—"] + " 格。无记录不等于欠交，按实际通知口径判断。</div></div>";
+    counts["补交"] + " 格 · 无记录 " + counts["—"] + " 格。无记录不等于欠交；点格可复制话术或生成任务，已交、待审只读。</div></div>";
   return html;
+}
+
+function matrixCellModal(sid, cat, st) {
+  var r = findRosterBySid(sid);
+  if (!r) return;
+  var open = st === "—" || st === "补交";
+  var plan = matrixTaskPlan(cat);
+  var existing = matrixTaskExisting(sid, cat);
+  var effectiveDeadline = existing ? existing.deadline : plan.deadline;
+  var canTask = can("task:manage");
+  var label = st === "—" ? "无记录" : st;
+  var tagCls = st === "已交" ? "green" : (st === "待审" ? "blue" : (st === "补交" ? "red" : "muted"));
+  var explain = st === "—"
+    ? "台账里没有该生这一类别的记录，不等于一定欠交；先确认，再决定是否催。"
+    : (st === "补交" ? "有退回或待补记录，适合直接生成补交任务。"
+      : (st === "待审" ? "材料已提交，正在审核，不需要催交。" : "材料已归档，不需要催交。"));
+  var dueLine = existing
+    ? effectiveDeadline + "（该格已有未完成任务）"
+    : plan.deadline + (plan.inherited ? "（沿用「" + plan.sourceTitle + "」）" : "（默认 3 天后）");
+  var body = '<div class="kv">' +
+    '<div class="k">对象</div><div class="v">' + esc(r.who) + "（" + esc(sid) + "）</div>" +
+    '<div class="k">类别</div><div class="v">' + esc(cat) + "</div>" +
+    '<div class="k">当前</div><div class="v"><span class="tag ' + tagCls + '">' + esc(label) + "</span></div>" +
+    '<div class="k">判断</div><div class="v">' + esc(explain) + "</div>" +
+    (open ? '<div class="k">任务截止</div><div class="v">' + esc(dueLine) +
+      (canTask ? "" : "<br><span class=\"muted\">当前岗位没有建任务权限</span>") + "</div>" : "") +
+    "</div>" +
+    '<div class="hint" style="margin-top:12px">' +
+      (open ? (existing ? "该格已有未完成任务，保存会更新截止与备注；不会自动发消息、不改材料状态。"
+        : "生成任务只写任务台账，不自动发消息、不改材料状态。") : "这里只读查看，不会改材料状态。") +
+    "</div>" +
+    '<div class="actions" style="margin-top:10px"><button class="btn subtle mini" id="mxViewDocs">查看该生材料</button></div>';
+
+  var acts = [{label:"关闭", cls:"btn"}];
+  if (open) {
+    acts.push({label:"复制催交话术", cls:"btn", onClick:function(){
+      copyText(matrixNudgeText(r.who, cat, st, effectiveDeadline), "催交话术已复制");
+    }});
+    if (canTask) acts.push({label:existing ? "更新催交任务" : "生成催交任务", cls:"btn primary", onClick:function(){
+      try {
+        var res = generateMatrixTask(sid, cat, st);
+        refreshAll();
+        toast(res.created ? "已生成催交任务" : "已更新未完成的催交任务");
+      } catch(e){ toast(e.message); }
+    }});
+  }
+  showModal("处理矩阵格 · " + r.who, body, acts);
+
+  var viewBtn = document.getElementById("mxViewDocs");
+  if (viewBtn) viewBtn.onclick = function(){
+    closeModal();
+    docsFilter.q = sid; docsFilter.cat = "全部"; docsFilter.type = "全部";
+    docsFilter.status = "全部"; docsFilter.page = 1;
+    switchView("docs");
+    toast("已按学号 " + sid + " 筛出台账");
+  };
 }
 
 function renderRoster() {
@@ -4275,11 +4387,18 @@ function renderRoster() {
     b.onclick = function(){ rosterTab = b.dataset.tab; renderRoster(); };
   });
   document.querySelectorAll(".mx-row").forEach(function(tr){
-    tr.ondblclick = function(){
+    tr.ondblclick = function(e){
+      if (e.target.closest(".mx-cell")) return;
       docsFilter.q = tr.dataset.sid; docsFilter.cat = "全部"; docsFilter.type = "全部";
       docsFilter.status = "全部"; docsFilter.page = 1;
       switchView("docs");
       toast("已按学号 " + tr.dataset.sid + " 筛出台账");
+    };
+  });
+  document.querySelectorAll(".mx-cell").forEach(function(td){
+    td.onclick = function(e){
+      e.stopPropagation();
+      matrixCellModal(td.dataset.sid, td.dataset.cat, td.dataset.st);
     };
   });
 
@@ -4423,7 +4542,7 @@ function taskModal(editId) {
     '<div class="field"><label>任务标题 <span class="req">*</span></label><input id="tkTitle" type="text" autocomplete="off"></div>' +
     '<div class="field"><label>关联类别</label><select id="tkCat"><option value="">未关联</option>' + catOpts + "</select></div>" +
     '<div class="field"><label>截止日期 <span class="req">*</span></label><input id="tkDeadline" type="date"></div>' +
-    '<div class="field"><label>应交范围</label><select id="tkScope"><option>全员</option><option>班委</option></select></div>' +
+    '<div class="field"><label>应交范围</label><select id="tkScope"><option>全员</option><option>班委</option><option>本人</option></select></div>' +
     '<div class="field"><label>备注</label><textarea id="tkNote" rows="2"></textarea></div>' +
     '<div class="err" id="tkErr"></div>',
     [

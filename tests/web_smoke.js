@@ -402,6 +402,29 @@ assert("矩阵表头含五类", ["团务材料","奖助材料","学分材料","�
 assert("矩阵含全部名单行", (mxHtml.match(/class="mx-row"/g) || []).length === sandbox.listRoster().length);
 assert("矩阵标注无记录口径", mxHtml.indexOf("无记录不等于欠交") >= 0);
 assert("矩阵已交格带样式", mxHtml.indexOf("mx-cell mx-ok") >= 0);
+assert("矩阵格可点并带类别", mxHtml.indexOf('data-cat="团务材料"') >= 0 && mxHtml.indexOf('data-st="—"') >= 0);
+assert("矩阵提示点格处理", mxHtml.indexOf("点格可复制话术或生成任务") >= 0);
+
+// 矩阵格生成催交任务：默认沿用同类未完成任务截止；重试只更新不重复建
+const mxBaseCount = sandbox.listTasks().length;
+const mxSeed = sandbox.addTask({ title:"真实团务截止", cat:"团务材料", deadline:"2026-12-05", scope:"全员" });
+const mxPlan = sandbox.matrixTaskPlan("团务材料");
+assert("矩阵任务截止沿用同类任务", mxPlan.inherited && mxPlan.deadline === "2026-12-05" && mxPlan.sourceTitle === "真实团务截止");
+const mxNudge = sandbox.matrixNudgeText("王浩宇", "团务材料", "—", mxPlan.deadline);
+assert("无记录催交话术不写死欠交", mxNudge.indexOf("还没看到") >= 0 && mxNudge.indexOf("如果已经提交") >= 0 && mxNudge.indexOf(mxPlan.deadline) >= 0);
+const mxNudgeRej = sandbox.matrixNudgeText("王浩宇", "团务材料", "补交", mxPlan.deadline);
+assert("补交催交话术写退回", mxNudgeRej.indexOf("被退回") >= 0);
+const mxTaskBefore = sandbox.listTasks().length;
+const mxGen1 = sandbox.generateMatrixTask("250217", "团务材料", "—");
+assert("矩阵生成催交任务", mxGen1.created && mxGen1.task.title === "催交：王浩宇 · 团务材料");
+assert("催交任务写类别与本人范围", mxGen1.task.cat === "团务材料" && mxGen1.task.scope === "本人");
+assert("催交任务截止可解释", mxGen1.task.deadline === mxPlan.deadline && mxGen1.task.note.indexOf("无记录") >= 0);
+const mxGen2 = sandbox.generateMatrixTask("250217", "团务材料", "—");
+assert("重复生成只更新不叠加", !mxGen2.created && mxGen2.task.id === mxGen1.task.id && sandbox.listTasks().length === mxTaskBefore + 1);
+sandbox.removeTask(mxGen1.task.id);
+sandbox.removeTask(mxSeed.id);
+assert("矩阵催交任务可移除", sandbox.listTasks().length === mxBaseCount);
+assert("任务表单支持本人范围", html.indexOf("<option>本人</option>") >= 0);
 
 
 // 归档规则设计器：默认兼容、映射、变量与非法拦截
