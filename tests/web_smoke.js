@@ -297,6 +297,37 @@ assert("监听目录名持久化", wl.dirName === "团日材料");
 assert("监听基线持久化", Object.keys(wl.baseline).length === 3);
 assert("已登记集合非空", Object.keys(sandbox.watchRegisteredSet()).length > 0);
 
+// 扫描摘要：文件名认人、缺口与下一步只做只读派生
+const rosterSeed = sandbox.store.roster;
+const hitSid = sandbox.watchRosterMatch("250203_李雨桐_团日记录.pdf", rosterSeed);
+assert("文件名带学号优先认人", hitSid && hitSid.sid === "250203" && hitSid.who === "李雨桐");
+const hitName = sandbox.watchRosterMatch("陈思颖-班会照片.jpg", rosterSeed);
+assert("文件名带姓名可认人", hitName && hitName.sid === "250208");
+assert("姓名只认完整分段", sandbox.watchRosterMatch("赵晓宁的材料.docx", rosterSeed) === null);
+assert("认不出的人名不硬猜", sandbox.watchRosterMatch("未命名.docx", rosterSeed) === null);
+const sumItems = [
+  { rel:"250203_李雨桐_团日记录.pdf", name:"250203_李雨桐_团日记录.pdf", size:1, mtime:1, state:"new" },
+  { rel:"陈思颖-班会照片.jpg", name:"陈思颖-班会照片.jpg", size:2, mtime:2, state:"changed" },
+  { rel:"未命名.docx", name:"未命名.docx", size:3, mtime:3, state:"kept" }
+];
+const scanSum = sandbox.collectScanSummary(sumItems, rosterSeed, [{ rel:"旧材料.pdf", name:"旧材料.pdf" }]);
+assert("摘要认出 2 人", scanSum.matchedPeopleCount === 2);
+assert("摘要覆盖 2 份文件", scanSum.matchedFiles === 2);
+assert("摘要保留 1 个待确认文件", scanSum.unmatched.length === 1);
+assert("摘要按名单算出 6 人缺文件", scanSum.missing.length === 6);
+assert("摘要下一步先提示入账新增", scanSum.nextText.indexOf("勾选 1 个新增文件入账") >= 0);
+assert("摘要下一步提示补提交人", scanSum.nextText.indexOf("1 个文件名没认出名单成员") >= 0);
+assert("摘要下一步提示删除确认", scanSum.nextText.indexOf("1 个文件已从目录消失") >= 0);
+const scanNoRoster = sandbox.collectScanSummary(sumItems, [], []);
+assert("无名单时先提示导入名单", scanNoRoster.nextText.indexOf("先导入名单") === 0);
+assert("无名单时不臆造缺口", scanNoRoster.missing.length === 0 && scanNoRoster.rosterTotal === 0);
+const scanNoPerm = sandbox.collectScanSummary(sumItems, rosterSeed, [], false);
+assert("无权入账时不提示勾选", scanNoPerm.nextText.indexOf("当前岗位只能核对") >= 0 && scanNoPerm.nextText.indexOf("勾选") < 0);
+const manyNames = sandbox.collectNamesText(
+  [{who:"甲"},{who:"乙"},{who:"丙"},{who:"丁"},{who:"戊"}], function(x){ return x.who; }, 4);
+assert("名单过长收成等 N 人", manyNames === "甲、乙、丙、丁 等 5 人");
+
+
 // 备份/恢复结构
 const bk = sandbox.backup();
 assert("备份含 docs/logs/roster/tasks", Array.isArray(bk.docs) && Array.isArray(bk.logs) && Array.isArray(bk.roster) && Array.isArray(bk.tasks));

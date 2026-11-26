@@ -185,6 +185,20 @@
   .watch-toggle input{accent-color:var(--primary)}
   .collect-status{font-size:13px;color:var(--text);margin-top:12px}
   .collect-note{margin-top:6px;line-height:1.6}
+  .collect-summary{display:none;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .collect-summary.on{display:block}
+  .collect-table{min-width:720px}
+  .collect-table th:first-child,.collect-table td:first-child{padding-left:11px;padding-right:0}
+  .cs-cap{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:3px}
+  .cs-row{display:grid;grid-template-columns:64px minmax(0,1fr);gap:12px;padding:4px 0;font-size:13px;line-height:1.65}
+  .cs-key{font-size:12.5px;color:var(--muted);padding-top:1px}
+  .cs-val{min-width:0;color:var(--text);overflow-wrap:anywhere}
+  .cs-val .cs-meta{display:inline-block;margin-left:0;font-size:12px;color:var(--muted);white-space:nowrap}
+  @media (max-width:600px){
+    .cs-row{grid-template-columns:1fr;gap:1px;padding:5px 0}
+    .cs-val .cs-meta{display:block;margin-left:0;white-space:normal}
+    .cs-val .cs-sep{display:none}
+  }
   .file-cell{font-weight:500}
   .row-removed .file-cell{color:var(--sub)}
   .row-removed{background:var(--row-removed)}
@@ -1958,6 +1972,75 @@ function saveWatch(dirName, baseline, updatedAt){
   try { localStorage.setItem(WATCH_KEY, JSON.stringify({ dirName:clean(dirName), baseline:baseline, updatedAt:updatedAt || nowStr() })); } catch(e){}
 }
 
+/* 扫描摘要：只按文件名与名单做只读匹配，不读文件内容，也不改台账。
+   文件名优先认学号，其次认姓名；认不出的保留为待确认，不硬猜。 */
+function watchRosterMatch(name, roster){
+  var stem = watchBaseName(name);
+  var lower = stem.toLowerCase();
+  var tokens = stem.split(/[_\-\s.·（）()【】\[\]]+/).filter(Boolean).map(function(x){ return x.toLowerCase(); });
+  var sidHit = null, nameHit = null;
+  (roster || []).forEach(function(r){
+    if (!r) return;
+    var rsid = clean(r.sid).toLowerCase(), rwho = clean(r.who).toLowerCase();
+    if (!sidHit && rsid && lower.indexOf(rsid) >= 0) sidHit = r;
+    if (!nameHit && rwho && tokens.indexOf(rwho) >= 0) nameHit = r;
+  });
+  return sidHit || nameHit;
+}
+function collectScanSummary(items, roster, removed, canImport){
+  items = items || []; roster = roster || []; removed = removed || [];
+  if (typeof canImport !== "boolean") canImport = true;
+  var matched = {}, order = [], unmatched = [], fresh = 0, changed = 0;
+  items.forEach(function(it){
+    if (it.state === "new") fresh++;
+    else if (it.state === "changed") changed++;
+    var hit = watchRosterMatch(it.name, roster);
+    if (!hit){ unmatched.push(it); return; }
+    var sid = clean(hit.sid), who = clean(hit.who);
+    var key = sid || who;
+    if (!matched[key]){
+      matched[key] = { sid:sid, who:who || sid, files:0, fresh:0, changed:0 };
+      order.push(key);
+    }
+    matched[key].files++;
+    if (it.state === "new") matched[key].fresh++;
+    if (it.state === "changed") matched[key].changed++;
+  });
+  var people = order.map(function(k){ return matched[k]; });
+  var missing = roster.filter(function(r){
+    if (!r) return false;
+    var sid = clean(r.sid), who = clean(r.who);
+    return !matched[sid || who] && !(who && matched[who]);
+  });
+  var next = [];
+  if (!items.length) next.push("先选择文件夹或重新扫描");
+  else {
+    if (!roster.length) next.push("先导入名单，才能判断缺谁");
+    if (fresh || changed) {
+      if (canImport) next.push(fresh ? "勾选 " + fresh + " 个新增文件入账" : "确认 " + changed + " 个修改文件后重新入账");
+      else next.push("当前岗位只能核对，入账需切到经办人或评审人");
+    }
+    if (unmatched.length) next.push(unmatched.length + " 个文件名没认出名单成员，入账后补提交人");
+    if (missing.length) next.push(missing.length + " 人没有对应文件，确认是否未交");
+    if (removed.length) next.push(removed.length + " 个文件已从目录消失，确认是否被移动或删除");
+    if (!next.length) next.push(canImport ? "文件和名单已对上，可直接入账或核对归档" : "文件和名单已对上，当前岗位只做核对");
+  }
+  return {
+    totalFiles: items.length, rosterTotal: roster.length,
+    matchedPeople: people, matchedPeopleCount: people.length,
+    matchedFiles: items.length - unmatched.length,
+    unmatched: unmatched, missing: missing, fresh: fresh, changed: changed,
+    removed: removed.length, nextText: next.join("；") + "。"
+  };
+}
+function collectNamesText(list, getter, max){
+  var names = (list || []).map(getter).filter(Boolean);
+  if (!names.length) return "";
+  var head = names.slice(0, max || 4).join("、");
+  if (names.length > (max || 4)) return head + " 等 " + names.length + " 人";
+  return head;
+}
+
 function visibleDocs(rows) {
   rows = rows || store.docs;
   if (state.role !== "applicant") return rows;
@@ -3724,8 +3807,9 @@ function buildCollect() {
       "</div>" +
       '<div class="collect-status" id="cStatus">尚未选择文件夹</div>' +
       '<div class="collect-note hint" id="cNote"></div>' +
+      '<div class="collect-summary" id="cSummary"></div>' +
     "</div>" +
-    '<div class="table-wrap"><table>' +
+    '<div class="table-wrap"><table class="collect-table">' +
       '<colgroup><col style="width:36px"><col><col style="width:110px"><col style="width:150px"><col style="width:120px"></colgroup>' +
       "<thead><tr><th></th><th>文件</th><th>大小</th><th>修改时间</th><th>比对结果</th></tr></thead>" +
       '<tbody id="cBody"></tbody></table></div>' +
@@ -3846,6 +3930,41 @@ function onLegacyPick(e) {
 
 function watchImportable(it){ return it.state === "new" || it.state === "changed"; }
 
+function renderCollectSummary(){
+  var el = document.getElementById("cSummary");
+  if (!el) return;
+  if (!watch.dirName || watch.error || !watch.items.length) {
+    el.className = "collect-summary"; el.innerHTML = ""; return;
+  }
+  var sm = collectScanSummary(watch.items, store.roster, watch.removed, can("docs:create"));
+  var whoText, whoMeta;
+  if (!sm.rosterTotal) {
+    whoText = "名单为空，先补名单";
+    whoMeta = sm.totalFiles + " 份文件待确认";
+  } else if (!sm.matchedPeopleCount) {
+    whoText = "文件名里暂未认出名单成员";
+    whoMeta = "0 / " + sm.rosterTotal + " 人";
+  } else {
+    whoText = collectNamesText(sm.matchedPeople, function(p){ return p.who; }, 4);
+    whoMeta = "覆盖 " + sm.matchedPeopleCount + " / " + sm.rosterTotal + " 人 · " + sm.matchedFiles + " 份文件";
+  }
+  var missText;
+  if (!sm.rosterTotal) {
+    missText = "名单为空，缺谁无法判断";
+  } else if (!sm.missing.length) {
+    missText = "名单成员都能在文件名中找到";
+  } else {
+    missText = collectNamesText(sm.missing, function(r){ return r.who; }, 4);
+  }
+  el.innerHTML =
+    '<div class="cs-cap">扫描摘要 · 按当前目录的文件名与名单匹配，不读文件内容；认不出的不硬猜</div>' +
+    '<div class="cs-row"><span class="cs-key">谁交了</span><span class="cs-val">' + esc(whoText) +
+      (whoMeta ? '<span class="cs-meta"><span class="cs-sep"> · </span>' + esc(whoMeta) + "</span>" : "") + "</span></div>" +
+    '<div class="cs-row"><span class="cs-key">缺什么</span><span class="cs-val">' + esc(missText) + "</span></div>" +
+    '<div class="cs-row"><span class="cs-key">下一步</span><span class="cs-val">' + esc(sm.nextText) + "</span></div>";
+  el.className = "collect-summary on";
+}
+
 function renderCollect() {
   var $ = function(id){ return document.getElementById(id); };
   var statusEl = $("cStatus"), noteEl = $("cNote"), bodyEl = $("cBody"), actEl = $("cActions");
@@ -3868,6 +3987,8 @@ function renderCollect() {
     : "当前浏览器不支持目录后台访问，仅可一次性选择目录读取比对；如需自动监视，请使用 Chrome / Edge。") +
     (watch.failed ? " 另有 " + watch.failed + " 个文件读取失败，已跳过；重新扫描或换文件夹再试。" : "") +
     (watch.error === "permission" ? " 读取权限已被浏览器收回。" : "");
+
+  renderCollectSummary();
 
   var rows = watch.items.map(function(it){
     var tag = WATCH_TAG[it.state] || ["muted", it.state];
