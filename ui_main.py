@@ -12,15 +12,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from ui_dashboard import DashboardView
-from ui_docs import DocsView
-from ui_collect import CollectView
-from ui_submit import SubmitView
-from ui_logs import LogsView
-from ui_roster import RosterView
-from ui_service import ServiceView
-from ui_files import FileRoomView
-from ui_tasks import TasksView
 import theme
 from theme import FONT, C
 from seed import SEED_DOCS
@@ -47,6 +38,47 @@ PERMISSIONS = {
 def old_user_should_skip_first_run(doc_count, done, dismissed):
     """首次引导判定：只有“没写过标记且材料多于种子”的老库才静默跳过。"""
     return done is None and dismissed is None and doc_count > len(SEED_DOCS)
+
+
+VIEWS = {
+    "dashboard": ("ui_dashboard", "DashboardView"),
+    "docs": ("ui_docs", "DocsView"),
+    "files": ("ui_files", "FileRoomView"),
+    "collect": ("ui_collect", "CollectView"),
+    "roster": ("ui_roster", "RosterView"),
+    "tasks": ("ui_tasks", "TasksView"),
+    "service": ("ui_service", "ServiceView"),
+    "submit": ("ui_submit", "SubmitView"),
+    "logs": ("ui_logs", "LogsView"),
+}
+
+
+class LazyViews(dict):
+    """按需构建视图：首屏只建当前页，切到哪页再建哪页。
+
+    保留 dict 的读写语义，`views[key]` 与 `views.get` 都会在首次访问时构建，
+    所以既有调用点（跳转、提醒、命令面板）不需要知道视图是否已经存在。
+    """
+
+    def __init__(self, master, window):
+        super().__init__()
+        self._master = master
+        self._window = window
+
+    def __missing__(self, key):
+        spec = VIEWS.get(key)
+        if spec is None:
+            raise KeyError(key)
+        from importlib import import_module
+        cls = getattr(import_module(spec[0]), spec[1])
+        view = cls(self._master, self._window.repo, self._window)
+        dict.__setitem__(self, key, view)
+        return view
+
+    def get(self, key, default=None):
+        if key not in self and key in VIEWS:
+            return self[key]
+        return dict.get(self, key, default)
 
 
 class MainWindow(ttk.Frame):
@@ -97,7 +129,6 @@ class MainWindow(ttk.Frame):
         theme.apply_tk_defaults(top)
         theme.setup_ttk(top)
         self._build()
-        self.refresh_all()
         self._enable_file_drop()
 
     def _skip_first_run_for_old_users(self):
@@ -226,17 +257,8 @@ class MainWindow(ttk.Frame):
         body = tk.Frame(content, bg=C["bg"])
         body.pack(fill="both", expand=True, padx=24, pady=(12, 12))
 
-        self.views = {
-            "dashboard": DashboardView(body, self.repo, self),
-            "docs": DocsView(body, self.repo, self),
-            "files": FileRoomView(body, self.repo, self),
-            "collect": CollectView(body, self.repo, self),
-            "roster": RosterView(body, self.repo, self),
-            "tasks": TasksView(body, self.repo, self),
-            "service": ServiceView(body, self.repo, self),
-            "submit": SubmitView(body, self.repo, self),
-            "logs": LogsView(body, self.repo, self),
-        }
+        self.views = LazyViews(body, self)
+        self.views["dashboard"]
 
         self._sync_role_hint()
         self.bind_all("<Control-f>", self._focus_search)
@@ -764,7 +786,6 @@ class MainWindow(ttk.Frame):
             child.destroy()
         self.nav_items = {}
         self._build()
-        self.refresh_all()
 
     # ---------- 反馈与确认 ----------
     def show_status(self, text, temp=False):
@@ -818,6 +839,8 @@ class MainWindow(ttk.Frame):
                 self.switch("dashboard")
             return
         self.current = key
+        # 先按需构建目标视图，再统一显隐；否则遍历时目标页还不存在，切过去会是空白。
+        self.views[key]
         for k, v in self.views.items():
             if k == key:
                 v.pack(fill="both", expand=True)
@@ -837,18 +860,21 @@ class MainWindow(ttk.Frame):
         try:
             s = self.repo.stats()
             self.status_right.config(text="材料 %d 条 · 日志 %d 条" %
-                                     (s["total"], len(self.repo.list_logs())))
+                                     (s["total"], self.repo.count_logs()))
             self.sub_label.config(text="%s · %s" % (self.role_label(), self.operator_name))
             self._restore_status()
-            docs = self.repo.list_docs()
-            pending = sum(1 for d in docs if d.get("status") == "待审核")
+            pending = s.get("pending")
+            if pending is None:
+                docs = self.repo.list_docs()
+                pending = sum(1 for d in docs if d.get("status") == "待审核")
             badge = self.nav_badges.get("docs")
             if badge is not None:
                 badge.config(text=str(pending) if pending else "",
                              bg=C["primary_soft"] if pending else C["sidebar"])
-            for v in self.views.values():
-                if hasattr(v, "refresh"):
-                    v.refresh()
+            # 只刷新当前视图；其余视图在首次切换时构建，构建后自行读取最新数据。
+            view = self.views.get(self.current)
+            if view is not None and hasattr(view, "refresh"):
+                view.refresh()
             self.refresh_reminders()
         except Exception as e:
             self.status_left.config(text="数据刷新失败：%s" % e)

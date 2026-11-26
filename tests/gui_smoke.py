@@ -55,6 +55,7 @@ def main():
     for k in ("dashboard", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
+        assert app.views[k].winfo_manager() == "pack", (k, app.views[k].winfo_manager())
     print("视图切换 OK")
 
     # 名单视图：添加 / 移除

@@ -14,6 +14,7 @@ from ui_error import show_error
 
 
 class DocsView(ttk.Frame):
+    PAGE_SIZE = 300
     COLS = ("code", "name", "cat", "who", "sid", "time", "status", "file")
     HEADS = {"code": "编号", "name": "材料名称", "cat": "类别", "who": "提交人",
              "sid": "学号", "time": "提交时间", "status": "状态", "file": "附件"}
@@ -32,6 +33,7 @@ class DocsView(ttk.Frame):
         self.repo = repo
         self.window = window
         self._total = 0
+        self._shown = self.PAGE_SIZE
         self._row_iids = {}
         self._resize = None
         self._widths = self._load_widths()
@@ -47,7 +49,7 @@ class DocsView(ttk.Frame):
 
         ttk.Label(top, text="搜索", style="Sub.TLabel").pack(side="left")
         self.q = tk.StringVar()
-        self.q.trace_add("write", lambda *a: self.refresh())
+        self.q.trace_add("write", lambda *a: self._filter_refresh())
         search = ttk.Entry(top, textvariable=self.q, width=24)
         search.pack(side="left", padx=8)
         search.bind("<Return>", lambda e: self.refresh())
@@ -57,7 +59,7 @@ class DocsView(ttk.Frame):
         cb = ttk.Combobox(top, textvariable=self.cat, values=self.CATS,
                           width=12, state="readonly")
         cb.pack(side="left", padx=8)
-        cb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+        cb.bind("<<ComboboxSelected>>", lambda e: self._filter_refresh())
 
         ttk.Label(top, text="类型", style="Sub.TLabel").pack(side="left", padx=(18, 0))
         self.type = tk.StringVar(value="全部")
@@ -65,7 +67,7 @@ class DocsView(ttk.Frame):
                           values=[label for _, label in self.TYPE_OPTIONS],
                           width=14, state="readonly")
         tb.pack(side="left", padx=8)
-        tb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+        tb.bind("<<ComboboxSelected>>", lambda e: self._filter_refresh())
 
         ttk.Label(top, text="状态", style="Sub.TLabel").pack(side="left", padx=(18, 0))
         self.status = tk.StringVar(value="全部")
@@ -73,7 +75,7 @@ class DocsView(ttk.Frame):
                           values=["全部", "待审核", "已归档", "已驳回", "待补材料"],
                           width=12, state="readonly")
         sb.pack(side="left", padx=8)
-        sb.bind("<<ComboboxSelected>>", lambda e: self.refresh())
+        sb.bind("<<ComboboxSelected>>", lambda e: self._filter_refresh())
 
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=18)
@@ -155,6 +157,8 @@ class DocsView(ttk.Frame):
         self.more.bind("<Button-1>", self._post_more)
         self.hint = ttk.Label(bar, text="", style="Muted.TLabel")
         self.hint.pack(side="right")
+        # 5000 条不一次性塞进 Treeview：默认先显示最近 300 条，按需追加。
+        self.btn_more_rows = ttk.Button(bar, text="加载更多", command=self.load_more)
 
     def _build_detail(self):
         """右侧常驻详情栏；列表上下文不丢，审批节点与附件集中在这里。"""
@@ -272,6 +276,7 @@ class DocsView(ttk.Frame):
         if not view:
             self.window.toast("视图不存在，可能已被删除")
             return
+        self._shown = self.PAGE_SIZE
         widths = view.get("widths") if isinstance(view.get("widths"), dict) else {}
         for c in self.COLS:
             try:
@@ -396,6 +401,7 @@ class DocsView(ttk.Frame):
             theme.save_ui("doc_sort", {"key": self._sort_key, "dir": self._sort_dir})
         except Exception:
             pass
+        self._shown = self.PAGE_SIZE
         self._sync_headings()
         self.refresh()
         return "break"
@@ -569,44 +575,98 @@ class DocsView(ttk.Frame):
                 state=state,
                 text=("批量驳回 (%d)" % len(ids)) if len(ids) > 1 else "驳回")
         tail = (" · 已选 %d 条" % len(ids)) if ids else " · Ctrl/Shift 多选"
-        self.hint.config(text="共 %d 条%s" % (self._total, tail))
+        head = "共 %d 条" % self._total
+        if self._can_page() and self._total > self._shown:
+            head += " · 已显示 %d 条" % self._shown
+        self.hint.config(text=head + tail)
         self._render_detail()
 
-    def _filtered_rows(self):
-        rows = self.repo.list_docs(self.q.get().strip(), self.cat.get())
-        # 申请人视角只看本人材料；学号在设置里配置，未配置时为空
-        if self.window.role == "applicant":
-            sid = str(getattr(self.window, "applicant_sid", "") or "").strip()
-            rows = [x for x in rows if sid and x.get("sid") == sid]
+    def _filter_args(self):
         st = self.status.get()
-        if st and st != "全部":
-            rows = [x for x in rows if x.get("status") == st]
+        st = st if st and st != "全部" else None
         tlabel = self.type.get()
+        tkey = None
         if tlabel and tlabel != "全部":
             tkey = next((k for k, v in self.TYPE_OPTIONS if v == tlabel), "")
-            rows = [x for x in rows if (x.get("form_type") or "general") == tkey]
+        return self.q.get().strip(), self.cat.get(), st, tkey
+
+    def _applicant_sid(self):
+        if self.window.role != "applicant":
+            return ""
+        return str(getattr(self.window, "applicant_sid", "") or "").strip()
+
+    def _can_page(self):
+        """默认排序且非申请人视角才分页；自定义排序要保持全量顺序。"""
+        return self._sort_key is None and not self._applicant_sid()
+
+    def _filtered_rows(self, limit=None, offset=0):
+        q, cat, st, ft = self._filter_args()
+        sid = self._applicant_sid()
+        page = limit is not None and self._sort_key is None and not sid
+        rows = self.repo.list_docs(
+            q, cat, status=st, form_type=ft,
+            limit=limit if page else None, offset=offset if page else 0)
+        # 申请人视角只看本人材料；学号在设置里配置，未配置时为空
+        if sid:
+            rows = [x for x in rows if x.get("sid") == sid]
+        elif self.window.role == "applicant":
+            rows = []
         return self._sort_rows(rows)
 
+    def _filter_refresh(self):
+        self._shown = self.PAGE_SIZE
+        self.refresh()
+
+    def _sync_more_rows(self):
+        if self._can_page() and self._total > self._shown:
+            if not self.btn_more_rows.winfo_manager():
+                self.btn_more_rows.pack(side="right", padx=(0, 8))
+            self.btn_more_rows.config(
+                text="加载更多 (%d)" % min(self.PAGE_SIZE, self._total - self._shown))
+        else:
+            self.btn_more_rows.pack_forget()
+
+    def load_more(self):
+        """追加下一页，不整表重绘，避免滚动位置跳回顶部。"""
+        if self._shown >= self._total:
+            return
+        before = len(self.tree.get_children())
+        self._shown = min(self._shown + self.PAGE_SIZE, self._total)
+        rows = self._filtered_rows(limit=self._shown)
+        for i, d in enumerate(rows[before:], start=before):
+            self._insert_doc(i, d)
+        self._sync_more_rows()
+        self._update_actions()
+
+    def _insert_doc(self, i, d):
+        status = d.get("status", "") or ""
+        # 待审/驳回用极淡底色提示，其余走斑马纹；不给整行染字色，避免八列都变色
+        status_tag = self.STATUS_TAG.get(status, "")
+        row_tag = "zebra" if (i % 2 and not status_tag) else ""
+        tags = tuple(t for t in (d.get("id"), row_tag, status_tag) if t)
+        atts = d.get("attachments") or []
+        file_disp = ("%d 个附件" % len(atts)) if atts else (
+            "已归位" if d.get("arch") else (d.get("file") or "无附件"))
+        iid = self.tree.insert("", "end", tags=tags, values=(
+            d.get("code", ""), d.get("name", ""), d.get("cat", ""), d.get("who", ""),
+            d.get("sid", ""), d.get("time", ""), status, file_disp))
+        self._row_iids[d.get("id")] = iid
+        return iid
+
     def refresh(self):
-        rows = self._filtered_rows()
+        rows = self._filtered_rows(limit=self._shown if self._can_page() else None)
         keep = self._selected_ids()
         self._sync_headings()
         self.tree.delete(*self.tree.get_children())
         self._row_iids = {}
         for i, d in enumerate(rows):
-            status = d.get("status", "") or ""
-            # 待审/驳回用极淡底色提示，其余走斑马纹；不给整行染字色，避免八列都变色
-            status_tag = self.STATUS_TAG.get(status, "")
-            row_tag = "zebra" if (i % 2 and not status_tag) else ""
-            tags = tuple(t for t in (d.get("id"), row_tag, status_tag) if t)
-            atts = d.get("attachments") or []
-            file_disp = ("%d 个附件" % len(atts)) if atts else (
-                "已归位" if d.get("arch") else (d.get("file") or "无附件"))
-            iid = self.tree.insert("", "end", tags=tags, values=(
-                d.get("code", ""), d.get("name", ""), d.get("cat", ""), d.get("who", ""),
-                d.get("sid", ""), d.get("time", ""), status, file_disp))
-            self._row_iids[d.get("id")] = iid
-        self._total = len(rows)
+            self._insert_doc(i, d)
+        if self._can_page():
+            q, cat, st, ft = self._filter_args()
+            self._total = self.repo.count_docs(q, cat, status=st, form_type=ft)
+        else:
+            self._total = len(rows)
+        self._sync_more_rows()
 
         if rows:
             self.empty.hide()

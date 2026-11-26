@@ -720,6 +720,27 @@ def main():
             os.environ.pop("APPDATA", None)
     print("44. 崩溃日志落盘 OK")
 
+    # 45. 台账分页与 SQL 侧筛选：页大小、偏移、状态/类型条件与总数一致
+    paged = LocalRepository(Path(tempfile.mkdtemp()) / "paged.db")
+    for i in range(6):
+        paged.add_doc({"name": "分页材料%d" % i, "cat": "团务材料",
+                       "who": "分页同学", "sid": "2503%02d" % i,
+                       "form_type": "meeting" if i % 2 else "general",
+                       "status": "已归档" if i % 3 == 0 else "待审核"})
+    base = len(paged.list_docs())
+    page1 = paged.list_docs(limit=2)
+    page2 = paged.list_docs(limit=2, offset=2)
+    assert len(page1) == 2 and len(page2) == 2
+    assert {d["id"] for d in page1}.isdisjoint({d["id"] for d in page2})
+    assert paged.count_docs() == base
+    assert paged.count_docs(status="待审核") == len(
+        [d for d in paged.list_docs() if d.get("status") == "待审核"])
+    assert paged.count_docs(form_type="meeting") == len(
+        [d for d in paged.list_docs() if (d.get("form_type") or "general") == "meeting"])
+    assert all(d.get("status") == "已归档"
+               for d in paged.list_docs(status="已归档"))
+    print("45. 台账分页/SQL 筛选 OK")
+
     print("SELFTEST OK")
 
 

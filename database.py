@@ -66,9 +66,13 @@ def days_until(deadline: str):
     if not deadline:
         return None
     try:
-        dl = datetime.datetime.strptime(deadline, "%Y-%m-%d").date()
+        # fromisoformat 不触发 strptime 的首次模块加载与正则编译，启动更稳。
+        dl = datetime.date.fromisoformat(deadline.replace("/", "-").replace(".", "-"))
     except ValueError:
-        return None
+        try:
+            dl = datetime.datetime.strptime(deadline, "%Y-%m-%d").date()
+        except ValueError:
+            return None
     return (dl - datetime.date.today()).days
 
 
@@ -387,23 +391,40 @@ class LocalRepository:
         }
 
     # ---------- 材料 ----------
-    def list_docs(self, q: str = "", cat: str = "全部") -> list:
+    @staticmethod
+    def _docs_where(q="", cat="全部", status=None, form_type=None):
+        """台账筛选条件：SQL 侧先筛，避免 5000 条全量搬进内存。"""
         q = _clean(q)
         cat = _clean(cat) or "全部"
+        sql = " WHERE 1=1"
+        args = []
+        if cat and cat != "全部":
+            sql += " AND cat = ?"
+            args.append(cat)
+        if status:
+            sql += " AND status = ?"
+            args.append(status)
+        if form_type:
+            sql += " AND COALESCE(NULLIF(form_type, ''), 'general') = ?"
+            args.append(form_type)
+        if q:
+            like = "%" + _like_escape(q) + "%"
+            sql += " AND (name LIKE ? ESCAPE '\\' OR who LIKE ? ESCAPE '\\' OR sid LIKE ? ESCAPE '\\')"
+            args += [like, like, like]
+        return sql, args
+
+    def list_docs(self, q: str = "", cat: str = "全部", status=None,
+                  form_type=None, limit=None, offset=0) -> list:
+        where, args = self._docs_where(q, cat, status, form_type)
         conn = self._conn()
         try:
-            sql = "SELECT * FROM docs WHERE 1=1"
-            args = []
-            if cat and cat != "全部":
-                sql += " AND cat = ?"
-                args.append(cat)
-            if q:
-                like = "%" + _like_escape(q) + "%"
-                sql += " AND (name LIKE ? ESCAPE '\\' OR who LIKE ? ESCAPE '\\' OR sid LIKE ? ESCAPE '\\')"
-                args += [like, like, like]
-            sql += " ORDER BY id DESC"
+            sql = "SELECT * FROM docs" + where + " ORDER BY id DESC"
+            if limit is not None:
+                sql += " LIMIT ? OFFSET ?"
+                args += [int(limit), max(0, int(offset or 0))]
             rows = conn.execute(sql, args).fetchall()
-            att_map = self._attachment_map(conn)
+            ids = {r["id"] for r in rows}
+            att_map = self._attachment_map(conn, ids)
             out = []
             for r in rows:
                 d = dict(r)
@@ -413,6 +434,18 @@ class LocalRepository:
             return out
         except sqlite3.Error as e:
             raise RepositoryError("读取材料失败：%s" % e)
+        finally:
+            conn.close()
+
+    def count_docs(self, q: str = "", cat: str = "全部", status=None,
+                   form_type=None) -> int:
+        where, args = self._docs_where(q, cat, status, form_type)
+        conn = self._conn()
+        try:
+            return conn.execute("SELECT COUNT(*) AS n FROM docs" + where, args
+                                ).fetchone()["n"]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取材料数量失败：%s" % e)
         finally:
             conn.close()
 
@@ -427,8 +460,17 @@ class LocalRepository:
             return {}
 
     @staticmethod
-    def _attachment_map(conn):
-        rows = conn.execute("SELECT * FROM attachments ORDER BY id").fetchall()
+    def _attachment_map(conn, doc_ids=None):
+        if doc_ids is not None:
+            ids = list(doc_ids)
+            if not ids:
+                return {}
+            marks = ",".join("?" for _ in ids)
+            rows = conn.execute(
+                "SELECT * FROM attachments WHERE doc_id IN (%s) ORDER BY id" % marks,
+                ids).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM attachments ORDER BY id").fetchall()
         amap = {}
         for r in rows:
             amap.setdefault(r["doc_id"], []).append(dict(r))
@@ -490,9 +532,11 @@ class LocalRepository:
         try:
             docs = conn.execute(
                 "SELECT id,time,status,reason,who,file FROM docs").fetchall()
+            # 一次读出已有事件归属，避免 5000 条库启动时逐条 COUNT。
+            existing = {r[0] for r in conn.execute(
+                "SELECT DISTINCT doc_id FROM doc_events").fetchall()}
             for d in docs:
-                if conn.execute("SELECT COUNT(*) AS n FROM doc_events WHERE doc_id=?",
-                                (d["id"],)).fetchone()["n"]:
+                if d["id"] in existing:
                     continue
                 t = _full_time(d["time"])
                 detail = ("附件：" + d["file"]) if _clean(d["file"]) else ""
@@ -670,6 +714,15 @@ class LocalRepository:
             conn.close()
 
     # ---------- 日志 ----------
+    def count_logs(self) -> int:
+        conn = self._conn()
+        try:
+            return conn.execute("SELECT COUNT(*) AS n FROM logs").fetchone()["n"]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取日志数量失败：%s" % e)
+        finally:
+            conn.close()
+
     def list_logs(self, q: str = "", act: str = "全部", who: str = "") -> list:
         q, act, who = _clean(q), _clean(act) or "全部", _clean(who)
         conn = self._conn()

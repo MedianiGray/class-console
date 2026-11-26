@@ -84,6 +84,7 @@ class-console/
 ├── tests/
 │   ├── selftest.py          # 数据层回归自检（临时库，不碰本机数据）
 │   ├── gui_smoke.py         # 界面冒烟回归
+│   ├── gui_paging_smoke.py  # 台账 300 条首屏 + 加载更多冒烟
 │   ├── perf_web.js          # 5000 条网页性能基线（独立 Edge + CDP）
 │   └── perf_desktop.py      # 5000 条桌面性能基线（临时库 + 启动计时）
 ├── index.html               # GitHub Pages 官网落地页：在线使用入口与桌面版下载入口
@@ -103,6 +104,8 @@ class-console/
 │   ├── 可选能力与通用对接蓝图.md  # 能力分级、默认关闭策略、通用连接器架构
 │   ├── 迭代与稳定性方案.md        # 版本规则、稳定措施、迭代流程与反馈闭环
 │   ├── 业务验收对照与走查表.md    # 需求对照、指标口径、实机走查步骤
+│   ├── 安装与首启说明.md          # 下载校验、SmartScreen、数据位置、迁移与卸载
+│   ├── v1.0-发布门禁与走查签署.md  # 自动门禁、性能例外、人工走查与签字页
 │   ├── 使用说明.md                # 面向学委 / 老师的操作手册
 │   └── 能力范围评判.md            # 已具备 / 边界内可做 / 需后端 / 默认关闭 / 待评估对照
 └── release/
@@ -116,6 +119,7 @@ class-console/
 前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.26.0)
 下载附件 `class-console-v0.26.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
 SHA256：`00318EA73155CEDE726A64CA2C94F38C6B35D09BBE9B1155E201862F704F6B44`（32,353,326 字节）。
+安装、SmartScreen、首启、数据位置、迁移与卸载见 [`docs/安装与首启说明.md`](docs/安装与首启说明.md)。
 
 ### 浏览器本地缓存版
 
@@ -153,6 +157,9 @@ py -3.14 tests/selftest.py
 
 # 界面冒烟回归（需要图形界面环境）
 py -3.14 tests/gui_smoke.py
+
+# 台账分页：700 条首屏 300 + 加载更多
+py -3.14 tests/gui_paging_smoke.py
 
 # 桌面 AI 分类建议逻辑（不连真实 API，走 mock）
 py -3.14 tests/ai_smoke.py
