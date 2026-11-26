@@ -354,7 +354,8 @@ const cmdGroups = cmdHome.map(function(x){ return x.group; });
 assert("命令面板含视图与动作", cmdGroups.indexOf("跳转视图") >= 0 && cmdGroups.indexOf("常用动作") >= 0);
 assert("命令面板首屏带最近材料", cmdGroups.indexOf("材料") >= 0);
 const cmdDoc = sandbox.buildCommandResults("奖学金");
-assert("命令面板可搜材料", cmdDoc.length === 1 && cmdDoc[0].kind === "doc");
+assert("命令面板可搜材料", cmdDoc.some(function(x){ return x.kind === "doc" && x.title.indexOf("奖学金") >= 0; }));
+assert("命令面板可搜任务", cmdDoc.some(function(x){ return x.kind === "task" && x.title.indexOf("奖学金") >= 0; }));
 const cmdExp = sandbox.buildCommandResults("导出");
 assert("命令面板可搜动作", cmdExp.length === 1 && cmdExp[0].title.indexOf("导出") >= 0);
 sandbox.state.role = "reviewer";
@@ -362,6 +363,22 @@ const cmdArc = sandbox.buildCommandResults(">归档");
 assert(">归档 只返回动作", cmdArc.length >= 1 && cmdArc.every(function(x){ return x.kind === "act"; }));
 assert(">归档 命中台账归档", cmdArc.some(function(x){ return x.title === "归档已选材料"; }));
 assert(">归档 不混入材料", cmdArc.every(function(x){ return x.kind !== "doc"; }));
+
+// v0.26 全局搜索：人、任务、材料、附件四组；附件命中不与材料重复
+const qsPersonal = sandbox.buildQuickSearch("王浩宇");
+assert("全局搜索命中同学", qsPersonal.counts.person === 1 && qsPersonal.items.some(function(x){ return x.kind === "person" && x.title === "王浩宇"; }));
+assert("同学结果带覆盖度", qsPersonal.items.find(function(x){ return x.kind === "person"; }).sub.indexOf("250217") >= 0);
+const covWang = sandbox.personCoverage("250217");
+assert("覆盖度按五类统计", covWang.total === 5 && covWang.done === 1 && covWang.none === 4);
+const qsTask = sandbox.buildQuickSearch("团务");
+assert("全局搜索命中任务", qsTask.counts.task >= 1 && qsTask.items.some(function(x){ return x.kind === "task"; }));
+assert("全局搜索同时命中材料", qsTask.counts.doc >= 1 && qsTask.items.some(function(x){ return x.kind === "doc"; }));
+const qsFile = sandbox.buildQuickSearch("docx");
+assert("附件命中单独归文件组", qsFile.counts.file >= 1 && qsFile.items.some(function(x){ return x.kind === "file" && x.title === "新闻稿.docx"; }));
+assert("附件命中不重复算材料", qsFile.counts.doc === 0);
+const qsHome = sandbox.buildQuickSearch("");
+assert("空查询回最近材料", qsHome.counts.doc === 4 && qsHome.counts.person === 0 && qsHome.counts.task === 0);
+assert("命令面板复用全局结果", sandbox.buildCommandResults("王浩宇").some(function(x){ return x.kind === "person"; }));
 
 // 命名保存视图：筛选/排序/列宽/隐藏列一键还原、重名覆盖、删除
 sandbox.docsFilter.q = "视图关键词"; sandbox.docsFilter.cat = "团务材料";

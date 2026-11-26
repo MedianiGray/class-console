@@ -662,6 +662,7 @@
   .mx-table th:nth-child(2),.mx-table td:nth-child(2){width:96px}
   .mx-table .mx-cell{text-align:center;font-size:12.5px;letter-spacing:.02em;cursor:pointer;transition:background .12s}
   .mx-table .mx-cell:hover{background:var(--bg-soft)}
+  .mx-row.focus td{background:var(--primary-soft)}
   .mx-ok{color:var(--green);font-weight:600}
   .mx-pend{color:var(--orange)}
   .mx-rej{color:var(--red)}
@@ -742,6 +743,21 @@
   .tb-search input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,99,238,.14);outline:none}
   .tb-search kbd{position:absolute;right:9px;font-family:inherit;font-size:10.5px;color:var(--sub);
     background:var(--card);border:1px solid var(--line);border-radius:5px;padding:2px 6px;pointer-events:none}
+  .gs-pop{position:absolute;left:0;top:calc(100% + 8px);width:100%;min-width:min(420px,100%);max-width:600px;
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 18px 40px rgba(15,23,42,.18);display:none;z-index:120;overflow:hidden}
+  .gs-pop.show{display:block}
+  .gs-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px 8px}
+  .gs-head #gsTitle{font-size:11px;color:var(--text);font-weight:600;letter-spacing:.02em}
+  .gs-hint{font-size:10.5px;color:var(--sub);white-space:nowrap}
+  .gs-list{max-height:min(58vh,430px);overflow:auto;padding:0 6px 6px}
+  .gs-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    border-top:1px solid var(--line);background:var(--card-soft);padding:7px 12px;
+    font-size:10.5px;color:var(--sub)}
+  .gs-all{border:0;background:transparent;color:var(--primary);font-size:11.5px;font-weight:550;
+    padding:0;cursor:pointer}
+  .gs-all:hover{text-decoration:underline}
+  .gs-empty{padding:28px 14px;text-align:center;font-size:12px;color:var(--sub);line-height:1.7}
   .topbar-right{display:flex;align-items:center;gap:9px;min-width:0}
   .id-chip{display:flex;align-items:center;gap:9px;padding:4px 8px 4px 4px;border:1px solid var(--line);
     border-radius:8px;background:var(--card-soft);min-width:0}
@@ -954,6 +970,8 @@
     .brand{height:auto;padding:12px 16px 8px;border-bottom:0}
     .brand p{display:none}
     .topbar{height:52px;padding:0 12px;gap:10px}
+    .gs-pop{min-width:0;max-width:none;left:0;top:calc(100% + 6px);width:calc(100vw - 24px)}
+    .gs-hint{display:none}
     .id-chip{display:none}
     .content{padding:14px 12px 18px}
     .page-head{margin-bottom:12px}
@@ -1119,8 +1137,13 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>
         </svg>
-        <input id="globalSearch" type="search" placeholder="搜索材料、学号、编号..." autocomplete="off" aria-label="全局搜索">
+        <input id="globalSearch" type="search" placeholder="搜索同学、任务、材料、附件..." autocomplete="off" aria-label="全局搜索">
         <kbd>Ctrl K</kbd>
+        <div class="gs-pop" id="gsPop" aria-hidden="true">
+          <div class="gs-head"><span id="gsTitle">全局搜索</span><span class="gs-hint">↑↓ 选择 · Enter 打开 · Esc 关闭</span></div>
+          <div class="gs-list" id="gsList"></div>
+          <div class="gs-foot"><button type="button" class="gs-all" id="gsAll">查看全部结果</button><span>Ctrl K 打开命令面板</span></div>
+        </div>
       </div>
       <div class="topbar-right" id="topbarRight">
         <button class="icon-btn ai-btn" id="aiBtn" aria-label="AI 副驾" title="AI 副驾 · 选中材料后可直接出建议">
@@ -1194,7 +1217,7 @@
     <div class="cmdk-head">
       <span class="cmdk-ico">⌘</span>
       <input id="cmdkInput" type="text" autocomplete="off" spellcheck="false"
-        placeholder="搜索材料，或输入 >归档 / >导出 / >提醒 执行动作" aria-label="命令面板搜索">
+        placeholder="搜索同学、任务、材料、文件，或输入 >归档 / >导出 / >提醒 执行动作" aria-label="命令面板搜索">
       <kbd>ESC</kbd>
     </div>
     <div class="cmdk-list" id="cmdkList"></div>
@@ -3242,8 +3265,6 @@ function syncFilterControls() {
   var c = document.getElementById("fCat"); if (c) c.value = docsFilter.cat;
   var t = document.getElementById("fType"); if (t) t.value = docsFilter.type;
   var s = document.getElementById("fStatus"); if (s) s.value = docsFilter.status;
-  var g = document.getElementById("globalSearch");
-  if (g && g !== document.activeElement) g.value = docsFilter.q;
 }
 
 function renderDocs() {
@@ -4201,6 +4222,31 @@ function copyText(text, msg) {
 }
 
 var rosterTab = "list";
+var rosterFocusSid = "";
+function matrixCellFromStatuses(sts){
+  if (sts.indexOf("已归档") >= 0) return "已交";
+  if (sts.indexOf("待审核") >= 0) return "待审";
+  if (sts.indexOf("已驳回") >= 0 || sts.indexOf("待补材料") >= 0) return "补交";
+  return "—";
+}
+function matrixCell(sid, cat){
+  var sts = [];
+  store.docs.forEach(function(d){
+    if (d.sid === sid && d.cat === cat) sts.push(d.status);
+  });
+  return matrixCellFromStatuses(sts);
+}
+function personCoverage(sid){
+  var out = { done:0, pending:0, back:0, none:0, total:CATS.length };
+  CATS.forEach(function(cat){
+    var s = matrixCell(sid, cat);
+    if (s === "已交") out.done++;
+    else if (s === "待审") out.pending++;
+    else if (s === "补交") out.back++;
+    else out.none++;
+  });
+  return out;
+}
 function rosterMatrix(rows){
   var m = {}, counts = { "已交":0, "待审":0, "补交":0, "—":0 };
   store.docs.forEach(function(d){
@@ -4210,14 +4256,10 @@ function rosterMatrix(rows){
     m[k].push(d.status);
   });
   function cell(sid, cat){
-    var sts = m[sid + "|" + cat] || [];
-    if (sts.indexOf("已归档") >= 0) return "已交";
-    if (sts.indexOf("待审核") >= 0) return "待审";
-    if (sts.indexOf("已驳回") >= 0 || sts.indexOf("待补材料") >= 0) return "补交";
-    return "—";
+    return matrixCellFromStatuses(m[sid + "|" + cat] || []);
   }
   var body = rows.map(function(r){
-    return '<tr class="mx-row" data-sid="' + esc(r.sid) + '"><td class="num-col">' + esc(r.sid) +
+    return '<tr class="mx-row' + (rosterFocusSid === r.sid ? " focus" : "") + '" data-sid="' + esc(r.sid) + '"><td class="num-col">' + esc(r.sid) +
       "</td><td>" + esc(r.who) + "</td>" +
       CATS.map(function(cat){
         var s = cell(r.sid, cat);
@@ -4298,6 +4340,22 @@ function matrixCellModal(sid, cat, st) {
     switchView("docs");
     toast("已按学号 " + sid + " 筛出台账");
   };
+}
+
+function jumpToPersonFromSearch(sid){
+  var r = findRosterBySid(sid);
+  if (!r) return false;
+  rosterTab = "matrix"; rosterFocusSid = sid;
+  switchView("roster");
+  var row = document.querySelector("#view-roster .mx-row.focus");
+  if (row && row.scrollIntoView) { try { row.scrollIntoView({ block:"center" }); } catch(e){} }
+  setTimeout(function(){
+    if (rosterFocusSid !== sid) return;
+    rosterFocusSid = "";
+    document.querySelectorAll("#view-roster .mx-row.focus").forEach(function(el){ el.classList.remove("focus"); });
+  }, 2400);
+  toast("已定位到 " + r.who + "（" + sid + "）");
+  return true;
 }
 
 function renderRoster() {
@@ -5205,26 +5263,113 @@ document.addEventListener("keydown", function(e){
   else if (document.getElementById("drawer").classList.contains("show")) closeDrawer();
 });
 
-/* 顶栏全局搜索：输入即切到台账并按关键词过滤，Enter 直接定位 */
+/* 顶栏全局搜索：同学 / 任务 / 材料 / 附件四组快速结果，Enter 直达 */
+var gsState = { q:"", items:[], sel:0 };
+function gsCountText(counts){
+  var parts = [];
+  if (counts.person) parts.push(counts.person + " 人");
+  if (counts.task) parts.push(counts.task + " 任务");
+  if (counts.doc) parts.push(counts.doc + " 材料");
+  if (counts.file) parts.push(counts.file + " 文件");
+  return parts.length ? parts.join(" · ") : "无命中";
+}
+function renderQuickSearch(){
+  var pop = document.getElementById("gsPop");
+  var list = document.getElementById("gsList");
+  if (!pop || !list) return;
+  var q = clean(gsState.q);
+  if (!q){ pop.classList.remove("show"); pop.setAttribute("aria-hidden", "true"); return; }
+  var res = buildQuickSearch(q);
+  gsState.items = res.items;
+  if (gsState.sel < 0) gsState.sel = 0;
+  if (gsState.sel >= res.items.length) gsState.sel = Math.max(0, res.items.length - 1);
+  var title = document.getElementById("gsTitle");
+  if (title) title.textContent = "全局搜索 · " + gsCountText(res.counts);
+  var html = "", last = "";
+  if (!res.items.length){
+    html = '<div class="gs-empty">没有找到“' + esc(q) + '”。<br>试试姓名、学号、材料名、文件名或任务名。</div>';
+  } else {
+    res.items.forEach(function(it, i){
+      if (it.group !== last) { html += '<div class="cmdk-group">' + esc(it.group) + "</div>"; last = it.group; }
+      html += '<div class="cmdk-item' + (i === gsState.sel ? " on" : "") + '" data-gi="' + i + '">' +
+        '<span class="ci-kind">' + ({doc:"材料", file:"文件", person:"同学", task:"任务"}[it.kind] || "结果") + "</span>" +
+        '<span class="ci-main"><div class="ci-t">' + esc(it.title) + "</div>" +
+        (it.sub ? '<div class="ci-s">' + esc(it.sub) + "</div>" : "") + "</span>" +
+        '<span class="ci-enter">Enter</span></div>';
+    });
+  }
+  list.innerHTML = html;
+  document.querySelectorAll("#gsList .cmdk-item").forEach(function(el){
+    el.onclick = function(){ activateQuickSearch(Number(el.dataset.gi)); };
+    el.onmouseenter = function(){ gsState.sel = Number(el.dataset.gi); paintQuickSelection(); };
+  });
+  var all = document.getElementById("gsAll");
+  if (all) all.textContent = res.items.length ? "查看全部结果" : "打开命令面板";
+  pop.classList.add("show");
+  pop.setAttribute("aria-hidden", "false");
+  var on = document.querySelector("#gsList .cmdk-item.on");
+  if (on && on.scrollIntoView) { try { on.scrollIntoView({ block:"nearest" }); } catch(e){} }
+}
+function paintQuickSelection(){
+  document.querySelectorAll("#gsList .cmdk-item").forEach(function(el){
+    el.classList.toggle("on", Number(el.dataset.gi) === gsState.sel);
+  });
+}
+function openQuickSearch(q){
+  gsState.q = clean(q); gsState.sel = 0;
+  renderQuickSearch();
+}
+function closeQuickSearch(){
+  var pop = document.getElementById("gsPop");
+  if (pop){ pop.classList.remove("show"); pop.setAttribute("aria-hidden", "true"); }
+}
+function activateQuickSearch(i){
+  var it = gsState.items[i];
+  if (!it) return;
+  closeQuickSearch();
+  if (it.run) it.run();
+}
 function bindGlobalSearch(){
   var input = document.getElementById("globalSearch");
   if (!input) return;
   var timer = null;
   input.addEventListener("input", function(){
-    var v = input.value;
     clearTimeout(timer);
-    timer = setTimeout(function(){
-      docsFilter.q = clean(v); docsFilter.page = 1;
-      if (state.current !== "docs") switchView("docs"); else { syncFilterControls(); renderDocs(); }
-    }, 260);
+    timer = setTimeout(function(){ openQuickSearch(input.value); }, 180);
+  });
+  input.addEventListener("focus", function(){
+    if (clean(input.value)) openQuickSearch(input.value);
+  });
+  input.addEventListener("click", function(){
+    if (clean(input.value)) openQuickSearch(input.value);
   });
   input.addEventListener("keydown", function(e){
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    docsFilter.q = clean(input.value); docsFilter.page = 1;
-    switchView("docs");
-    var q = document.getElementById("fQ");
-    if (q && q.focus) q.focus();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (!gsState.items.length) return;
+      e.preventDefault();
+      gsState.sel = e.key === "ArrowDown"
+        ? Math.min(gsState.items.length - 1, gsState.sel + 1)
+        : Math.max(0, gsState.sel - 1);
+      paintQuickSelection();
+      var on = document.querySelector("#gsList .cmdk-item.on");
+      if (on && on.scrollIntoView) { try { on.scrollIntoView({ block:"nearest" }); } catch(err){} }
+    } else if (e.key === "Enter") {
+      if (!gsState.items.length) return;
+      e.preventDefault();
+      activateQuickSearch(gsState.sel);
+    } else if (e.key === "Escape") {
+      closeQuickSearch();
+    }
+  });
+  var all = document.getElementById("gsAll");
+  if (all) all.onclick = function(){
+    var q = gsState.q;
+    closeQuickSearch();
+    openCommandPalette(q);
+  };
+  document.addEventListener("click", function(e){
+    var box = document.querySelector(".tb-search");
+    if (box && !box.contains(e.target)) closeQuickSearch();
   });
 }
 
@@ -5234,17 +5379,73 @@ var cmdOpen = false, cmdResults = [], cmdSel = 0;
 function navGroupLabel(g){
   return g === "main" ? "主流程" : (g === "follow" ? "跟进" : "辅助");
 }
-function docMatchesQuery(d, q){
+function docCoreMatchesQuery(d, q){
   if (!q) return true;
-  return [d.name, d.code, d.cat, d.who, d.sid, d.id, d.status, d.file, d.form_type]
+  return [d.name, d.code, d.cat, d.who, d.sid, d.id, d.status, d.form_type]
     .map(function(x){ return clean(x).toLowerCase(); }).join(" ").indexOf(q) >= 0;
 }
+function docFileMatchesQuery(d, q){
+  return !!clean(d.file) && clean(d.file).toLowerCase().indexOf(q) >= 0;
+}
+function taskStateLabel(t){ return t.done ? "已完成" : "进行中"; }
+function taskMatchesQuery(t, q){
+  if (!q) return true;
+  return [t.title, t.cat, t.scope, t.deadline, t.note, taskStateLabel(t), t.id]
+    .map(function(x){ return clean(x).toLowerCase(); }).join(" ").indexOf(q) >= 0;
+}
+function buildQuickSearch(raw){
+  var q = clean(raw).toLowerCase();
+  var items = [], counts = { person:0, task:0, doc:0, file:0 };
+  function add(item){ items.push(item); counts[item.kind]++; }
+  function docItem(d){
+    return { kind:"doc", group:"材料", title:d.name,
+      sub:[d.code, d.cat, d.who, d.status].filter(Boolean).join(" · ") || ("编号 " + d.id),
+      run:function(){ jumpToDocFromPalette(d.id); } };
+  }
+  function fileItem(d){
+    return { kind:"file", group:"附件", title:d.file,
+      sub:[d.name, d.who, d.status].filter(Boolean).join(" · "),
+      run:function(){ jumpToDocFromPalette(d.id); } };
+  }
+  if (!q){
+    visibleDocs(store.docs).slice().sort(function(a,b){ return b.id - a.id; }).slice(0,4)
+      .forEach(function(d){ add(docItem(d)); });
+    return { q:q, items:items, counts:counts };
+  }
+  if (can("roster:manage")) {
+    listRoster().filter(function(r){
+      return (clean(r.sid) + " " + clean(r.who)).toLowerCase().indexOf(q) >= 0;
+    }).slice(0, 3).forEach(function(r){
+      var cov = personCoverage(r.sid);
+      add({ kind:"person", group:"同学", title:r.who,
+        sub:r.sid + " · 已交 " + cov.done + " / " + cov.total + " 类" +
+          (cov.none ? " · 缺 " + cov.none + " 类" : "") +
+          (cov.back ? " · 补交 " + cov.back : "") + (cov.pending ? " · 待审 " + cov.pending : ""),
+        run:function(){ jumpToPersonFromSearch(r.sid); } });
+    });
+  }
+  if (can("task:manage")) {
+    listTasks().filter(function(t){ return taskMatchesQuery(t, q); }).slice(0, 3).forEach(function(t){
+      add({ kind:"task", group:"任务", title:t.title,
+        sub:[t.cat || "未分类", taskStateLabel(t), t.deadline].filter(Boolean).join(" · "),
+        run:function(){ switchView("tasks"); taskModal(t.id); } });
+    });
+  }
+  var core = [], files = [];
+  visibleDocs(store.docs).slice().sort(function(a,b){ return b.id - a.id; }).forEach(function(d){
+    if (docCoreMatchesQuery(d, q)) core.push(d);
+    else if (docFileMatchesQuery(d, q)) files.push(d);
+  });
+  core.slice(0, 6).forEach(function(d){ add(docItem(d)); });
+  files.slice(0, 3).forEach(function(d){ add(fileItem(d)); });
+  return { q:q, items:items, counts:counts };
+}
+
 function buildCommandResults(raw){
   var actionMode = clean(raw).charAt(0) === ">";
   var text = actionMode ? clean(raw).slice(1) : raw;
   var q = clean(text).toLowerCase();
-  var docs = actionMode ? [] : visibleDocs(store.docs).slice().sort(function(a,b){ return b.id - a.id; })
-    .filter(function(d){ return docMatchesQuery(d, q); });
+  var quick = actionMode ? { items:[], counts:{} } : buildQuickSearch(text);
   var views = actionMode ? [] : NAV.filter(navVisible).map(function(n){
     return { kind:"view", group:"跳转视图", title:n.title,
       sub:"前往 · " + navGroupLabel(n.group), keywords:n.key,
@@ -5282,16 +5483,11 @@ function buildCommandResults(raw){
       switchView("docs");
     } });
 
-  var docItems = docs.map(function(d){
-    return { kind:"doc", group:"材料", title:d.name,
-      sub:[d.code, d.cat, d.who, d.status].filter(Boolean).join(" · ") || ("编号 " + d.id),
-      run:function(){ jumpToDocFromPalette(d.id); } };
-  });
   function hit(it){ if (!q) return true; return (it.title + " " + it.sub + " " + (it.keywords || ""))
     .toLowerCase().indexOf(q) >= 0; }
   var viewHits = views.filter(hit), actHits = acts.filter(hit);
-  var docHits = actionMode ? [] : docItems.slice(0, q ? 12 : 4);
-  var out = actionMode ? actHits : (q ? docHits.concat(viewHits, actHits) : actHits.concat(docHits, viewHits));
+  var quickHits = actionMode ? [] : quick.items;
+  var out = actionMode ? actHits : (q ? quickHits.concat(viewHits, actHits) : actHits.concat(quickHits, viewHits));
   return out.slice(0, 22);
 }
 
@@ -5300,8 +5496,8 @@ function renderCommandList(){
   if (!list) return;
   if (!cmdResults.length) {
     list.innerHTML = '<div class="cmdk-empty">' + emptyState(
-      "没有匹配的命令或材料",
-      "现有命令和材料都没命中这个词；试试「模板」「导出」「名单」或同学姓名。",
+      "没有匹配的同学、任务、材料或命令",
+      "试试姓名、学号、材料名、文件名、任务名，或「模板」「导出」「名单」；输入 > 只搜动作。",
       emptyBtn("清空搜索", 'data-cmdk-clear="1"', "ghost"), true) + "</div>";
     var cmdClear = list.querySelector("[data-cmdk-clear]");
     if (cmdClear) cmdClear.onclick = function(){
@@ -5321,7 +5517,7 @@ function renderCommandList(){
   cmdResults.forEach(function(it, i){
     if (it.group !== last) { html += '<div class="cmdk-group">' + esc(it.group) + "</div>"; last = it.group; }
     html += '<div class="cmdk-item' + (i === cmdSel ? " on" : "") + '" data-i="' + i + '">' +
-      '<span class="ci-kind">' + (it.kind === "doc" ? "材料" : (it.kind === "view" ? "视图" : "动作")) + "</span>" +
+      '<span class="ci-kind">' + ({doc:"材料", file:"文件", person:"同学", task:"任务", view:"视图", act:"动作"}[it.kind] || "结果") + "</span>" +
       '<span class="ci-main"><div class="ci-t">' + esc(it.title) + '</div>' +
       (it.sub ? '<div class="ci-s">' + esc(it.sub) + "</div>" : "") + "</span>" +
       '<span class="ci-enter">Enter</span></div>';
@@ -5345,7 +5541,7 @@ function activateCommand(i){
   closeCommandPalette();
   if (it.run) it.run();
 }
-function openCommandPalette(){
+function openCommandPalette(query){
   var mask = document.getElementById("cmdkMask");
   if (!mask) return;
   mask.classList.add("show");
@@ -5353,11 +5549,11 @@ function openCommandPalette(){
   cmdOpen = true; cmdSel = 0;
   var input = document.getElementById("cmdkInput");
   if (input) {
-    input.value = "";
+    input.value = query || "";
     if (input.focus) input.focus();
     if (input.select) input.select();
   }
-  cmdResults = buildCommandResults("");
+  cmdResults = buildCommandResults(input ? input.value : "");
   renderCommandList();
 }
 function closeCommandPalette(){
