@@ -321,6 +321,13 @@ def main():
     svc.refresh(); root.update()
     assert len(svc.tree.get_children()) >= 3, "服务留痕条数不足"
     assert svc.summary.cget("text").startswith("共 "), svc.summary.cget("text")
+    # 语音朗读入口：只验存在与启用态，不真的发声（避免测试时出声）
+    assert svc.btn_speak.cget("text") == "朗读内容", svc.btn_speak.cget("text")
+    assert str(svc.btn_speak.cget("state")) == "normal", "有记录时朗读应可用"
+    fav = svc.tree.get_children()[0]
+    svc.tree.selection_set(fav); svc.tree.focus(fav); root.update()
+    assert svc._rows.get(fav), "服务记录映射丢失"
+    assert hasattr(app.views["docs"], "btn_speak"), "材料详情缺朗读入口"
     print("服务入口/留痕视图 OK")
 
     # v0.17 审计界面：日志筛选、证据包入口、完整性弹窗均可构建

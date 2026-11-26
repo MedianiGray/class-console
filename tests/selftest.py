@@ -839,6 +839,23 @@ def main():
     assert not os.path.exists(base2 / "未整理" / "合影.png")
     print("49. 按类别归位 OK")
 
+    # 50. 语音朗读：只验探测口径与拒空，不真的发声
+    import tts
+    info = tts.probe()
+    assert set(info) >= {"ok", "voice", "voices", "reason"}, info
+    if info["ok"]:
+        assert info["voice"] and info["voices"], info
+        assert "可用语音" in tts.describe(), tts.describe()
+        print("50. 语音朗读探测 OK（%s）" % info["voice"])
+    else:
+        assert info["reason"], "不可用时必须给出原因"
+        print("50. 语音朗读探测（不可用，%s）" % info["reason"])
+    ok, why = tts.speak("")
+    assert ok is False and why == "没有可朗读的内容", (ok, why)
+    ok2, why2 = tts.speak("   ")
+    assert ok2 is False and why2, "空白文本同样应拒绝"
+    assert tts.is_speaking() is False, "未朗读时不应处于朗读态"
+
     print("SELFTEST OK")
 
 

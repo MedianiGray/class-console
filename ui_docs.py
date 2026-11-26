@@ -8,6 +8,7 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 
 import archive
 import theme
+import tts
 from theme import FONT, C
 from ui_empty import EmptyState
 from ui_error import show_error
@@ -169,6 +170,10 @@ class DocsView(ttk.Frame):
         self.detail_count = tk.Label(head, text="", bg=C["card"], fg=C["sub"],
                                      font=(FONT, 9), anchor="e")
         self.detail_count.pack(side="right")
+        self.btn_speak = ttk.Button(head, text="朗读", style="Ghost.TButton",
+                                    width=6, command=self._speak_detail)
+        self.btn_speak.pack(side="right", padx=(0, 8))
+        self.btn_speak.state(["disabled"])
         self.detail_text = tk.Text(
             self.detail, width=29, height=1, wrap="word", bd=0, relief="flat",
             bg=C["card"], fg=C["text"], insertbackground=C["card"],
@@ -436,6 +441,31 @@ class DocsView(ttk.Frame):
         self.detail_text.config(state="normal")
         self.detail_text.delete("1.0", "end")
 
+    def _speak_detail(self):
+        """朗读右栏这份材料详情（只读，不改任何数据）。"""
+        if tts.is_speaking():
+            tts.stop()
+            self.btn_speak.config(text="朗读")
+            self.window.toast("已停止朗读")
+            return
+        text = self.detail_text.get("1.0", "end").strip()
+        if not text:
+            self.window.toast("先选中一条材料")
+            return
+        ok, why = tts.speak(text[:800])
+        if not ok:
+            self.window.toast(why or "系统语音不可用")
+            return
+        self.btn_speak.config(text="停止")
+        self.window.toast("正在朗读详情，再点一次可停止")
+        self.after(400, self._watch_speak)
+
+    def _watch_speak(self):
+        if tts.is_speaking():
+            self.after(400, self._watch_speak)
+            return
+        self.btn_speak.config(text="朗读")
+
     def _write(self, text, tag=None):
         self.detail_text.insert("end", text, tag or ())
 
@@ -443,6 +473,9 @@ class DocsView(ttk.Frame):
         ids = self._selected_ids()
         self._detail_reset()
         self.detail_count.config(text=(("%d 条" % len(ids)) if ids else ""))
+        if not tts.is_speaking():
+            self.btn_speak.config(text="朗读")
+            self.btn_speak.state(["!disabled"] if ids else ["disabled"])
         if not ids:
             self._write("未选择材料\n", "h1")
             self._write("在左侧单击一行，这里会显示材料信息、审批节点和最近操作。\n"

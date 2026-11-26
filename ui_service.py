@@ -7,6 +7,7 @@ from tkinter import ttk, filedialog, messagebox
 
 from theme import FONT, C
 from ui_empty import EmptyState
+import tts
 
 
 class ServiceView(ttk.Frame):
@@ -100,9 +101,12 @@ class ServiceView(ttk.Frame):
         bar.pack(fill="x", padx=18, pady=10)
         self.btn_copy = ttk.Button(bar, text="复制内容", style="Ghost.TButton",
                                    command=self._copy)
+        self.btn_speak = ttk.Button(bar, text="朗读内容", style="Ghost.TButton",
+                                    command=self._speak)
         self.btn_export = ttk.Button(bar, text="导出服务记录", style="Accent.TButton",
                                      command=self.export_csv)
         self.btn_copy.pack(side="left")
+        self.btn_speak.pack(side="left", padx=8)
         self.btn_export.pack(side="right")
 
     def _clear(self):
@@ -159,6 +163,36 @@ class ServiceView(ttk.Frame):
             self.empty.show_place()
             self._set_detail(None)
         self.btn_copy.config(state="normal" if rows else "disabled")
+        self.btn_speak.config(state="normal" if rows else "disabled")
+
+    def _speak(self):
+        """朗读当前选中的服务记录；再点一次停止。"""
+        if tts.is_speaking():
+            tts.stop()
+            self.btn_speak.config(text="朗读内容")
+            self.window.toast("已停止朗读")
+            return
+        iid = self.tree.focus()
+        row = self._rows.get(iid)
+        if not row:
+            self.window.toast("先选中一条服务记录")
+            return
+        text = "%s，%s，%s。%s" % (
+            row.get("kind", ""), row.get("who", ""), row.get("cat", ""),
+            row.get("detail", ""))
+        ok, why = tts.speak(text)
+        if not ok:
+            self.window.toast(why or "系统语音不可用")
+            return
+        self.btn_speak.config(text="停止朗读")
+        self.window.toast("正在朗读，再点一次可停止")
+        self.after(400, self._watch_speak)
+
+    def _watch_speak(self):
+        if tts.is_speaking():
+            self.after(400, self._watch_speak)
+            return
+        self.btn_speak.config(text="朗读内容")
 
     def _set_detail(self, row):
         self.detail.config(state="normal")
