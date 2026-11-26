@@ -20,7 +20,8 @@ import service
 CAPS = (
     ("overview", "台账概览", "现在还缺多少材料"),
     ("status", "某人缺哪几类", "250223 还缺什么"),
-    ("chase", "催交话术", "给陆家明写催交话术"),
+    ("chase", "催交话术", "给他写催交话术"),
+    ("doc_info", "当前这份材料", "这份什么情况"),
     ("pending", "待审清单", "有哪些待审的"),
     ("missing_people", "谁还没交", "谁还没交材料"),
     ("open_view", "打开页面", "打开服务留痕"),
@@ -45,14 +46,22 @@ OPEN_WORDS = ("打开", "切到", "切换到", "去一下", "去 ")
 OVERVIEW_WORDS = ("概览", "统计", "多少份", "什么情况", "整体", "总览", "进度")
 PENDING_WORDS = ("待审", "待审核", "没审")
 MISSING_WORDS = ("谁没交", "谁还没交", "谁缺", "缺人", "没交的有", "催谁")
-CHASE_WORDS = ("催交", "催一下", "催 ", "写个话术", "话术", "提醒他交")
+CHASE_WORDS = ("催交", "催一下", "催 ", "写个话术", "话术", "提醒他交", "提醒她交")
 STATUS_WORDS = ("还缺", "缺什么", "缺哪", "交了什么", "交了哪些", "状态", "查到")
+# 指代：说话人省略了主语，得靠上一轮记住的人来补
+PRONOUN_WORDS = ("他", "她", "这个人", "那位", "该同学", "这位", "刚才那位")
+# 指代「当前这份材料」：要主窗口把选中的那份递进来
+DOC_WORDS = ("这份", "这篇", "当前这份", "选中的")
+# 写操作：认得出，但不做，明确回绝
+WRITE_WORDS = ("归档", "驳回", "删除", "删掉", "清空", "改状态", "登记进台账")
+WRITE_CUES = ("把", "帮我", "直接", "给我", "替我", "一下")
 
 AI_SYSTEM = (
     "你是班级操作台的助手，只负责把用户的话翻译成一个意图，不要回答问题本身。"
     "可选意图：%s。"
     '只输出一个 JSON 对象：{"intent":"意图名","args":{...},"reply":"不超过20字的回应"}。'
     "args 可用键：sid（6位学号）、who（姓名）、view（页面名）。"
+    "用户可能省略主语（「他缺什么」「这份能归档吗」），这时把 args 留空，由本地上下文补。"
     "没有把握时 intent 用 unknown，不要编造学号和姓名。"
 )
 
@@ -64,11 +73,13 @@ def _clean(value):
 class Assistant(object):
     """无界面依赖的助手内核。界面负责拿结果去显示。"""
 
-    def __init__(self, repo, cfg_loader=None, speak=None, open_view=None):
+    def __init__(self, repo, cfg_loader=None, speak=None, open_view=None, context=None):
         self.repo = repo
         self.cfg_loader = cfg_loader or ai.load_config
         self.speak = speak
         self.open_view = open_view
+        self.context = context        # 主窗口递进来的当前视图与选中材料
+        self.ctx = {"person": None, "cats": [], "doc_id": None}   # 会话里记住的人
         self.last_text = ""      # 上一句可朗读的回复
         self.last_action = ""
 
@@ -76,13 +87,42 @@ class Assistant(object):
     def capabilities(self):
         return ["「%s」%s" % (c[1], c[2]) for c in CAPS]
 
+    def ai_ready(self):
+        try:
+            return bool(ai.api_ready(self.cfg_loader() or {}))
+        except Exception:
+            return False
+
+    def ai_note(self):
+        """没接 AI 时的一句话交代，别让人以为它听不懂是 bug。"""
+        return "" if self.ai_ready() else "（未接 AI 通道，我按本地规则理解，不联网）"
+
+    def brief_text(self):
+        """主动开场：不问也先给一条今天的状态，纯本地查库。"""
+        try:
+            stats = self.repo.stats() or {}
+        except Exception:
+            stats = {}
+        try:
+            check = self.repo.roster_check() or {}
+        except Exception:
+            check = {}
+        parts = ["待审 %s 份" % stats.get("pending", 0)]
+        if check:
+            left = len(check.get("absent") or []) + len(check.get("resubmit") or [])
+            parts.append(("%s 人未交" % left) if left else "名单都齐了")
+        return "今天：" + "、".join(parts) + "。"
+
     def help_text(self):
         lines = ["我能直接查本机台账，也能替你把话术、朗读、切页面接起来。"]
+        lines.append("AI 通道：%s" % ("已接上，能听懂更自由的说法"
+                                   if self.ai_ready() else "未接，我按本地规则理解，不联网"))
         lines.append("试试这样说：")
         for cap in CAPS:
             if cap[0] == "help":
                 continue
             lines.append("· %s —— 比如「%s」" % (cap[1], cap[2]))
+        lines.append("说过一个人之后，可以直接说「他缺什么」「给他写话术」，我记得是谁。")
         lines.append("我不会改台账、不归档、不猜分类；要我登记请用提交材料页。")
         return "\n".join(lines)
 
@@ -100,9 +140,11 @@ class Assistant(object):
                 return self._exec(intent, args, raw, source="api")
             if local:
                 return local
+            hint = "" if not self.ai_ready() else "（%s）" % (why or "本地规则未命中")
             return {"ok": False, "action": "unknown", "source": "local",
-                    "text": "这句话我还没接上能力（%s）。可以问：谁还没交材料、250223 还缺什么、"
-                            "给我写条催交话术、打开服务留痕。" % (why or "本地规则未命中")}
+                    "text": "这句话我还没接上能力%s%s。可以问：谁还没交材料、250223 还缺什么、"
+                            "这份什么情况、给他写条催交话术、打开服务留痕。"
+                            % (hint, self.ai_note())}
         except Exception as e:                                  # 界面不能因为助手崩
             return {"ok": False, "action": "error", "source": "local",
                     "text": "助手内部出错了：%s" % e}
@@ -184,6 +226,34 @@ class Assistant(object):
             lines.append("要我写成催交话术，就说「给%s写催交话术」。" % (_clean(who) or sid))
         return "\n".join(lines), missing
 
+    def doc_text(self, doc):
+        """讲清「当前这份材料」是什么、同人还缺什么；只报事实，不给能不能归档的判断。"""
+        doc = doc or {}
+        who = _clean(doc.get("who"))
+        sid = _clean(doc.get("sid"))
+        cat = _clean(doc.get("cat"))
+        st = _clean(doc.get("status"))
+        lines = ["这份：%s %s · %s · %s" % (who or "?", sid or "?",
+                                          cat or "?", st or "未标注")]
+        meta = []
+        if _clean(doc.get("time")):
+            meta.append("提交 %s" % _clean(doc.get("time")))
+        if _clean(doc.get("name")):
+            meta.append("文件「%s」" % _clean(doc.get("name")))
+        if _clean(doc.get("reason")):
+            meta.append("驳回理由：%s" % _clean(doc.get("reason")))
+        if meta:
+            lines.append(" · ".join(meta))
+        missing = []
+        if sid:
+            missing = service.missing_categories(
+                self._docs(), sid, self._exemptions(), self._receipts())
+            self.ctx["person"] = {"sid": sid, "who": who}
+            self.ctx["cats"] = missing
+            lines.append("同人其余：%s" % (("还缺 %s" % "、".join(missing))
+                                        if missing else "都齐了"))
+        return "\n".join(lines)
+
     def chase_for(self, sid, who="", cats=None):
         cats = cats or []
         if not cats:
@@ -259,8 +329,6 @@ class Assistant(object):
 
     # ---------- 本地路由 ----------
     def _local(self, text):
-        low = text.lower()
-
         if any(w in text for w in HELP_WORDS):
             return self._ok("help", self.help_text())
 
@@ -272,17 +340,28 @@ class Assistant(object):
                 return self._ok("speak", "正在朗读上一句。" if ok else info)
             return self._ok("speak", "朗读不可用：没有接入语音层。")
 
+        refused = self._refuse(text)
+        if refused:
+            return refused
+
         view = self._view_in(text)
         if view and any(w in text for w in OPEN_WORDS):
             return self._open(view[0], view[1])
 
-        person = self._find_person(text)
+        if any(w in text for w in DOC_WORDS) and not self._find_person(text):
+            return self._doc_info(text)
+
+        person = self._resolve_person(text)
         if person:
             if any(w in text for w in CHASE_WORDS):
                 return self._chase(person)
             if any(w in text for w in STATUS_WORDS) or not any(
                     w in text for w in PENDING_WORDS + OVERVIEW_WORDS):
                 return self._status(person)
+
+        if any(w in text for w in PRONOUN_WORDS) and any(
+                w in text for w in STATUS_WORDS + CHASE_WORDS):
+            return self._ok("status", "你指的是哪位？给个姓名或学号，比如「250223 还缺什么」。")
 
         if any(w in text for w in MISSING_WORDS):
             return self._ok("missing_people", self.missing_people_text())
@@ -291,6 +370,32 @@ class Assistant(object):
         if any(w in text for w in OVERVIEW_WORDS):
             return self._ok("overview", self.overview_text())
         return None
+
+    def _refuse(self, text):
+        """认得出写操作，但明确不做——比含糊回 unknown 更不含糊。"""
+        if any(w in text for w in WRITE_WORDS) and any(c in text for c in WRITE_CUES):
+            return {"ok": False, "action": "unknown", "source": "local",
+                    "text": "归档、驳回、删除这类操作我不替你做——台账是唯一事实源，改错了没人兜底。\n"
+                            "要归档请到「材料台账」选中后点「归档」；要我先把该审的列出来，"
+                            "就说「有哪些待审的」。"}
+        return None
+
+    def _resolve_person(self, text):
+        """先认字面姓名/学号，再认指代（他/她/这个人）——指代取会话里记住的那个人。"""
+        person = self._find_person(text)
+        if person:
+            return person
+        if any(w in text for w in PRONOUN_WORDS):
+            return dict(self.ctx.get("person") or {})
+        return {}
+
+    def _current_doc(self):
+        if not self.context:
+            return {}
+        try:
+            return (self.context() or {}).get("doc") or {}
+        except Exception:
+            return {}
 
     def _view_in(self, text):
         for key, label, words in VIEWS:
@@ -319,10 +424,12 @@ class Assistant(object):
         if intent == "speak":
             return self._ok("speak", self._speak_last(), source)
         if intent in ("status", "chase"):
-            person = self._person_from_args(args) or self._find_person(raw)
+            person = self._person_from_args(args) or self._resolve_person(raw)
             if not person:
                 return self._ok(intent, "要先给学号或姓名，我才能查这个人。", source)
             return self._chase(person, source) if intent == "chase" else self._status(person, source)
+        if intent == "doc_info":
+            return self._doc_info(raw, source)
         return {"ok": False, "action": "unknown", "source": source,
                 "text": "这个意图还没接上：%s" % intent}
 
@@ -350,12 +457,26 @@ class Assistant(object):
                 return key, label
         return None
 
+    def _doc_info(self, text, source="local"):
+        doc = self._current_doc()
+        if not doc:
+            return self._ok("doc_info",
+                            "现在没有选中的材料。先在「材料台账」点一行，"
+                            "或直接说「250223 还缺什么」。" + self.ai_note(), source)
+        out = self.doc_text(doc)
+        if any(w in text for w in ("归档", "驳回")):
+            out += "\n能不能归档要看类别与材料齐全度，这个判断我不替你做。"
+        return self._ok("doc_info", out, source)
+
     def _status(self, person, source="local"):
         text, missing = self.student_status(person["sid"], person.get("who"))
+        self.ctx["person"] = {"sid": person["sid"], "who": person.get("who", "")}
+        self.ctx["cats"] = missing
         return self._ok("status", text, source, cats=missing)
 
     def _chase(self, person, source="local"):
         text = self.chase_for(person["sid"], person.get("who"))
+        self.ctx["person"] = {"sid": person["sid"], "who": person.get("who", "")}
         return self._ok("chase", text, source)
 
     def _speak_last(self):

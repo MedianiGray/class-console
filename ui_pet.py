@@ -19,7 +19,7 @@ import theme
 import tts
 
 W_IDLE, H_IDLE = 306, 80
-W_OPEN, H_OPEN = 322, 468
+W_OPEN, H_OPEN = 322, 508    # 展开态多留一行给「这份」那类长回答
 KEY = "#FF00FE"          # 透明色键，只用于圆角外的空隙
 
 
@@ -41,15 +41,17 @@ class AssistantPet(object):
         self.app = window
         self.root = window.winfo_toplevel()
         self.repo = repo
-        self.lines = [("bot", "我在。问「谁还没交材料」或「250223 还缺什么」，"
-                            "我能查台账、写催交话术、念给你听、切页面。")]
+        self.lines = [("bot", "我在。我不改台账、不归档——只帮你查、写话术、念给你听、切页面。")]
         self.expanded = False
         self.busy = False
         self.last_reply = ""
+        self._greeted = False
         self._drag = None
+        self._ctx_cache = {"view": "", "doc": {}}
         self._queue = queue.Queue()
         self.assistant = assistant.Assistant(
-            repo, speak=self._speak, open_view=self._open_view)
+            repo, speak=self._speak, open_view=self._open_view,
+            context=self._context)
 
         self.win = tk.Toplevel(self.root)
         self.win.overrideredirect(True)
@@ -117,10 +119,22 @@ class AssistantPet(object):
         if not self.alive():
             return
         self.expanded = True
+        if not self._greeted:
+            self._greeted = True
+            self._greet()
         self.render()
         self.show()
         self.entry.focus_set()
         self.entry.icursor("end")
+
+    def _greet(self):
+        """第一次展开：不问也先给一条今天的状态，省得人还要想该问什么。"""
+        try:
+            self.lines.append(("bot", self.assistant.brief_text()))
+        except Exception:
+            return
+        self.last_reply = self.lines[-1][1]
+        self.render_lines()
 
     def collapse(self):
         if not self.alive():
@@ -226,8 +240,10 @@ class AssistantPet(object):
         self.entry.place(x=12, y=h - 98, width=w - 70, height=30)
         self.send_btn.place(x=w - 52, y=h - 98, width=40, height=30)
         for i, (chip, _) in enumerate(self.chips):
-            chip.place(x=12 + i * ((w - 24) // 4), y=h - 58,
-                       width=(w - 36) // 4, height=24)
+            n = len(self.chips)
+            step = (w - 24) // max(1, n)
+            chip.place(x=12 + i * step, y=h - 58,
+                       width=step - 4, height=24)
         self.canvas.create_text(w - 14, h - 22, text="右键设置 · 双击复制", anchor="e",
                                 fill=c["sub"], font=(theme.FONT, 8))
 
@@ -235,7 +251,8 @@ class AssistantPet(object):
         c = theme.C
         self.chips = []
         for label, q in (("概览", "台账概览"), ("谁没交", "谁还没交材料"),
-                         ("待审", "有哪些待审的"), ("帮助", "你都能做什么")):
+                         ("待审", "有哪些待审的"), ("这份", "这份什么情况"),
+                         ("帮助", "你都能做什么")):
             b = tk.Button(self.win, text=label, relief="flat", bd=0, bg=c["surface_alt"],
                           fg=c["muted"], activebackground=c["bg_soft"],
                           activeforeground=c["text"], font=(theme.FONT, 8),
@@ -255,6 +272,7 @@ class AssistantPet(object):
         if self.busy:
             return
         self.busy = True
+        self._ctx_cache = self._snapshot()
         self.lines.append(("me", text))
         self._render_busy()
         threading.Thread(target=self._worker, args=(text,), daemon=True).start()
@@ -331,6 +349,28 @@ class AssistantPet(object):
     def _open_view(self, key):
         if hasattr(self.app, "switch"):
             self.app.switch(key)
+
+    def _context(self):
+        """Tk 只能主线程碰：这里只回发送前拍好的快照，供后台线程读。"""
+        return {"view": self._ctx_cache.get("view", ""),
+                "doc": dict(self._ctx_cache.get("doc") or {})}
+
+    def _snapshot(self):
+        """在主线程上取「当前视图 + 选中材料」。"""
+        out = {"view": "", "doc": {}}
+        try:
+            out["view"] = getattr(self.app, "current", "") or ""
+        except Exception:
+            pass
+        try:
+            docs = (getattr(self.app, "views", {}) or {}).get("docs")
+            if docs is not None and hasattr(docs, "_selected"):
+                did = docs._selected()
+                if did:
+                    out["doc"] = docs._find_doc(did) or {}
+        except Exception:
+            pass
+        return out
 
     # ---------- 菜单 ----------
     def _menu(self, event):

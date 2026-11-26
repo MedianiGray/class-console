@@ -892,6 +892,39 @@ def main():
     assert said["action"] == "speak" and said["text"], said
     print("51. 助手路由 OK")
 
+    # 52. 助手会话：跨轮指代、当前材料、写操作回绝、主动开场
+    doc = (r.list_docs() or [{}])[0]
+    ctx = {"view": "docs", "doc": dict(doc)}
+    c = assistant.Assistant(r, context=lambda: dict(ctx))
+    assert c.brief_text().startswith("今天："), c.brief_text()
+    assert "AI 通道" in c.help_text(), c.help_text()
+    sid2 = (r.list_roster() or [{}])[0].get("sid") or "250201"
+    st3 = c.ask("%s 还缺什么" % sid2)
+    assert st3["action"] == "status", st3
+    follow = c.ask("他缺什么")
+    assert follow["action"] == "status" and follow["text"].splitlines()[0] in st3["text"], (
+        follow, st3["text"])
+    chase2 = c.ask("给他写催交话术")
+    assert chase2["action"] == "chase" and "入口：" in chase2["text"], chase2
+    # 指代没有上文时不许猜人
+    nc = assistant.Assistant(r)
+    guess = nc.ask("他缺什么")
+    assert guess["ok"] and "哪位" in guess["text"], guess
+    # 当前材料
+    if doc:
+        di = c.ask("这份什么情况")
+        assert di["action"] == "doc_info" and "这份：" in di["text"], di
+        di2 = c.ask("这份材料能归档吗")
+        assert di2["action"] == "doc_info" and "不替你做" in di2["text"], di2
+    else:
+        di = nc.ask("这份什么情况")
+        assert di["action"] == "doc_info" and "没有选中" in di["text"], di
+    # 写操作：认得出、明确回绝、且不动数据
+    for risky in ("把这份材料直接归档", "帮我把台账清空", "替我驳回这份"):
+        res = c.ask(risky)
+        assert res["ok"] is False and res["action"] == "unknown", (risky, res)
+    print("52. 助手会话 OK")
+
     print("SELFTEST OK")
 
 

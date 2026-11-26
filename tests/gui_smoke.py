@@ -655,6 +655,37 @@ def main():
     assert not pet.busy, "助手问答没有在 4 秒内返回"
     assert pet.last_reply and ("人" in pet.last_reply or "交" in pet.last_reply), pet.last_reply
     assert "你：" in pet.text.get("1.0", "end"), "对话没有落到面板里"
+    assert "今天：" in pet.text.get("1.0", "end"), "展开时没有主动给一条今日状态"
+    # 当前材料上下文：切台账、选一行，问「这份」
+    app.switch("docs")
+    root.update()
+    docs_view = (app.views or {}).get("docs")
+    rows = docs_view.tree.get_children() if docs_view is not None else ()
+    if rows:
+        docs_view.tree.selection_set(rows[0])
+        root.update()
+        pet._ask("这份什么情况")
+        deadline = time.time() + 4
+        while time.time() < deadline and pet.busy:
+            root.update()
+            time.sleep(0.05)
+        assert "这份：" in pet.last_reply, pet.last_reply
+        # 跨轮指代：问完这个人，接着说「他缺什么」
+        picked = docs_view._find_doc(docs_view._selected()) or {}
+        assert picked.get("sid"), "选中的材料没有学号，无法测指代"
+        pet._ask("%s 还缺什么" % picked["sid"])
+        deadline = time.time() + 4
+        while time.time() < deadline and pet.busy:
+            root.update()
+            time.sleep(0.05)
+        first = pet.last_reply.splitlines()[0] if pet.last_reply else ""
+        pet._ask("他缺什么")
+        deadline = time.time() + 4
+        while time.time() < deadline and pet.busy:
+            root.update()
+            time.sleep(0.05)
+        assert first and pet.last_reply.splitlines()[0] == first, (
+            "指代没有落到上一轮的那个人", first, pet.last_reply)
     before = app.current
     pet._ask("打开服务留痕")
     deadline = time.time() + 4
