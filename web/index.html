@@ -580,6 +580,7 @@
   .drawer.show{transform:translateX(0)}
   .drawer header{display:flex;align-items:flex-start;gap:10px;padding:20px 24px 14px;border-bottom:1px solid var(--line)}
   .drawer header .dh-t{flex:1;min-width:0}
+  .drawer header .dh-kicker{font-size:10.5px;color:var(--sub);letter-spacing:.06em;margin-bottom:2px}
   .drawer header h3{font-size:16px;line-height:1.4;word-break:break-all;font-weight:700}
   .drawer header .dh-tag{margin-top:6px}
   .drawer .dh-close{border:0;background:transparent;font-size:20px;color:var(--muted);padding:4px 8px;line-height:1;border-radius:6px}
@@ -608,6 +609,22 @@
     color:#fff;padding:10px 18px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;
     transition:opacity .2s;z-index:40;max-width:80vw;text-align:center;box-shadow:var(--shadow-lg)}
   .toast.show{opacity:.95}
+
+  /* PWA 更新提示：只有页面已被旧版接管、检测到新版本时才出现 */
+  .pwa-update{position:fixed;right:32px;bottom:48px;z-index:45;display:flex;align-items:center;gap:12px;
+    width:min(520px,calc(100vw - 64px));padding:11px 12px 11px 13px;background:var(--card);
+    border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:10px;
+    box-shadow:var(--shadow-lg)}
+  .pwa-update[hidden]{display:none!important}
+  .pwa-mark{width:30px;height:30px;border-radius:8px;background:var(--primary-soft);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .pwa-mark svg{width:16px;height:16px}
+  .pwa-copy{flex:1;min-width:0}
+  .pwa-copy b{display:block;font-size:12.5px;font-weight:600;line-height:1.3}
+  .pwa-copy span{display:block;font-size:11px;color:var(--sub);line-height:1.45;margin-top:2px}
+  .pwa-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .pwa-later{border:0;background:transparent;color:var(--muted);font-size:11.5px;padding:4px 5px;border-radius:5px}
+  .pwa-later:hover{color:var(--text);background:var(--bg-soft)}
 
   /* ===== 现代界面：主题切换 / 视图菜单 / 快捷键提示 ===== */
   .theme-switch{display:flex;gap:2px;padding:2px;background:var(--bg-soft);border-radius:8px;margin-top:10px}
@@ -972,6 +989,8 @@
     .topbar{height:52px;padding:0 12px;gap:10px}
     .gs-pop{min-width:0;max-width:none;left:0;top:calc(100% + 6px);width:calc(100vw - 24px)}
     .gs-hint{display:none}
+    .pwa-update{left:12px;right:12px;bottom:84px;width:auto;gap:9px}
+    .pwa-copy span{display:none}
     .id-chip{display:none}
     .content{padding:14px 12px 18px}
     .page-head{margin-bottom:12px}
@@ -1085,6 +1104,15 @@
     .b-hero .action-bar .btn{width:100%;justify-content:center}
     .b-hero-ai{flex-direction:column;align-items:flex-start;gap:6px}
     .ai-copilot{width:100%;max-width:100%}
+  }
+  /* 宽屏材料详情改为常驻右栏；窄屏仍用遮罩浮层 */
+  @media (min-width:1200px){
+    .drawer{top:56px;bottom:34px;height:auto;width:360px;max-width:360px;
+      border-left:1px solid var(--line);border-radius:0;
+      box-shadow:-14px 0 32px rgba(16,24,40,.1)}
+    .drawer-mask{display:none!important}
+    body.drawer-open .content{padding-right:392px;transition:padding-right .18s ease}
+    body.drawer-open .pwa-update{right:392px}
   }
 </style>
 </head>
@@ -1237,6 +1265,7 @@
 <aside class="drawer" id="drawer" aria-label="材料详情">
   <header>
     <div class="dh-t">
+      <div class="dh-kicker">当前材料</div>
       <h3 id="drawerTitle"></h3>
       <div class="dh-tag" id="drawerTag"></div>
     </div>
@@ -1269,6 +1298,22 @@
     <div class="acp-status" id="acpStatus"></div>
   </div>
 </aside>
+
+<div class="pwa-update" id="pwaUpdate" role="status" aria-live="polite" hidden>
+  <div class="pwa-mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 11a8 8 0 0 0-14-5L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14 5l3-3"/><path d="M21 20v-5h-5"/>
+    </svg>
+  </div>
+  <div class="pwa-copy">
+    <b>新版本已准备好</b>
+    <span>当前页面还是旧版；刷新后加载新页面，台账数据仍留在本机。</span>
+  </div>
+  <div class="pwa-actions">
+    <button class="pwa-later" id="pwaLater" type="button">稍后</button>
+    <button class="btn primary mini" id="pwaNow" type="button">刷新</button>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -3433,7 +3478,19 @@ function bulkDoc(action) {
   });
 }
 
-/* ============ 详情抽屉 ============ */
+/* ============ 详情右栏 / 窄屏浮层 ============ */
+function drawerOverlayMode(){
+  try { return window.matchMedia("(max-width:1199px)").matches; } catch(e){ return true; }
+}
+function syncDrawerChrome(){
+  var drawer = document.getElementById("drawer");
+  var mask = document.getElementById("drawerMask");
+  if (!drawer || !mask) return;
+  var open = drawer.classList.contains("show");
+  var overlay = drawerOverlayMode();
+  if (document.body) document.body.classList.toggle("drawer-open", open && !overlay);
+  mask.classList.toggle("show", open && overlay);
+}
 function openDoc(id, from) {
   var d = findDoc(id);
   if (!d) { toast("请先在列表中选择一条材料"); return; }
@@ -3441,12 +3498,13 @@ function openDoc(id, from) {
   try { addLog("查看", d.name, state.operatorName, roleLabel()); } catch (e) {}
   renderDrawer(d);
   document.getElementById("drawer").classList.add("show");
-  document.getElementById("drawerMask").classList.add("show");
+  syncDrawerChrome();
   if (state.current !== "docs") renderDocs();
 }
 function closeDrawer() {
   document.getElementById("drawer").classList.remove("show");
   document.getElementById("drawerMask").classList.remove("show");
+  if (document.body) document.body.classList.remove("drawer-open");
   state.drawerId = null;
 }
 
@@ -5183,6 +5241,11 @@ function bindRole() {
   syncLabel();
 }
 
+/* 宽屏右栏与窄屏浮层切换时，重新同步遮罩和内容留白 */
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("resize", syncDrawerChrome);
+}
+
 /* ---- 界面主题：浅色 / 深色 / 跟随系统（本地记住） ---- */
 var THEME_KEY = "classconsole_web_theme";
 function themePref(){ try { return localStorage.getItem(THEME_KEY) || "system"; } catch(e){ return "system"; } }
@@ -6494,9 +6557,60 @@ initSidebar();
 initTheme();
 applyRoleDefaults();
 switchView("dashboard");
-if (typeof navigator !== "undefined" && navigator.serviceWorker && typeof location !== "undefined" && location.protocol.startsWith("http")) {
-  navigator.serviceWorker.register("sw.js").catch(function(){});
+/* ============ PWA 更新提示：新版本装好后再刷新，不打断当前操作 ============ */
+var pwaState = { hadController:false, shown:false, dismissed:false, reloading:false };
+function showPwaUpdate(){
+  if (pwaState.shown || pwaState.dismissed) return false;
+  var box = document.getElementById("pwaUpdate");
+  if (!box) return false;
+  pwaState.shown = true;
+  box.hidden = false;
+  return true;
 }
+function hidePwaUpdate(){
+  var box = document.getElementById("pwaUpdate");
+  if (box) box.hidden = true;
+}
+function dismissPwaUpdate(){
+  pwaState.dismissed = true;
+  hidePwaUpdate();
+}
+function reloadForPwaUpdate(){
+  pwaState.reloading = true;
+  try { location.reload(); } catch(e){}
+}
+function initPWAUpdate(){
+  var later = document.getElementById("pwaLater");
+  var now = document.getElementById("pwaNow");
+  if (later) later.onclick = dismissPwaUpdate;
+  if (now) now.onclick = reloadForPwaUpdate;
+  if (typeof navigator === "undefined" || !navigator.serviceWorker ||
+      typeof location === "undefined" || !location.protocol.startsWith("http")) return;
+  var sw = navigator.serviceWorker;
+  pwaState.hadController = !!sw.controller;
+  function workerReady(){
+    if (pwaState.hadController) showPwaUpdate();
+  }
+  function watchWorker(worker){
+    if (!worker) return;
+    if (worker.state === "installed") { workerReady(); return; }
+    worker.addEventListener("statechange", function(){
+      if (worker.state === "installed") workerReady();
+    });
+  }
+  sw.addEventListener("controllerchange", function(){
+    if (pwaState.reloading || !pwaState.hadController) return;
+    showPwaUpdate();
+  });
+  sw.register("sw.js").then(function(reg){
+    if (reg.waiting) watchWorker(reg.waiting);
+    if (reg.installing) watchWorker(reg.installing);
+    reg.addEventListener("updatefound", function(){
+      watchWorker(reg.installing);
+    });
+  }).catch(function(){});
+}
+initPWAUpdate();
 </script>
 </body>
 </html>
