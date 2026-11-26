@@ -762,6 +762,83 @@ def main():
                for d in paged.list_docs(status="已归档"))
     print("45. 台账分页/SQL 筛选 OK")
 
+    # 46. 批量重命名：预览不落盘、同名避让、执行与撤销
+    import filetools
+    base2 = Path(tempfile.mkdtemp()) / "工具归档"
+    (base2 / "未整理").mkdir(parents=True)
+    for name in ("合影.png", "合影-2.png", "名单.txt"):
+        (base2 / "未整理" / name).write_text(name, encoding="utf-8")
+    outside2 = Path(tempfile.mkdtemp()) / "库外.txt"
+    outside2.write_text("x", encoding="utf-8")
+    plan = filetools.rename_plan(
+        [str(base2 / "未整理" / n) for n in ("合影.png", "合影-2.png", "名单.txt")]
+        + [str(outside2)],
+        {"prefix": "2026-", "seq": True, "seq_pad": 2}, base=base2)
+    assert len(list((base2 / "未整理").iterdir())) == 3, "预览不该改动磁盘"
+    dropped = [r for r in plan["rows"] if r["state"] == "skip"]
+    assert any("不在归档目录内" in (r.get("reason") or "") for r in dropped)
+    first = [r for r in plan["rows"] if r["state"] == "ok"][0]
+    assert first["new"].startswith("2026-") and first["new"].endswith("-01.png"), first
+    res = filetools.rename_apply(plan["rows"])
+    assert res["ok"] == 3 and not res["failed"], res
+    assert sorted(x.name for x in (base2 / "未整理").iterdir()) == sorted(
+        r["new"] for r in plan["rows"] if r["state"] == "ok")
+    undo = filetools.undo_apply(res["undo"])
+    assert undo["ok"] == 3 and not undo["failed"], undo
+    assert sorted(x.name for x in (base2 / "未整理").iterdir()) == sorted(
+        ("合影.png", "合影-2.png", "名单.txt"))
+    print("46. 批量重命名预览/执行/撤销 OK")
+
+    # 47. 互换名字不打架（a→b、b→a 走两阶段改名）
+    ka, kb = base2 / "未整理" / "甲.txt", base2 / "未整理" / "乙.txt"
+    ka.write_text("甲", encoding="utf-8")
+    kb.write_text("乙", encoding="utf-8")
+    swap = filetools.rename_apply([
+        {"src": str(ka), "dst": str(kb), "state": "ok"},
+        {"src": str(kb), "dst": str(ka), "state": "ok"}])
+    assert swap["ok"] == 2 and not swap["failed"], swap
+    assert ka.read_text(encoding="utf-8") == "乙" and kb.read_text(encoding="utf-8") == "甲"
+    print("47. 互换改名两阶段 OK")
+
+    # 48. 图片格式转换：新增文件、原件保留、非图片显式跳过
+    try:
+        from PIL import Image
+        png = base2 / "未整理" / "图.png"
+        Image.new("RGB", (120, 90), (30, 120, 200)).save(png)
+        plan = filetools.convert_plan([str(png), str(base2 / "未整理" / "甲.txt")],
+                                      "JPEG", base=base2)
+        ok_row = [r for r in plan["rows"] if r["state"] == "ok"][0]
+        assert ok_row["dst"].endswith(".jpg")
+        assert any("不是图片" in (r.get("reason") or "") for r in plan["rows"])
+        out = filetools.convert_apply(plan["rows"], quality=80, delete_original=False)
+        assert out["ok"] == 1 and not out["failed"], out
+        assert os.path.isfile(ok_row["dst"]) and os.path.isfile(png)
+        with Image.open(ok_row["dst"]) as im:
+            assert im.size == (120, 90) and im.format == "JPEG"
+        again = filetools.convert_plan([str(png)], "JPEG", base=base2)
+        assert any("同名" in (r.get("reason") or "") for r in again["rows"]
+                   if r["state"] == "ok")
+        print("48. 图片转换 OK")
+    except ImportError:
+        print("48. 图片转换（无 Pillow，跳过）")
+
+    # 49. 按类别归位：台账有的按类别走，台账没有的老实跳过
+    doc_id = r.add_doc({"name": "合影", "cat": "宣传材料", "who": "张三",
+                        "sid": "250201", "path": str(base2 / "未整理" / "合影.png"),
+                        "file": "合影.png"})
+    r.set_arch(doc_id, str(base2 / "未整理" / "合影.png"), "覃祖悦", "经办人")
+    r.archive_doc(doc_id, "通过", "覃祖悦", "审核人")
+    plan = filetools.organize_plan([str(base2 / "未整理" / "合影.png"),
+                                    str(base2 / "未整理" / "甲.txt")],
+                                   r.list_docs(), base=base2)
+    rows = [x for x in plan["rows"] if x["state"] == "ok"]
+    assert len(rows) == 1 and "宣传材料" in rows[0]["dst"], plan
+    assert any("先登记再归位" in (x.get("reason") or "") for x in plan["rows"])
+    moved = filetools.organize_apply(plan["rows"])
+    assert moved["ok"] == 1 and os.path.isfile(rows[0]["dst"])
+    assert not os.path.exists(base2 / "未整理" / "合影.png")
+    print("49. 按类别归位 OK")
+
     print("SELFTEST OK")
 
 

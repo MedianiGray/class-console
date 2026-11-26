@@ -404,7 +404,19 @@ def main():
     assert rd.var_cat.get() == "团务材料" and rd.var_who.get() == "张三"
     assert "落点" in rd.target_var.get()
     rd.top.destroy(); root.update()
+    kids = fv.files.get_children()[:2]
+    fv.files.selection_set(kids)
+    fd = fv.open_filetools()
+    root.update()
+    assert fd is not None and fd.paths, "批量工具入口没拿到选中文件"
+    fd.do_rename_preview(); root.update()
+    assert fd.tree.get_children(), "批量改名预览为空"
+    fd._switch("convert"); fd.do_convert_preview(); root.update()
+    fd._switch("organize"); fd.do_organize_preview(); root.update()
+    fd.close(); root.update()
+    fv.files.selection_set(first_file); fv.files.focus(first_file); root.update()
     print("文件室视图/预览/缺失反查 OK")
+    print("批量文件工具入口/三页预览 OK")
 
     # Windows 原生拖入：仅 Windows 注册 WM_DROPFILES，其他平台明确跳过
     if sys.platform != "win32":

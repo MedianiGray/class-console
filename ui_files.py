@@ -55,6 +55,8 @@ class FileRoomView(ttk.Frame):
                    command=self.pick_files).pack(side="left")
         ttk.Button(top, text="刷新", style="Ghost.TButton",
                    command=self.refresh).pack(side="left", padx=(8, 0))
+        ttk.Button(top, text="批量工具", style="Ghost.TButton",
+                   command=self.open_filetools).pack(side="left", padx=(8, 0))
         self.btn_missing = ttk.Button(top, text="缺失文件 0", style="Ghost.TButton",
                                       command=self.open_missing)
         self.btn_missing.pack(side="left", padx=(8, 0))
@@ -111,7 +113,7 @@ class FileRoomView(ttk.Frame):
         cw = tk.Frame(center, bg=C["card"])
         cw.pack(fill="both", expand=True, padx=1, pady=1)
         self.files = ttk.Treeview(cw, columns=self.COLS, show="headings",
-                                  selectmode="browse")
+                                  selectmode="extended")
         for c in self.COLS:
             self.files.heading(c, text=self.HEADS[c], anchor="w")
             self.files.column(c, width=self.WIDTHS[c], minwidth=56, anchor="w",
@@ -476,6 +478,23 @@ class FileRoomView(ttk.Frame):
         iid = self.files.focus()
         if iid in self._files:
             archive.open_file(self._files[iid][0]["path"])
+
+    def open_filetools(self):
+        """批量工具：有选中就只对选中，没有就对当前列表整批。"""
+        if not self.window.can("docs:archive"):
+            messagebox.showinfo("文件工具", "当前岗位没有归档权限，改名和移动需要「学委 / 辅导员」岗位。")
+            return
+        picked = [self._files[iid][0]["path"] for iid in self.files.selection()
+                  if iid in self._files]
+        if picked:
+            paths, label = picked, "已选 %d 个" % len(picked)
+        else:
+            paths = [row["path"] for row, _st in self._files.values()]
+            label = "全库搜索结果" if self.q.get().strip() else (
+                "目录 " + self.rel if self.rel else "归档根")
+        from ui_filetools import FileToolsDialog
+        return FileToolsDialog(self, self.repo, self.window, paths, label,
+                               on_done=self.refresh)
 
     def open_integrity(self):
         from ui_audit import open_integrity
