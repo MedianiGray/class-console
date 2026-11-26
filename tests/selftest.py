@@ -925,6 +925,16 @@ def main():
         assert res["ok"] is False and res["action"] == "unknown", (risky, res)
     print("52. 助手会话 OK")
 
+    # 53. 入口交代：热键状态如实进帮助，不吹「随时可用」
+    assert "唤起：" in c.help_text(), c.help_text()
+    assert "不猜" in c.help_text(), c.help_text()
+    c.hotkey_note = "被其他软件占用，按不通；点我或用顶栏「✦ 助手」"
+    hk = c.help_text()
+    assert "占用" in hk and "唤起：" in hk, hk
+    c2 = assistant.Assistant(r)
+    assert "唤起：" in c2.help_text(), c2.help_text()
+    print("53. 入口交代 OK")
+
     print("SELFTEST OK")
 
 

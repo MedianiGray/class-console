@@ -656,6 +656,12 @@ def main():
     assert pet.last_reply and ("人" in pet.last_reply or "交" in pet.last_reply), pet.last_reply
     assert "你：" in pet.text.get("1.0", "end"), "对话没有落到面板里"
     assert "今天：" in pet.text.get("1.0", "end"), "展开时没有主动给一条今日状态"
+    # 上下文显式化 + 入口交代（大厂那套：位置跟人走、上下文看得见、热键说清楚）
+    assert pet.follow, "助手默认应跟随主窗口右下角"
+    head_texts = [pet.canvas.itemcget(i, "text") for i in pet.canvas.find_all()
+                  if pet.canvas.type(i) == "text"]
+    assert any(str(t).startswith("当前：") for t in head_texts), head_texts
+    assert "唤起：" in pet.assistant.help_text(), pet.assistant.help_text()[:80]
     # 当前材料上下文：切台账、选一行，问「这份」
     app.switch("docs")
     root.update()
@@ -670,6 +676,9 @@ def main():
             root.update()
             time.sleep(0.05)
         assert "这份：" in pet.last_reply, pet.last_reply
+        ctx_texts = [pet.canvas.itemcget(i, "text") for i in pet.canvas.find_all()
+                     if pet.canvas.type(i) == "text"]
+        assert any("材料台账" in str(t) for t in ctx_texts), ctx_texts
         # 跨轮指代：问完这个人，接着说「他缺什么」
         picked = docs_view._find_doc(docs_view._selected()) or {}
         assert picked.get("sid"), "选中的材料没有学号，无法测指代"

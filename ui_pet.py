@@ -1,26 +1,35 @@
 # -*- coding: utf-8 -*-
 """桌宠式悬浮助手：无边框小卡片，常驻桌面。
 
-形态：
-- 收起时一张 306×80 圆角卡（头像 + 最近一句），不抢焦点；
-- 点一下展开成对话面板，回车即问，回答就地显示；
-- 可拖动、记住位置；右键管「开机显示 / 朗读 / 关闭」；
+形态（对齐飞书 AI 助手 / 钉钉 AI 助理那套）：
+- 收起时一张 288×68 圆角条（头像 + 最近一句），点一下展开；
+- 展开成对话面板，回车即问，回答就地显示；
+- 默认贴主窗口右下角跟随，拖动即解除跟随；位置记忆；
+- 全局热键 Ctrl+Alt+A 唤起/收起（被占用时如实降级）；
+- 右键管「改名 / 跟随 / 开机显示 / 朗读 / 关闭」；
 - 不占主窗口空间，关掉不影响主窗口。
 
 问答和动作全走 assistant.py，这里只负责显示、拖动、朗读、切页面。
 """
 
+import ctypes
+from ctypes import wintypes
 import queue
 import threading
 import tkinter as tk
+from tkinter import simpledialog
 
 import assistant
 import theme
 import tts
 
-W_IDLE, H_IDLE = 306, 80
+W_IDLE, H_IDLE = 288, 68
 W_OPEN, H_OPEN = 322, 508    # 展开态多留一行给「这份」那类长回答
 KEY = "#FF00FE"          # 透明色键，只用于圆角外的空隙
+
+MOD_ALT, MOD_CONTROL, MOD_NOREPEAT = 0x0001, 0x0002, 0x4000
+VK_A = 0x41
+WM_HOTKEY = 0x0312
 
 
 def _round_rect(canvas, x0, y0, x1, y1, r, fill, outline="", width=0):
@@ -49,6 +58,11 @@ class AssistantPet(object):
         self._drag = None
         self._ctx_cache = {"view": "", "doc": {}}
         self._queue = queue.Queue()
+        self._hk = queue.Queue()
+        self.hotkey = ""
+        self.name = str(theme.load_ui("pet_name", "班级助手") or "班级助手")
+        self.follow = bool(theme.load_ui("pet_follow", True))
+        self._relayout_job = None
         self.assistant = assistant.Assistant(
             repo, speak=self._speak, open_view=self._open_view,
             context=self._context)
@@ -93,6 +107,11 @@ class AssistantPet(object):
         self.canvas.bind("<B1-Motion>", self._drag_move)
         self.canvas.bind("<ButtonRelease-1>", self._release)
         self.win.bind("<Button-3>", self._menu)
+        try:
+            self.root.bind("<Configure>", self._on_root_configure, add="+")
+        except tk.TclError:
+            pass
+        self._start_hotkey()
 
         self._build_chips()
         self._place_window()
@@ -119,6 +138,7 @@ class AssistantPet(object):
         if not self.alive():
             return
         self.expanded = True
+        self._ctx_cache = self._snapshot()   # 展开时把「你在哪一页、选了谁」摆到明面上
         if not self._greeted:
             self._greeted = True
             self._greet()
@@ -149,6 +169,67 @@ class AssistantPet(object):
         except tk.TclError:
             pass
 
+    # ---------- 热键 ----------
+    def _start_hotkey(self):
+        """Windows 全局热键：注册和消息循环必须在同一线程，Tk 只读结果。"""
+        threading.Thread(target=self._hotkey_worker, daemon=True).start()
+
+    def _hotkey_worker(self):
+        try:
+            u = ctypes.windll.user32
+        except Exception:
+            self._hk.put(("unavail", ""))
+            return
+        mods = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT
+        try:
+            ok = u.RegisterHotKey(None, 1, mods, VK_A)
+        except Exception:
+            ok = 0
+        if not ok:
+            self._hk.put(("busy", ""))
+            return
+        self._hk.put(("ok", "Ctrl+Alt+A"))
+        msg = wintypes.MSG()
+        while u.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            if msg.message == WM_HOTKEY:
+                self._hk.put(("hit", ""))
+
+    def _poll_hotkey(self):
+        try:
+            while True:
+                kind, note = self._hk.get_nowait()
+                if kind == "ok":
+                    self.hotkey = note
+                    self.assistant.hotkey_note = "%s（全局，随时唤我）" % note
+                elif kind == "busy":
+                    self.hotkey = ""
+                    self.assistant.hotkey_note = "被其他软件占用，按不通；点我或用顶栏「✦ 助手」"
+                elif kind == "unavail":
+                    self.hotkey = ""
+                    self.assistant.hotkey_note = "这台机器注册不上，点我或用顶栏「✦ 助手」"
+                elif kind == "hit":
+                    self.toggle()
+                    if self.expanded:
+                        self.show()
+                        self.entry.focus_set()
+        except queue.Empty:
+            pass
+
+    # ---------- 跟随主窗口 ----------
+    def _on_root_configure(self, event=None):
+        if not self.follow:
+            return
+        if event is not None and event.widget is not self.root:
+            return
+        if self._relayout_job is not None:
+            return
+        self._relayout_job = self.win.after(180, self._relayout)
+
+    def _relayout(self):
+        self._relayout_job = None
+        if self.follow and self.alive():
+            self.render()
+
     # ---------- 位置 ----------
     def _place_window(self):
         pos = theme.load_ui("pet_pos", None)
@@ -158,7 +239,29 @@ class AssistantPet(object):
         else:
             x, y = sw - W_IDLE - 32, sh - H_IDLE - 96
         self._pos = [x, y]
+        if self.follow:
+            self._anchor_to_root(W_IDLE, H_IDLE)
         self._apply_geometry(W_IDLE, H_IDLE)
+
+    def _anchor_to_root(self, w, h):
+        """贴主窗口右下角内侧；展开时若主窗口右侧还有位置，就停到窗口外面，别压住详情栏。
+
+        主窗口不可见时退回屏幕右下角。
+        """
+        try:
+            if self.root.winfo_viewable():
+                rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
+                rw, rh = self.root.winfo_width(), self.root.winfo_height()
+                sw = self.root.winfo_screenwidth()
+                if w >= W_OPEN and rx + rw + 20 + w <= sw:
+                    self._pos = [rx + rw + 20, ry + rh - h - 18]
+                else:
+                    self._pos = [rx + rw - w - 18, ry + rh - h - 18]
+                return
+        except tk.TclError:
+            pass
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self._pos = [sw - w - 24, sh - h - 72]
 
     def _apply_geometry(self, w, h):
         """以 self._pos 为准落窗口；换尺寸时收回屏幕内，别压到任务栏。"""
@@ -189,6 +292,9 @@ class AssistantPet(object):
 
     def _release(self, event):
         if self._drag and self._drag["moved"]:
+            if self.follow:      # 手动拖走就等于说「别跟着我」
+                self.follow = False
+                theme.save_ui("pet_follow", False)
             self._save_pos()
             self._apply_geometry(*self._window_size())
         elif self._drag:
@@ -202,6 +308,8 @@ class AssistantPet(object):
     def render(self):
         c = theme.C
         w, h = self._window_size()
+        if self.follow:
+            self._anchor_to_root(w, h)
         self._apply_geometry(w, h)
         self.canvas.configure(width=w, height=h)
         self.canvas.delete("all")
@@ -215,19 +323,19 @@ class AssistantPet(object):
 
         # 头像 + 在线点
         self.canvas.create_oval(14, 14, 54, 54, fill=c["primary_soft"], outline="")
-        self.canvas.create_text(34, 34, text="助", fill=c["primary"],
+        self.canvas.create_text(34, 34, text=self.name[:1], fill=c["primary"],
                                 font=(theme.FONT, 13, "bold"))
         self.canvas.create_oval(47, 47, 55, 55, fill=c["green"], outline=c["card"], width=2)
 
-        self.canvas.create_text(64, 24, text="班级助手", anchor="w", fill=c["text"],
+        self.canvas.create_text(62, 24, text=self.name, anchor="w", fill=c["text"],
                                 font=(theme.FONT, 10, "bold"))
         if self.expanded:
             sub = "回车发送 · Esc 收起"
         else:
             sub = (self.last_reply or "问我：谁还没交材料").replace("\n", " ")
-            if len(sub) > 18:
-                sub = sub[:18] + "…"
-        self.canvas.create_text(64, 46, text=sub, anchor="w", fill=c["sub"],
+            if len(sub) > 16:
+                sub = sub[:16] + "…"
+        self.canvas.create_text(62, 46, text=sub, anchor="w", fill=c["sub"],
                                 font=(theme.FONT, 8))
         self.canvas.create_text(w - 20, 32, text="▾" if self.expanded else "▴", anchor="e",
                                 fill=c["muted"], font=(theme.FONT, 9))
@@ -236,7 +344,11 @@ class AssistantPet(object):
             return
 
         self.canvas.create_line(10, 62, w - 10, 62, fill=c["line"])
-        self.text.place(x=4, y=64, width=w - 8, height=h - 168)
+        ctx = self._ctx_line()
+        if ctx:
+            self.canvas.create_text(14, 76, text=ctx, anchor="w", fill=c["sub"],
+                                    font=(theme.FONT, 8))
+        self.text.place(x=4, y=92, width=w - 8, height=h - 196)
         self.entry.place(x=12, y=h - 98, width=w - 70, height=30)
         self.send_btn.place(x=w - 52, y=h - 98, width=40, height=30)
         for i, (chip, _) in enumerate(self.chips):
@@ -291,6 +403,7 @@ class AssistantPet(object):
                 self._finish(self._queue.get_nowait())
         except queue.Empty:
             pass
+        self._poll_hotkey()
         if self.alive():
             self.win.after(120, self._poll)
 
@@ -302,9 +415,12 @@ class AssistantPet(object):
         else:
             self.lines.append(("bot", text))
             self.last_reply = text
+        try:
+            self._ctx_cache = self._snapshot()   # 答完顺手刷新顶部那行上下文
+        except Exception:
+            pass
         self.render_lines()
-        if not self.expanded:
-            self.render()
+        self.render()
         if result.get("action") == "open_view":
             self._raise_main()
 
@@ -372,6 +488,27 @@ class AssistantPet(object):
             pass
         return out
 
+    def _ctx_line(self):
+        """把上下文摆出来，人才敢说「这份」「他缺什么」。"""
+        view = self._ctx_cache.get("view", "")
+        label = view
+        for key, name, _kw in assistant.VIEWS:
+            if key == view:
+                label = name
+                break
+        if not label:
+            return ""
+        doc = self._ctx_cache.get("doc") or {}
+        if doc.get("name"):
+            who = doc.get("who") or ""
+            sid = doc.get("sid") or ""
+            tail = ("%s %s" % (who, sid)).strip()
+            line = "当前：%s · 选中 %s%s" % (label, doc.get("name"), (" " + tail) if tail else "")
+        else:
+            line = "当前：%s · 没选中具体材料" % label
+        return line if len(line) <= 34 else line[:33] + "…"
+
+
     # ---------- 菜单 ----------
     def _menu(self, event):
         c = theme.C
@@ -379,10 +516,15 @@ class AssistantPet(object):
                     activebackground=c["primary_soft"], activeforeground=c["text"],
                     bd=0)
         m.add_command(label="打开主窗口", command=self._raise_main)
+        m.add_command(label="给助手改名…", command=self._rename)
         m.add_command(label="朗读最近一条", command=lambda: self._speak(self.last_reply))
         on = bool(theme.load_ui("pet_on", False))
         m.add_command(label="开机自动显示：%s" % ("开" if on else "关"),
                       command=self._toggle_autostart)
+        m.add_command(label="跟随主窗口：%s" % ("开" if self.follow else "关"),
+                      command=self._toggle_follow)
+        m.add_command(label="全局热键：%s" % (self.hotkey or "不可用（点我即可）"),
+                      command=lambda: None)
         m.add_separator()
         m.add_command(label="收起", command=self.collapse)
         m.add_command(label="关闭助手", command=self.destroy)
@@ -401,6 +543,27 @@ class AssistantPet(object):
 
     def _toggle_autostart(self):
         theme.save_ui("pet_on", not bool(theme.load_ui("pet_on", False)))
+
+    def _toggle_follow(self):
+        self.follow = not self.follow
+        theme.save_ui("pet_follow", self.follow)
+        if self.follow:
+            self.render()
+        else:
+            self._save_pos()
+
+    def _rename(self):
+        try:
+            name = simpledialog.askstring("给助手改名", "叫什么？（留空恢复「班级助手」）",
+                                          initialvalue=self.name, parent=self.root)
+        except tk.TclError:
+            return
+        if name is None:
+            return
+        name = name.strip()[:8] or "班级助手"
+        self.name = name
+        theme.save_ui("pet_name", name)
+        self.render()
 
 
 def open_pet(window, repo):

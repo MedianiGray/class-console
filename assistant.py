@@ -117,6 +117,10 @@ class Assistant(object):
         lines = ["我能直接查本机台账，也能替你把话术、朗读、切页面接起来。"]
         lines.append("AI 通道：%s" % ("已接上，能听懂更自由的说法"
                                    if self.ai_ready() else "未接，我按本地规则理解，不联网"))
+        hotkey = getattr(self, "hotkey_note", "")
+        lines.append("唤起：%s" % (hotkey or "点我，或用顶栏「✦ 助手」"))
+        lines.append("展开时我会把你当前在哪一页、选中了谁都摆在上面；"
+                     "没说清是谁，我会反问，不猜。")
         lines.append("试试这样说：")
         for cap in CAPS:
             if cap[0] == "help":
