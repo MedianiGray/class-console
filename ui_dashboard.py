@@ -177,6 +177,7 @@ class DashboardView(ttk.Frame):
         self.log_box.pack(fill="x")
         self._log_empty_parent = log_body
         self.log_empty = None
+        self.window._trace("dashboard-built")
 
     # ---------- 滚动 ----------
     def _on_inner_config(self, _event=None):
@@ -299,7 +300,8 @@ class DashboardView(ttk.Frame):
             self.fr_rows.append((no, title, desc, btn))
         self._first_run_built = True
 
-    def _sync_first_run(self):
+    def sync_first_run(self):
+        """新手引导卡：启动时留到第三帧，避免挡住主内容就绪。"""
         if not self.window.first_run_visible():
             self.first_card.grid_remove()
             return
@@ -351,13 +353,18 @@ class DashboardView(ttk.Frame):
         self.fr_count.config(text="%d / 3" % sum(1 for x in done if x))
 
     def refresh(self):
-        self._sync_first_run()
+        if getattr(self.window, "_skip_first_run", False):
+            # 分帧启动：引导卡在第三帧单独补，不让它挡住主内容
+            self.first_card.grid_remove()
+        else:
+            self.sync_first_run()
         try:
             docs = self.repo.list_docs()
             logs = self.repo.list_logs()
         except Exception as e:
             self.window.show_status("看板加载失败：%s" % e)
             return
+        self.window._trace("dash-rows")
 
         can_archive = self.window.can("docs:archive")
         can_roster = self.window.can("roster:manage")
@@ -426,6 +433,7 @@ class DashboardView(ttk.Frame):
         for d in focus[:5]:
             self.doc_tree.insert("", "end", tags=(d.get("id"),), values=(
                 d.get("name", ""), d.get("who", ""), d.get("time", "")))
+        self.window._trace("dash-tree")
         if focus:
             if self.doc_empty is not None:
                 self.doc_empty.hide_pack()
@@ -464,6 +472,7 @@ class DashboardView(ttk.Frame):
         self.cat_total.config(text="共 %d 条 · 覆盖 %d 类" %
                               (len(display_docs), len([c for c in self.CATS
                                                        if any(d.get("cat") == c for d in display_docs)])))
+        self.window._trace("dash-cats")
 
         # 近期动态
         if can_logs:
@@ -492,6 +501,7 @@ class DashboardView(ttk.Frame):
             self.log_card.grid_remove()
 
         # 副线提示
+        self.window._trace("dash-logs")
         self.roster_hint.pack_forget()
         self.task_hint.pack_forget()
         if can_roster:
@@ -508,3 +518,4 @@ class DashboardView(ttk.Frame):
                 self.task_hint.config(text="临期 %d · 逾期 %d" % (st["due"], st["overdue"]))
             except Exception:
                 self.task_hint.config(text="")
+        self.window._trace("dashboard-refreshed")

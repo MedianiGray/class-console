@@ -22,6 +22,10 @@ HIDDEN = [
 ]
 
 
+# PIL 只在图片转换/缩略图里按需 import；numpy 又是 PIL 的可选依赖，启动路径完全用不到。
+EXCLUDES = ["numpy", "numpy.libs", "scipy", "pandas", "matplotlib"]
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -36,6 +40,8 @@ def main():
             "--onefile", "--windowed", "--name", name]
     for item in HIDDEN:
         args += ["--hidden-import", item]
+    for item in EXCLUDES:
+        args += ["--exclude-module", item]
     args.append("main.py")
     print("[1/3] PyInstaller onefile")
     subprocess.run(args, cwd=str(ROOT), check=True)

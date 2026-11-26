@@ -101,9 +101,21 @@ class MainWindow(ttk.Frame):
     GROUPS = [("flow", "办理材料"), ("crew", "跟进核对")]
     MORE_GROUP = "aux"
 
-    def __init__(self, master, repo, staged=False):
+    def __init__(self, master, repo, staged=False, trace=None):
         """staged=True 时先建外壳出首帧，视图与数据交给 start_content 在窗口可见后补上。"""
         super().__init__(master)
+        self._trace = trace or (lambda label: None)
+        self._nav_ready = False
+        self.nav_items = {}
+        self.nav_badges = {}
+        self.group_heads = {}
+        self.more_btn = None
+        self.more_bar = None
+        self.more_count = None
+        self.more_group_head = None
+        self.views = None
+        self._splash = None
+        self._skip_first_run = staged
         self.repo = repo
         self.role = "handler"
         self.applicant_sid = str(theme.load_ui("applicant_sid", "") or "").strip()
@@ -225,8 +237,10 @@ class MainWindow(ttk.Frame):
         self.status_right = tk.Label(status, text="", bg=C["card"], fg=C["sub"],
                                      font=(FONT, 9), anchor="e")
         self.status_right.pack(side="right", padx=20)
+        self._trace("shell-status-built")
 
-        self._build_topbar()
+        self._build_topbar(core=staged)
+        self._trace("shell-topbar-built")
 
         # 侧栏（顶栏之下）
         sbw = 64 if self.collapsed else 212
@@ -238,14 +252,71 @@ class MainWindow(ttk.Frame):
 
         self.nav_box = tk.Frame(sidebar, bg=C["sidebar"])
         self.nav_box.pack(fill="both", expand=True, padx=8, pady=(12, 8))
-        self._build_nav()
-        self._build_sidebar_footer()
+        if staged:
+            # 首帧只留侧栏底色，导航行等窗口可见后再补，别让 60 多个控件挡住首帧
+            self._trace("shell-sidebar-skeleton")
+        else:
+            self._build_nav()
+            self._build_sidebar_footer()
+            self._nav_ready = True
+        self._trace("shell-sidebar-built")
 
         # 内容区
-        content = tk.Frame(self, bg=C["bg"])
-        content.pack(side="left", fill="both", expand=True)
+        self.content = tk.Frame(self, bg=C["bg"])
+        self.content.pack(side="left", fill="both", expand=True)
 
-        header = tk.Frame(content, bg=C["bg"])
+        if staged:
+            # 首帧只在内容区放一块轻占位；页头与视图都留到第二帧，别让首帧付建视图的钱
+            self._build_splash()
+            self._trace("shell-splash-built")
+        else:
+            self._build_content()
+            self._trace("shell-content-built")
+
+        self._sync_role_hint()
+        self.bind_all("<Control-f>", self._focus_search)
+        self.bind_all("<Control-k>", self._open_cmdk)
+        if staged:
+            self._content_ready = False
+        else:
+            self._content_ready = True
+            self.switch(self.current if self._nav_visible(self.current) else "dashboard")
+
+    def finish_shell(self):
+        """第二帧：页头、视图容器、侧栏导航与底部身份。幂等，非分帧启动时无需调用。
+
+        这一帧的目标只有一个：让主内容尽快可用。顶栏右侧按钮与新手引导卡
+        都属于低频装饰，放到第三帧（`finish_shell_extras`），不挡内容就绪。
+        """
+        if getattr(self, "_nav_ready", False):
+            return
+        self._dismiss_splash()
+        self._build_content()
+        self._trace("shell-content-built")
+        self._build_nav()
+        self._build_sidebar_footer()
+        self._nav_ready = True
+        self._trace("shell-nav-built")
+
+    def finish_shell_extras(self):
+        """第三帧：顶栏右侧（Ctrl K 提示、设置、提醒、身份卡）与新手引导卡。"""
+        if getattr(self, "_extras_ready", False):
+            return
+        self._build_topbar_extras()
+        self._trace("shell-topbar-extras")
+        view = (self.views or {}).get("dashboard") if self.views else None
+        if view is not None and hasattr(view, "sync_first_run"):
+            self._skip_first_run = False
+            try:
+                view.sync_first_run()
+            except Exception as e:
+                self.show_status("引导卡加载失败：%s" % e)
+        self._extras_ready = True
+        self._trace("shell-extras-ready")
+
+    def _build_content(self):
+        """页头 + 视图容器。分帧启动时留到第二帧。"""
+        header = tk.Frame(self.content, bg=C["bg"])
         header.pack(fill="x", padx=28, pady=(18, 4))
         self.eyebrow_label = tk.Label(header, text="工作台 · 总览", bg=C["bg"], fg=C["sub"],
                                       font=(FONT, 9), anchor="w")
@@ -259,20 +330,29 @@ class MainWindow(ttk.Frame):
                                   font=(FONT, 9), anchor="w")
         self.sub_label.pack(side="left", padx=(14, 0), pady=(9, 0))
 
-        body = tk.Frame(content, bg=C["bg"])
+        body = tk.Frame(self.content, bg=C["bg"])
         body.pack(fill="both", expand=True, padx=24, pady=(12, 12))
-
         self.views = LazyViews(body, self)
         self.body = body
 
-        self._sync_role_hint()
-        self.bind_all("<Control-f>", self._focus_search)
-        self.bind_all("<Control-k>", self._open_cmdk)
-        if staged:
-            self._build_content_placeholder()
-        else:
-            self._content_ready = True
-            self.switch(self.current if self._nav_visible(self.current) else "dashboard")
+    def _build_splash(self):
+        """首帧的轻占位：内容区底色加一行字。一个 Label、一档字体，别在首帧抢时间。"""
+        holder = tk.Frame(self.content, bg=C["bg"])
+        holder.pack(fill="both", expand=True)
+        label = tk.Label(holder, text="正在打开工作台…\n外壳已就绪，正在补齐这一页",
+                         bg=C["bg"], fg=C["sub"], font=(FONT, 10), justify="center")
+        label.place(relx=0.5, rely=0.42, anchor="center")
+        self._splash = holder
+
+    def _dismiss_splash(self):
+        holder = getattr(self, "_splash", None)
+        self._splash = None
+        if holder is None:
+            return
+        try:
+            holder.destroy()
+        except tk.TclError:
+            pass
 
     def _build_content_placeholder(self):
         """首帧的占位：只交代正在载入，不画空表格，也不假装数据已就绪。"""
@@ -317,7 +397,7 @@ class MainWindow(ttk.Frame):
         self._dismiss_placeholder()
         self.switch(key)
 
-    def _build_topbar(self):
+    def _build_topbar(self, core=False):
         bar = tk.Frame(self, bg=C["topbar"], height=56)
         bar.pack(side="top", fill="x")
         bar.pack_propagate(False)
@@ -327,6 +407,7 @@ class MainWindow(ttk.Frame):
         # 品牌
         brand = tk.Frame(bar, bg=C["topbar"])
         brand.pack(side="left", padx=(18, 0))
+        self._brand = brand
         logo = tk.Frame(brand, bg=C["primary"], width=26, height=26)
         logo.pack(side="left")
         logo.pack_propagate(False)
@@ -334,12 +415,20 @@ class MainWindow(ttk.Frame):
                  font=(FONT, 11, "bold")).pack(expand=True)
         tk.Label(brand, text="班级操作台", bg=C["topbar"], fg=C["text"],
                  font=(FONT, 13, "bold")).pack(side="left", padx=(10, 8))
-        tk.Label(brand, text="本地版", bg=C["topbar"], fg=C["sub"],
+        if core:
+            # 首帧顶栏只留品牌块：本地版标签、搜索框与右侧按钮都留到第二帧，
+            # 少一次字体解析和一次 Entry 构造，窗口能早约 100ms 出现在屏幕上。
+            return
+        self._build_topbar_extras()
+
+    def _build_topbar_extras(self):
+        bar = self.topbar
+        tk.Label(self._brand, text="本地版", bg=C["topbar"], fg=C["sub"],
                  font=(FONT, 9)).pack(side="left", pady=(4, 0))
 
         # 全局搜索：顶栏中央偏左，按键即用
-        search_box = tk.Frame(bar, bg=C["surface_alt"], highlightthickness=1,
-                              highlightbackground=C["line"])
+        self._search_box = search_box = tk.Frame(bar, bg=C["surface_alt"], highlightthickness=1,
+                                                 highlightbackground=C["line"])
         search_box.pack(side="left", padx=(28, 0), pady=12, ipady=1)
         tk.Label(search_box, text="⌕", bg=C["surface_alt"], fg=C["sub"],
                  font=(FONT, 11)).pack(side="left", padx=(10, 3))
@@ -351,9 +440,9 @@ class MainWindow(ttk.Frame):
         self.search_entry.bind("<Return>", lambda e: self.search_go())
         self.search_entry.bind("<FocusIn>", self._search_hint_off)
         self.search_entry.bind("<FocusOut>", self._search_hint_on)
+        self._search_hint_on()
         tk.Label(search_box, text="Ctrl K", bg=C["surface_alt"], fg=C["sub"],
                  font=(FONT, 8)).pack(side="left", padx=(0, 10))
-        self._search_hint_on()
 
         # 右侧：设置 + 身份
         gear = tk.Button(bar, text="⚙", relief="flat", bd=0, bg=C["topbar"],
@@ -609,14 +698,13 @@ class MainWindow(ttk.Frame):
         bar = tk.Frame(row, bg=C["sidebar"], width=3)
         bar.pack(side="left", fill="y")
         text = "···" if self.collapsed else "···   更多功能"
-        btn = tk.Button(row, text=text, bg=C["sidebar"], fg=C["muted"],
-                        activebackground=C["sidebar_active"], activeforeground=C["primary"],
-                        relief="flat", font=(FONT, 11 if self.collapsed else 10),
-                        anchor="center" if self.collapsed else "w",
-                        padx=0 if self.collapsed else 9,
-                        pady=6, cursor="hand2", bd=0,
-                        command=self._open_more)
+        btn = tk.Label(row, text=text, bg=C["sidebar"], fg=C["muted"],
+                       anchor="center" if self.collapsed else "w",
+                       padx=0 if self.collapsed else 9,
+                       pady=6, cursor="hand2",
+                       font=(FONT, 11 if self.collapsed else 10))
         btn.pack(side="left", fill="x", expand=True)
+        btn.bind("<Button-1>", lambda e: self._open_more())
         if not self.collapsed:
             self.more_count = tk.Label(row, text=str(len(items)), bg=C["sidebar"],
                                        fg=C["sub"], font=(FONT, 8), padx=6)
@@ -646,14 +734,14 @@ class MainWindow(ttk.Frame):
         bar = tk.Frame(row, bg=C["sidebar"], width=3)
         bar.pack(side="left", fill="y")
         text = icon if self.collapsed else "%s   %s" % (icon, label)
-        btn = tk.Button(row, text=text, bg=C["sidebar"], fg=C["muted"],
-                        activebackground=C["sidebar_active"], activeforeground=C["primary"],
-                        relief="flat", font=(FONT, 11 if self.collapsed else 10),
-                        anchor="center" if self.collapsed else "w",
-                        padx=0 if self.collapsed else 9,
-                        pady=6, cursor="hand2", bd=0,
-                        command=lambda k=key: self.switch(k))
+        # 用 Label 而不是 Button：侧栏 9 行 × 每行一个按钮，Button 的选项初始化
+        # 比同样一档字体的 Label 贵好几倍，而这里只需要“能点、能换色”。
+        btn = tk.Label(row, text=text, bg=C["sidebar"], fg=C["muted"],
+                       anchor="center" if self.collapsed else "w",
+                       padx=0 if self.collapsed else 9,
+                       pady=6, cursor="hand2", font=(FONT, 11 if self.collapsed else 10))
         btn.pack(side="left", fill="x", expand=True)
+        btn.bind("<Button-1>", lambda e, k=key: self.switch(k))
         badge = None
         if not self.collapsed:
             badge = tk.Label(row, text="", bg=C["sidebar"], fg=C["primary"],
@@ -885,6 +973,10 @@ class MainWindow(ttk.Frame):
         return "工作台 · %s" % glabel
 
     def switch(self, key):
+        if self.views is None:
+            # 分帧启动的骨架期：视图还没建，先只记下目标页，等 finish_shell 后再切
+            self.current = key
+            return
         if not getattr(self, "_content_ready", True):
             self._content_ready = True
         self._dismiss_placeholder()
@@ -927,7 +1019,7 @@ class MainWindow(ttk.Frame):
                 badge.config(text=str(pending) if pending else "",
                              bg=C["primary_soft"] if pending else C["sidebar"])
             # 只刷新当前视图；其余视图在首次切换时构建，构建后自行读取最新数据。
-            view = self.views.get(self.current)
+            view = self.views.get(self.current) if self.views is not None else None
             if view is not None and hasattr(view, "refresh"):
                 view.refresh()
             self.refresh_reminders()

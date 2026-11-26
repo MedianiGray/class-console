@@ -36,7 +36,10 @@ def _trace(label):
 
 
 def _show_loading_shell(root):
-    """在数据与界面构建期间先画出一块品牌占位，避免双击后长时间无反馈。"""
+    """在数据与界面构建期间先画出一行品牌占位，避免双击后长时间无反馈。
+
+    这里只用一个 Label：每多一档字号都要多一次字体解析，首帧的时间要留给主窗口。
+    """
     root.configure(bg="#EDF0F5")
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     win_w = min(1220, max(960, sw - 80))
@@ -44,26 +47,14 @@ def _show_loading_shell(root):
     root.geometry("%dx%d+%d+%d" % (win_w, win_h,
                                    max(0, (sw - win_w) // 2),
                                    max(0, (sh - win_h) // 3)))
-    card = tk.Frame(root, bg="#FFFFFF", highlightthickness=1,
-                    highlightbackground="#DDE3EC")
-    card.place(relx=0.5, rely=0.5, anchor="center", width=584, height=304)
-    tk.Label(card, text="CC", bg="#3A58D8", fg="#FFFFFF",
-             font=(theme.FONT, 22, "bold"), width=3, height=1).place(x=28, y=36)
-    tk.Label(card, text="班级操作台", bg="#FFFFFF", fg="#131A24",
-             font=(theme.FONT, 24, "bold")).place(x=116, y=30)
-    tk.Label(card, text="v%s · %s" % (VERSION, VERSION_LABEL),
-             bg="#FFFFFF", fg="#5E6976", font=(theme.FONT, 10)).place(x=118, y=74)
-    tk.Frame(card, bg="#E8EDF5", height=1, width=528).place(x=28, y=124)
-    tk.Label(card, text="正在打开本地工作台…", bg="#FFFFFF", fg="#33404F",
-             font=(theme.FONT, 11)).place(x=28, y=152)
-    tk.Label(card, text="材料、名单、任务都在这台电脑上，不联网。",
-             bg="#FFFFFF", fg="#5E6976", font=(theme.FONT, 9)).place(x=28, y=184)
-    tk.Label(card, text="首次启动会建库，请稍候", bg="#FFFFFF", fg="#8894A3",
-             font=(theme.FONT, 9)).place(x=28, y=246)
+    label = tk.Label(root, text="班级操作台\n正在打开本地工作台…",
+                     bg="#EDF0F5", fg="#33404F",
+                     font=(theme.FONT, 12, "bold"), justify="center")
+    label.place(relx=0.5, rely=0.45, anchor="center")
     root.update_idletasks()
     root.update()
     _trace("loading-shell-painted")
-    return card
+    return label
 
 
 
@@ -190,18 +181,20 @@ def main():
     root.title("班级操作台 · 正在打开…")
     _install_error_logger(root)
     try:
-        loading = _show_loading_shell(root)
-        # 首帧已经落在屏幕上，再付数据层与界面层的导入成本。
         from database import build_repository
-        from ui_main import MainWindow
         import database
+        from ui_main import MainWindow
+        # 过渡窗仍然保留：它先把窗口与字体栈热身一遍，主窗首帧反而更便宜（实测省 20–40ms），
+        # 也保证首次建库时用户不至于对着空白桌面等 1.6 秒。
+        loading = _show_loading_shell(root)
         _trace("imports-ready")
         repo = build_repository()
         _trace("repository-ready")
-        # 分帧启动：先只建顶栏/侧栏/标题/状态栏，首帧立即可见；视图随后补。
-        win = MainWindow(root, repo, staged=True)
+        # 分帧启动：先只建顶栏/侧栏骨架/标题/状态栏，首帧立即可见；导航与视图随后补。
+        win = MainWindow(root, repo, staged=True, trace=_trace)
         _trace("window-shell-built")
-        loading.destroy()
+        if loading is not None:
+            loading.destroy()
         root.title("班级操作台 · v%s %s" % (VERSION, VERSION_LABEL))
         issue = getattr(database, "LAST_STARTUP_ISSUE", None)
         if issue:
@@ -213,12 +206,21 @@ def main():
         root.update_idletasks()
         root.update()
         _trace("window-shell-painted")
-        # 外壳已经在屏幕上，再补当前视图；放在主循环里跑，避免首帧被挡住。
+        # 外壳已经在屏幕上，再补页头、导航与当前视图；顶栏右侧与新手引导卡留到第三帧。
         def _finish_startup():
             _trace("content-start")
+            win.finish_shell()
+            root.update_idletasks()
             win.start_content()
             _trace("content-ready")
             _mark_content_ready()
+            root.after(1, _finish_extras)
+
+        def _finish_extras():
+            """第三帧：低频控件与新手引导卡，晚一步不影响主内容可用。"""
+            win.finish_shell_extras()
+            root.update_idletasks()
+            _trace("extras-ready")
 
         def _mark_content_ready():
             """仅性能测试用：CC_STARTUP_READY_FILE 存在时落一个标记，便于外部计时。"""
