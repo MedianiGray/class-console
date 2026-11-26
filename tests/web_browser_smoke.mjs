@@ -26,7 +26,7 @@ const proc = spawn(EDGE, [
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let wsUrl;
-for (let i = 0; i < 80; i++) {
+for (let i = 0; i < 240; i++) {
   try {
     const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
     const page = list.find((x) => x.type === "page" && /\/web\/?($|[?#])/.test(x.url)) || list.find((x) => x.type === "page");
