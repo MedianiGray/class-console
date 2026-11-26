@@ -471,8 +471,11 @@ class MainWindow(ttk.Frame):
         self._build_nav()
 
     def more_items(self):
-        return [it for it in self.NAV
-                if it[4] == self.MORE_GROUP and self._nav_visible(it[0])]
+        items = [it for it in self.NAV
+                 if it[4] == self.MORE_GROUP and self._nav_visible(it[0])]
+        if self.can("docs:collect"):
+            items.append(("ai", "AI 建议", "docs:collect", "✦", self.MORE_GROUP))
+        return items
 
     def _build_nav(self):
         for w in self.nav_box.winfo_children():

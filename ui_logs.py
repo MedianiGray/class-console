@@ -78,7 +78,7 @@ class LogsView(ttk.Frame):
         self.empty = EmptyState(wrap, wraplength=380)
 
         bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=18, pady=12)
+        bar.pack(side="bottom", fill="x", padx=18, pady=(6, 12), before=wrap)
         self.btn_evidence = ttk.Button(bar, text="导出证据包", style="Accent.TButton",
                                        command=self.export_evidence)
         self.btn_export = ttk.Button(bar, text="导出备份", style="Ghost.TButton",

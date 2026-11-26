@@ -212,9 +212,26 @@ def main():
 
     # 归档规则：设置页保存、映射生效、恢复默认
     import archive
+    import ai
     import ui_settings
     ui_settings.messagebox.showwarning = lambda *a, **k: None
     sd2 = SettingsDialog(app); root.update()
+    assert sd2.ai_status.winfo_exists(), "设置里应有 AI 建议分区"
+    sd2.ai_enabled.set(False)
+    sd2.ai_base_var.set("https://api.siliconflow.cn/v1/")
+    sd2.ai_model_var.set("Qwen/Qwen2.5-7B-Instruct")
+    sd2.ai_key_var.set("sk-gui-test-not-real")
+    sd2.ai_timeout_var.set("60")
+    sd2._save_ai(); root.update()
+    cfg = ai.load_config()
+    assert cfg["enabled"] is False, cfg
+    assert cfg["base_url"] == "https://api.siliconflow.cn/v1", cfg
+    assert cfg["timeout"] == 40, cfg
+    assert cfg["api_key"] == "sk-gui-test-not-real", "AI Key 未落本机临时设置"
+    sd2._toggle_ai_key(); root.update()
+    assert sd2.ai_key_entry.cget("show") == "", "显示按钮没有切换 Key 掩码"
+    sd2._toggle_ai_key(); root.update()
+    assert sd2.ai_key_entry.cget("show") == "•", "再次点击没有恢复 Key 掩码"
     sd2.rule_dir_var.set("{category}/{student}")
     sd2.rule_file_var.set("{sid}-{name}")
     sd2.rule_map_text.delete("1.0", "end")
@@ -525,7 +542,7 @@ def main():
     assert app.more_btn is not None and app.more_btn.winfo_ismapped(), \
         (app.collapsed, app.more_btn, app.more_count, app.current, app.role,
          [it[0] for it in app.more_items()], root.winfo_ismapped(), root.geometry())
-    assert app.more_count.cget("text") == "2", app.more_count.cget("text")
+    assert app.more_count.cget("text") == "3", app.more_count.cget("text")
     nav_texts = texts(app.nav_box)
     for label in ("办理材料", "跟进核对", "更多"):
         assert label in nav_texts, "侧栏缺少分组：%s" % label
@@ -537,7 +554,14 @@ def main():
 
     md = app._open_more(); root.update()
     assert md.top.winfo_exists() and md.top.title() == "更多功能"
-    assert set(md.item_buttons) == {"collect", "logs"}, md.item_buttons.keys()
+    assert set(md.item_buttons) == {"collect", "logs", "ai"}, md.item_buttons.keys()
+    md.item_buttons["ai"].invoke(); root.update()
+    adv = getattr(app, "ai_dialog", None)
+    assert adv is not None and adv.top.winfo_exists(), "AI 建议入口没有打开面板"
+    assert adv.top.title() == "AI 建议 · 材料分类"
+    adv.close(); root.update()
+
+    md = app._open_more(); root.update()
     md.top.event_generate("<Button-1>", x=-30, y=-10)
     root.update()
     assert not md.top.winfo_exists(), "点击弹窗外空白应关闭"
@@ -548,15 +572,42 @@ def main():
     assert not md.top.winfo_exists()
 
     app.role_var.set("manager"); app._toggle_role(); root.update()
-    assert [it[0] for it in app.more_items()] == ["collect", "logs"], \
-        "汇总者应看到收集与日志"
-    assert app.more_count.cget("text") == "2"
+    assert [it[0] for it in app.more_items()] == ["collect", "logs", "ai"], \
+        "汇总者应看到收集、日志与 AI 建议"
+    assert app.more_count.cget("text") == "3"
     app.role_var.set("applicant"); app._toggle_role(); root.update()
     assert app.more_items() == [], "申请人不应看到文件夹收集与操作日志"
     assert app.more_btn is None, "申请人没有更多项时不应保留空入口"
 
     app.role_var.set("handler"); app._toggle_role(); root.update()
     app.switch("collect"); root.update()
+    cv = app.views["collect"]
+    folder = tempfile.mkdtemp(prefix="cc-collect-ai-")
+    for name in ("250219_团日活动记录.docx", "体测成绩统计表.xlsx",
+                 "国家奖学金申请表.pdf"):
+        Path(folder, name).write_text("x", encoding="utf-8")
+    cv.folder = folder
+    cv.scan(); root.update()
+    assert len(cv.items) == 3 and all(x["checked"] for x in cv.items)
+    cv.suggest_categories(); root.update()
+    adv = getattr(app, "ai_dialog", None)
+    assert adv is not None and adv.top.winfo_exists()
+    import time
+    deadline = time.time() + 3
+    while time.time() < deadline and not adv.results:
+        root.update()
+        time.sleep(0.05)
+    assert adv.results, "本地规则应在 3 秒内给出建议"
+    assert str(adv.btn_copy.cget("state")) == "normal"
+    assert str(adv.btn_apply.cget("state")) == "normal"
+    adv.apply(); root.update()
+    cats = {x["name"]: x["cat"] for x in cv.items}
+    assert cats["250219_团日活动记录.docx"] == "团务材料", cats
+    assert cats["体测成绩统计表.xlsx"] == "学分材料", cats
+    assert cats["国家奖学金申请表.pdf"] == "奖助材料", cats
+    for it in cv.items:
+        assert cv.tree.set(it["iid"], "cat") == it["cat"], "建议未回填到表格"
+
     app.toggle_sidebar(); root.update()
     assert app.collapsed
     assert app.more_btn.cget("text") == "···", app.more_btn.cget("text")

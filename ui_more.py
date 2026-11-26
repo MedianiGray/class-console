@@ -13,6 +13,7 @@ from theme import FONT, C
 MORE_DESC = {
     "collect": "扫描本地文件夹，按名单比对并批量登记",
     "logs": "查看提交、审核、归档与备份留痕",
+    "ai": "按文件名给类别、置信度与理由；默认关，未配置用本地规则",
 }
 
 
@@ -119,6 +120,10 @@ class MoreDialog:
 
     def _pick(self, key):
         self.close()
+        if key == "ai":
+            import ui_ai
+            ui_ai.open_advisor(self.window)
+            return
         self.window.switch(key)
 
     def close(self):

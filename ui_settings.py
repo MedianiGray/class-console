@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 import archive
+import ai
 import audit
 import handover
 import theme
@@ -215,6 +216,74 @@ class SettingsDialog:
         ent.bind("<Return>", self._save_applicant_sid)
         tk.Label(row4, text="用于「申请人」视角只显示本人材料", bg=C["card"],
                  fg=C["sub"], font=(FONT, 8)).pack(side="left", padx=(8, 0))
+
+        # AI 建议：API-only，默认关；未配置时自动走本地规则
+        card_ai = self._section(wrap, "AI 建议（API-only）")
+        cfg = ai.load_config()
+        self.ai_enabled = tk.BooleanVar(value=bool(cfg.get("enabled")))
+        airow = tk.Frame(card_ai, bg=C["card"])
+        airow.pack(fill="x", padx=14, pady=(10, 2))
+        tk.Checkbutton(airow, text="启用 API 分类建议", variable=self.ai_enabled,
+                       bg=C["card"], fg=C["text"], selectcolor=C["card"],
+                       activebackground=C["card"], activeforeground=C["text"],
+                       font=(FONT, 10)).pack(side="left")
+        tk.Label(card_ai, text="默认关；未启用或调用失败时自动用本地关键词规则。",
+                 bg=C["card"], fg=C["sub"], font=(FONT, 8), anchor="w").pack(
+            fill="x", padx=14, pady=(0, 4))
+        self.ai_status = tk.Label(card_ai, text="", bg=C["card"], fg=C["muted"],
+                                  font=(FONT, 8), anchor="w")
+        self.ai_status.pack(fill="x", padx=14, pady=(0, 6))
+
+        self.ai_base_var = tk.StringVar(value=cfg.get("base_url", ""))
+        self.ai_model_var = tk.StringVar(value=cfg.get("model", ""))
+        self.ai_key_var = tk.StringVar(value=cfg.get("api_key", ""))
+        self.ai_timeout_var = tk.StringVar(value=str(cfg.get("timeout", 20)))
+        row_base = tk.Frame(card_ai, bg=C["card"])
+        row_base.pack(fill="x", padx=14, pady=(0, 2))
+        tk.Label(row_base, text="接口地址", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 8), width=10, anchor="w").pack(side="left")
+        ttk.Entry(row_base, textvariable=self.ai_base_var).pack(
+            side="left", fill="x", expand=True)
+        tk.Label(card_ai, text="OpenAI 兼容地址，填到 /v1 即可", bg=C["card"],
+                 fg=C["sub"], font=(FONT, 8), anchor="w").pack(
+            fill="x", padx=(14, 14), pady=(0, 4))
+
+        row_model = tk.Frame(card_ai, bg=C["card"])
+        row_model.pack(fill="x", padx=14, pady=(0, 4))
+        tk.Label(row_model, text="模型", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 8), width=10, anchor="w").pack(side="left")
+        ttk.Entry(row_model, textvariable=self.ai_model_var).pack(
+            side="left", fill="x", expand=True)
+
+        row_timeout = tk.Frame(card_ai, bg=C["card"])
+        row_timeout.pack(fill="x", padx=14, pady=(0, 4))
+        tk.Label(row_timeout, text="超时", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 8), width=10, anchor="w").pack(side="left")
+        ttk.Entry(row_timeout, textvariable=self.ai_timeout_var, width=6).pack(side="left")
+        tk.Label(row_timeout, text="秒（5–40）", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 8)).pack(side="left", padx=(6, 0))
+
+        row_key = tk.Frame(card_ai, bg=C["card"])
+        row_key.pack(fill="x", padx=14, pady=(0, 4))
+        tk.Label(row_key, text="API Key", bg=C["card"], fg=C["sub"],
+                 font=(FONT, 8), width=10, anchor="w").pack(side="left")
+        self.ai_key_entry = ttk.Entry(row_key, textvariable=self.ai_key_var, show="•")
+        self.ai_key_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(row_key, text="显示", relief="flat", bd=0, bg=C["bg_soft"],
+                  fg=C["text"], activebackground=C["bg_soft"],
+                  activeforeground=C["text"], font=(FONT, 8), padx=8, pady=2,
+                  cursor="hand2", command=self._toggle_ai_key).pack(side="left", padx=(6, 0))
+
+        tk.Label(card_ai, text="只发送文件名与类别列表，不读正文；Key 只存本机 settings.json，不写操作日志。",
+                 bg=C["card"], fg=C["sub"], font=(FONT, 8), anchor="w",
+                 wraplength=470, justify="left").pack(fill="x", padx=14)
+        aibtns = tk.Frame(card_ai, bg=C["card"])
+        aibtns.pack(fill="x", padx=14, pady=(8, 12))
+        ttk.Button(aibtns, text="保存 AI 设置", style="Accent.TButton",
+                   command=self._save_ai).pack(side="left")
+        ttk.Button(aibtns, text="用本地规则", command=self._disable_ai).pack(
+            side="left", padx=(8, 0))
+        self._refresh_ai_status()
 
         # 归档
         card5 = self._section(wrap, "材料归档")
@@ -539,6 +608,60 @@ class SettingsDialog:
         self.window.refresh_all()
         if val and self.window.role == "applicant":
             self.window.mark_first_run(1)
+
+    # ---------- AI 建议 ----------
+    def _toggle_ai_key(self):
+        try:
+            self.ai_key_entry.config(show="" if self.ai_key_entry.cget("show") else "•")
+        except tk.TclError:
+            pass
+
+    def _refresh_ai_status(self):
+        try:
+            text, kind = ai.status_text()
+            self.ai_status.config(text=text, fg=C["primary"] if kind == "api" else C["muted"])
+        except (tk.TclError, AttributeError):
+            pass
+
+    def _ai_form(self):
+        return {
+            "enabled": bool(self.ai_enabled.get()),
+            "base_url": self.ai_base_var.get().strip(),
+            "model": self.ai_model_var.get().strip(),
+            "api_key": self.ai_key_var.get().strip(),
+            "timeout": self.ai_timeout_var.get().strip(),
+        }
+
+    def _save_ai(self):
+        cfg = self._ai_form()
+        if cfg["enabled"]:
+            if not cfg["base_url"] or not cfg["model"] or not cfg["api_key"]:
+                messagebox.showwarning(
+                    "AI 设置不完整",
+                    "启用 API 需要填接口地址、模型和 API Key；只想用本地规则就取消勾选。",
+                    parent=self.top)
+                return
+            if not cfg["base_url"].startswith(("http://", "https://")):
+                messagebox.showwarning(
+                    "接口地址无效", "接口地址需要以 http:// 或 https:// 开头。",
+                    parent=self.top)
+                return
+        if not ai.save_config(cfg):
+            messagebox.showwarning(
+                "没有保存成功", "本机设置文件不可写，AI 配置没有落盘。",
+                parent=self.top)
+            return
+        self.ai_timeout_var.set(str(ai.load_config().get("timeout", 20)))
+        self._refresh_ai_status()
+        self.window.toast("AI 设置已保存；下一次生成建议时生效")
+
+    def _disable_ai(self):
+        cfg = self._ai_form()
+        cfg["enabled"] = False
+        self.ai_enabled.set(False)
+        if ai.save_config(cfg):
+            self._refresh_ai_status()
+            self.window.toast("已改为只用本地规则")
 
     # ---------- 归档 ----------
     def _pick_archive_root(self):

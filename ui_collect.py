@@ -47,10 +47,11 @@ class CollectView(ttk.Frame):
 
         wrap = ttk.Frame(self)
         wrap.pack(fill="both", expand=True, padx=18)
-        cols = ("check", "file", "size", "mtime", "status")
+        cols = ("check", "file", "size", "mtime", "cat", "status")
         heads = {"check": "选", "file": "文件", "size": "大小",
-                 "mtime": "修改时间", "status": "比对结果"}
-        widths = {"check": 44, "file": 340, "size": 90, "mtime": 140, "status": 110}
+                 "mtime": "修改时间", "cat": "入账类别", "status": "比对结果"}
+        widths = {"check": 44, "file": 320, "size": 80, "mtime": 130,
+                  "cat": 110, "status": 100}
         self.tree = ttk.Treeview(wrap, columns=cols, show="headings",
                                  selectmode="browse")
         for c in cols:
@@ -71,10 +72,13 @@ class CollectView(ttk.Frame):
         self.empty.show_place()
 
         bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=18, pady=12)
+        bar.pack(side="bottom", fill="x", padx=18, pady=(6, 12), before=wrap)
+        self.btn_ai = ttk.Button(bar, text="AI 分类建议", style="Ghost.TButton",
+                                  command=self.suggest_categories)
+        self.btn_ai.pack(side="left")
         self.btn_import = ttk.Button(bar, text="将所选入账（自动编号）",
                                       style="Accent.TButton", command=self.import_selected)
-        self.btn_import.pack(side="left")
+        self.btn_import.pack(side="left", padx=(8, 0))
         ttk.Label(bar, text="仅登记文件名与本机路径，不移动或复制原文件",
                   style="Muted.TLabel").pack(side="left", padx=12)
         self.hint = ttk.Label(bar, text="", style="Muted.TLabel")
@@ -92,7 +96,7 @@ class CollectView(ttk.Frame):
         for it in self.items:
             if it["iid"] == iid:
                 it["checked"] = not it["checked"]
-                self.tree.set(iid, "check", "☑" if it["checked"] else "☐")
+                self.tree.set(iid, "check", "[x]" if it["checked"] else "[ ]")
                 return
 
     # ---------- 扫描 ----------
@@ -152,11 +156,13 @@ class CollectView(ttk.Frame):
                 mtime, size = "", ""
             iid = "r%d" % i
             status = "已登记" if registered else "未登记"
+            check = "[ ]" if registered else "[x]"
             self.tree.insert("", "end", iid=iid,
                               tags=("zebra" if i % 2 else "",),
-                              values=("☐", name, size, mtime, status))
+                              values=(check, name, size, mtime, "跟随默认", status))
             self.items.append({"iid": iid, "name": name, "path": full,
-                               "registered": registered, "checked": not registered})
+                               "registered": registered, "checked": not registered,
+                               "cat": ""})
             i += 1
         new_count = sum(1 for x in self.items if not x["registered"])
         hint = "共 %d 个文件，未登记 %d 个" % (len(self.items), new_count)
@@ -171,6 +177,39 @@ class CollectView(ttk.Frame):
                            "重新扫描", self.scan)
             self.empty.show_place()
 
+    # ---------- AI 分类建议 ----------
+    def suggest_categories(self):
+        if not self.window.can("docs:create"):
+            self.window.toast("当前视角无权执行该操作")
+            return
+        chosen = [x for x in self.items if x["checked"] and not x["registered"]]
+        if not chosen:
+            self.window.toast("先勾选要分析的新文件")
+            return
+        if len(chosen) > 40:
+            self.window.toast("一次最多分析 40 份，先取消一部分勾选")
+            return
+        import ui_ai
+        ui_ai.open_advisor(self.window, items=chosen, on_apply=self._apply_suggestions)
+
+    def _apply_suggestions(self, results):
+        by_name = {r.get("file"): r for r in (results or [])}
+        applied = 0
+        for it in self.items:
+            r = by_name.get(it.get("name"))
+            if not r:
+                continue
+            it["cat"] = r.get("cat", "")
+            try:
+                self.tree.set(it["iid"], "cat", it["cat"] or "跟随默认")
+            except tk.TclError:
+                pass
+            applied += 1
+        if applied:
+            self.window.toast("已把 %d 份文件的类别建议填到表格，入账前仍可改" % applied)
+        else:
+            self.window.toast("没有可回填的建议")
+
     # ---------- 入账 ----------
     def import_selected(self):
         if not self.window.can("docs:create"):
@@ -180,17 +219,24 @@ class CollectView(ttk.Frame):
         if not chosen:
             self.window.toast("没有可入账的新文件")
             return
-        cat = self.var_cat.get()
+        default_cat = self.var_cat.get()
+        cats = [x.get("cat") or default_cat for x in chosen]
+        distinct = sorted(set(cats))
+        if len(distinct) == 1:
+            cat_text = "「%s」" % distinct[0]
+        else:
+            cat_text = "各自类别（%d 种）" % len(distinct)
         if not self.window.confirm(
                 "批量入账确认",
-                "将把 %d 份未登记材料按「%s」入账，并自动生成编号；提交人先记为「待补」，可稍后在台账补全。"
-                % (len(chosen), cat)):
+                "将把 %d 份未登记材料按%s入账，并自动生成编号；提交人先记为「待补」，可稍后在台账补全。"
+                % (len(chosen), cat_text)):
             return
 
         ok = 0
         failed = []
         for x in chosen:
             base = os.path.splitext(x["name"])[0]
+            cat = x.get("cat") or default_cat
             try:
                 self.repo.add_doc({
                     "name": base, "cat": cat, "who": "待补", "sid": "",

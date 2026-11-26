@@ -1,4 +1,4 @@
-/* v0.25 浏览器冒烟：首屏四卡、顶栏 AI 入口、材料侧 AI 建议、窄屏不溢出、PWA 断网重载。
+﻿/* v0.26 浏览器冒烟：首屏四卡、顶栏 AI 入口、材料侧 AI 建议、窄屏不溢出、PWA 断网重载。
  * 用法：先起本地服务，再 node tests/web_browser_smoke.mjs
  * 可选环境变量：PORT / URL / OUT / OUT_PANEL / OUT_DRAWER / WIDTH / HEIGHT / LIGHT / DARK。
  * 只读页面与本地缓存；不调用模型、不写台账。
@@ -9,8 +9,8 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const PORT = Number(process.env.PORT || 9240);
-const PROFILE = `C:\\Users\\35342\\AppData\\Local\\Temp\\cc-v025-edge-${PORT}`;
-const OUT = process.env.OUT || "C:\\Users\\35342\\Doubao\\chats\\2026-11-14\\new-chat\\v025-正式版-Bento.png";
+const PROFILE = `C:\\Users\\35342\\AppData\\Local\\Temp\\cc-v026-edge-${PORT}`;
+const OUT = process.env.OUT || "C:\\Users\\35342\\Doubao\\chats\\2026-11-14\\new-chat\\v026-正式版-Bento.png";
 const OUT_PANEL = process.env.OUT_PANEL || OUT.replace(/\.png$/, "-AI副驾.png");
 const OUT_DRAWER = process.env.OUT_DRAWER || OUT.replace(/\.png$/, "-详情AI建议.png");
 const PAGE_URL = process.env.URL || "http://127.0.0.1:8781/web/";
