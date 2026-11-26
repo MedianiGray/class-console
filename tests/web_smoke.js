@@ -441,6 +441,41 @@ sandbox.aiState.apiBase = "https://api.deepseek.com/v1/chat/completions";
 assert("AI 完整接口不重复拼接", sandbox.aiApiEndpoint() === "https://api.deepseek.com/v1/chat/completions");
 sandbox.aiState.apiBase = "https://api.deepseek.com";
 
+// v0.25 AI 副驾：顶栏入口、流程内建议与只读上下文
+assert("AI 副驾在工作台有顶栏入口", html.indexOf('id="aiBtn"') >= 0);
+assert("顶栏不再注入业务按钮", html.indexOf("topbarAction") < 0);
+assert("AI 副驾面板存在", html.indexOf('id="aiCopilot"') >= 0);
+assert("详情抽屉有 AI 建议区", html.indexOf("ai-suggest-grid") >= 0);
+const acpDoc = sandbox.listDocs().find(function(d){ return d.status === "待审核"; });
+const acpQuick = sandbox.aiCopilotQuickDefs("doc");
+assert("材料侧四个建议动作", acpQuick.length === 4 && acpQuick.map(x => x.key).join(",") === "missing,reject,name,note");
+const acpDeskQuick = sandbox.aiCopilotQuickDefs("desk");
+assert("工作台侧三个建议动作", acpDeskQuick.length === 3);
+sandbox.aiCopilotState.kind = "doc";
+sandbox.aiCopilotState.docId = acpDoc.id;
+const acpCtx = sandbox.aiCopilotContext("doc", acpDoc.id);
+assert("AI 副驾上下文锚定材料", acpCtx.indexOf("【当前选中材料】") >= 0 && acpCtx.indexOf(acpDoc.name) >= 0);
+assert("AI 副驾上下文带台账", acpCtx.indexOf("【当前材料台账】") >= 0);
+assert("AI 副驾标签指向材料", sandbox.aiCopilotContextLabel().indexOf("当前材料") >= 0);
+sandbox.aiCopilotState.kind = "desk";
+sandbox.aiCopilotState.docId = null;
+assert("AI 副驾标签指向工作台", sandbox.aiCopilotContextLabel().indexOf("当前工作台") >= 0);
+sandbox.aiState.provider = "api";
+sandbox.aiState.apiKey = "";
+sandbox.aiCopilotAsk("查缺项");
+assert("AI 副驾 API 缺 Key 先拦截", sandbox.aiCopilotState.status.indexOf("Key") >= 0 && sandbox.aiCopilotState.needConfig);
+sandbox.aiState.provider = "local";
+
+// v0.25 首屏收敛：三个问题 + 四张卡，不再铺指标/类别
+sandbox.state.role = "handler";
+sandbox.renderDashboard();
+const dashHtml = els["view-dashboard"].innerHTML;
+assert("概览首屏四张卡", (dashHtml.match(/class="b-card/g) || []).length === 4);
+assert("概览不再铺当前指标卡", dashHtml.indexOf("b-kpis") < 0);
+assert("概览不再铺类别分布卡", dashHtml.indexOf("b-cat") < 0);
+assert("首屏三个问题入口", (dashHtml.match(/class="b-brief-item"/g) || []).length === 3);
+assert("首屏只留一个实心主按钮", (dashHtml.match(/class="btn primary"/g) || []).length === 1);
+
 // 更多功能：辅助项收口、分类、按权限收敛
 sandbox.state.role = "handler";
 assert("更多入口分组为更多", sandbox.NAV_GROUPS[2].label === "更多");

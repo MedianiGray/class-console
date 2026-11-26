@@ -1,4 +1,4 @@
-const CACHE = 'cc-web-v024-shell-v1';
+const CACHE = 'cc-web-v025-shell-v1';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -8,7 +8,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key.startsWith('cc-web-v024-shell-') && key !== CACHE)
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith('cc-web-v0') && key !== CACHE)
         .map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );

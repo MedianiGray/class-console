@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>班级材料操作台 · 浏览器本地版 v0.24.0</title>
+<title>班级材料操作台 · 浏览器本地版 v0.25.0</title>
 <style>
   :root{
     color-scheme:light;
@@ -330,7 +330,7 @@
   .b-card h3{font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
   .b-card > .card,.b-card > .panel{border:0;border-radius:0;background:transparent;padding:0;margin:0}
   .b-card > .card > h3,.b-card > .panel > h3{margin-bottom:12px}
-  .b-hero{grid-column:span 8;justify-content:center}
+  .b-hero{grid-column:span 8;justify-content:flex-start}
   .b-kpis{grid-column:span 4;padding:16px 0 0}
   .b-kpis h3{padding:0 18px}
   .b-queue{grid-column:span 8}
@@ -342,6 +342,12 @@
   .b-hero .action-bar{margin:0}
   .b-hero .aux-line{margin:12px 0 0}
   .b-hero-note{font-size:12px;color:var(--sub);line-height:1.55;margin-top:10px}
+  .b-hero-ai{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);display:flex;align-items:center;
+    justify-content:space-between;gap:12px;font-size:11.5px;color:var(--muted);line-height:1.55}
+  .b-hero-ai b{color:var(--text);font-weight:600}
+  .b-hero-ai button{border:0;background:transparent;color:var(--primary);font:inherit;font-size:11.5px;
+    cursor:pointer;white-space:nowrap;padding:0}
+  .b-hero-ai button:hover{text-decoration:underline}
   .b-queue .panel,.b-side .panel{padding:0}
   .b-queue-foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);
     display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11.5px;color:var(--sub)}
@@ -368,6 +374,69 @@
     border-radius:999px;padding:2px 8px;white-space:nowrap}
   .b-first-run{margin-bottom:14px}
   .b-empty-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+  /* v0.25：首屏三个问题 + AI 副驾 */
+  .b-hero-k{font-size:11px;font-weight:600;color:var(--sub);letter-spacing:.04em;margin:0 0 8px}
+  .b-brief{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 16px}
+  .b-brief-item{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;
+    padding:0 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg-soft);
+    color:var(--text);font-size:12px;cursor:pointer;text-align:left}
+  .b-brief-item:hover{border-color:var(--line-strong);background:var(--card)}
+  .b-brief-item span{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .b-brief-item b{font-size:18px;font-variant-numeric:tabular-nums;color:var(--text)}
+  .b-tools{grid-column:span 4}
+  .b-tools .b-links{grid-template-columns:1fr}
+  .b-tool-local{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .b-tool-local .btl-t{font-size:11.5px;color:var(--sub);line-height:1.4}
+  .b-tool-local a{color:var(--primary);font-size:11.5px;text-decoration:none;white-space:nowrap}
+  .b-tool-local a:hover{text-decoration:underline}
+  .icon-btn.ai-btn{color:var(--primary);background:var(--primary-soft);border-color:transparent;
+    width:auto;min-width:38px;padding:0 10px;gap:6px;display:inline-flex;align-items:center;justify-content:center}
+  .icon-btn.ai-btn:hover{background:var(--primary-soft);border-color:var(--primary)}
+  .icon-btn.ai-btn svg{width:18px;height:18px}
+  .ai-btn .ai-label{font-size:12px;font-weight:600;white-space:nowrap}
+  @media (max-width:600px){.ai-btn .ai-label{display:none}}
+
+  .ai-copilot-mask{position:fixed;inset:0;background:rgba(31,41,55,.32);opacity:0;pointer-events:none;
+    transition:opacity .2s;z-index:27}
+  .ai-copilot-mask.show{opacity:1;pointer-events:auto}
+  .ai-copilot{position:fixed;top:0;right:0;height:100%;width:400px;max-width:94vw;background:var(--card);
+    box-shadow:-10px 0 32px rgba(16,24,40,.14);display:flex;flex-direction:column;z-index:28;
+    transform:translateX(100%);transition:transform .22s ease}
+  .ai-copilot.show{transform:translateX(0)}
+  .ai-copilot header{display:flex;align-items:flex-start;gap:10px;padding:20px 22px 14px;border-bottom:1px solid var(--line)}
+  .ai-copilot header .acp-h{flex:1;min-width:0}
+  .ai-copilot header h3{font-size:15px;font-weight:700;display:flex;align-items:center;gap:7px}
+  .ai-copilot header .acp-sub{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:5px}
+  .ai-copilot .acp-close{border:0;background:transparent;font-size:20px;color:var(--muted);padding:4px 8px;line-height:1;border-radius:6px}
+  .ai-copilot .acp-close:hover{color:var(--text);background:var(--bg)}
+  .acp-body{flex:1;overflow:auto;padding:16px 22px;display:flex;flex-direction:column;gap:14px}
+  .acp-context{font-size:11.5px;color:var(--muted);line-height:1.6;background:var(--bg-soft);
+    border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  .acp-quick{display:flex;flex-wrap:wrap;gap:7px}
+  .acp-quick button{border:1px solid var(--line);background:var(--card);border-radius:7px;padding:7px 10px;
+    font-size:12px;color:var(--text);cursor:pointer}
+  .acp-quick button:hover{border-color:var(--primary);background:var(--primary-soft)}
+  .acp-output{flex:1;min-height:160px;white-space:pre-wrap;font-size:13px;line-height:1.7;color:var(--text);
+    background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;padding:12px 13px}
+  .acp-output .acp-empty{color:var(--muted);font-size:12px}
+  .acp-guide{display:flex;flex-direction:column;gap:14px;margin-top:4px}
+  .acp-guide div{display:flex;flex-direction:column;gap:3px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+  .acp-guide div:last-child{border-bottom:0;padding-bottom:0}
+  .acp-guide b{font-size:12.5px;color:var(--text);font-weight:650}
+  .acp-guide span{font-size:11.5px;color:var(--muted);line-height:1.6}
+  .acp-output .acp-error{color:var(--red);font-size:12px;line-height:1.65}
+  .acp-output .acp-action{margin-top:10px}
+  .acp-compose{border-top:1px solid var(--line);padding:12px 22px 16px;display:flex;flex-direction:column;gap:8px}
+  .acp-compose textarea{width:100%;min-height:70px;resize:vertical;border:1px solid var(--line);
+    border-radius:8px;padding:9px 11px;background:var(--card);font:inherit;font-size:13px;line-height:1.5}
+  .acp-compose textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(61,91,221,.14)}
+  .acp-compose .acp-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+  .acp-status{font-size:11.5px;color:var(--sub);min-height:17px;line-height:1.5}
+  .acp-status.err{color:var(--red)}
+  .acp-status.busy{color:var(--primary)}
+
 
   /* 表格 */
   .table-wrap{overflow:auto;border:0;border-radius:var(--radius);background:var(--card)}
@@ -513,6 +582,13 @@
   .trace .t-time{color:var(--muted);margin-right:6px}
   .drawer footer{display:flex;gap:10px;padding:14px 24px;border-top:1px solid var(--line)}
   .drawer footer .spacer{margin-left:auto}
+  .ai-suggest{border-top:1px solid var(--line);padding-top:14px}
+  .ai-suggest .as-sub{font-size:11.5px;color:var(--muted);line-height:1.5;margin:-2px 0 9px}
+  .ai-suggest-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .ai-suggest-grid button{border:1px solid var(--line);background:var(--card);border-radius:7px;
+    min-height:34px;padding:6px 9px;font-size:12px;color:var(--text);cursor:pointer;text-align:left}
+  .ai-suggest-grid button:hover{border-color:var(--primary);background:var(--primary-soft)}
+  .ai-suggest-grid button span{display:block;color:var(--sub);font-size:10.5px;margin-top:1px}
 
   .toast{position:fixed;left:50%;bottom:46px;transform:translateX(-50%);background:var(--text);
     color:#fff;padding:10px 18px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;
@@ -958,20 +1034,24 @@
   @media (max-width:1200px){
     .b-hero{grid-column:span 7}.b-kpis{grid-column:span 5}
     .b-queue{grid-column:span 7}.b-side{grid-column:span 5}
+    .b-tools{grid-column:span 5}
   }
   @media (max-width:980px){
-    .b-hero,.b-kpis,.b-queue,.b-side,.b-cat,.b-entry,.b-local{grid-column:span 6}
+    .b-hero,.b-kpis,.b-queue,.b-side,.b-cat,.b-entry,.b-local,.b-tools{grid-column:span 6}
     .b-hero{grid-column:span 12}
     .b-empty-grid{grid-template-columns:1fr}
   }
   @media (max-width:760px){
     .bento{grid-template-columns:1fr;gap:12px}
-    .b-hero,.b-kpis,.b-queue,.b-side,.b-cat,.b-entry,.b-local{grid-column:1/-1}
+    .b-hero,.b-kpis,.b-queue,.b-side,.b-cat,.b-entry,.b-local,.b-tools{grid-column:1/-1}
     .b-card{padding:15px}
     .b-kpi-grid .kpi{padding:12px 13px}
     .b-links{grid-template-columns:1fr}
+    .b-brief{grid-template-columns:1fr}
     .b-hero .action-bar{flex-wrap:wrap;align-items:flex-start}
     .b-hero .action-bar .btn{width:100%;justify-content:center}
+    .b-hero-ai{flex-direction:column;align-items:flex-start;gap:6px}
+    .ai-copilot{width:100%;max-width:100%}
   }
 </style>
 </head>
@@ -1028,7 +1108,13 @@
         <kbd>Ctrl K</kbd>
       </div>
       <div class="topbar-right" id="topbarRight">
-        <div class="topbar-action" id="topbarAction"></div>
+        <button class="icon-btn ai-btn" id="aiBtn" aria-label="AI 副驾" title="AI 副驾 · 选中材料后可直接出建议">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m12 3 1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6z"/>
+            <path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7z"/>
+          </svg>
+          <span class="ai-label">AI 副驾</span>
+        </button>
         <div class="id-chip" title="当前岗位视角">
           <span class="ic-avatar" id="topAvatar">学</span>
           <span class="ic-t">
@@ -1122,6 +1208,30 @@
   <footer id="drawerFooter"></footer>
 </aside>
 
+<div class="ai-copilot-mask" id="aiCopilotMask"></div>
+<aside class="ai-copilot" id="aiCopilot" aria-label="AI 副驾">
+  <header>
+    <div class="acp-h">
+      <h3><span class="b-tag">AI</span> 副驾</h3>
+      <div class="acp-sub" id="acpSub">只读上下文，只给建议；不改台账、不发消息。默认本地模型，首次运行会下载权重。</div>
+    </div>
+    <button class="acp-close" id="acpClose" aria-label="关闭 AI 副驾">×</button>
+  </header>
+  <div class="acp-body">
+    <div class="acp-context" id="acpContext">正在读取当前工作台…</div>
+    <div class="acp-quick" id="acpQuick"></div>
+    <div class="acp-output" id="acpOutput"><span class="acp-empty">选一个建议，或直接写你要它做什么。</span></div>
+  </div>
+  <div class="acp-compose">
+    <textarea id="acpInput" rows="3" placeholder="例如：按当前材料，写一段不点名的补交提醒。" aria-label="给 AI 副驾的问题"></textarea>
+    <div class="acp-actions">
+      <button class="btn mini" id="acpConfig" type="button">完整助手 / 模型配置</button>
+      <button class="btn primary" id="acpSend" type="button">生成建议</button>
+    </div>
+    <div class="acp-status" id="acpStatus"></div>
+  </div>
+</aside>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1131,7 +1241,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.24.0";
+var WEB_VERSION = "0.25.0";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -2249,15 +2359,6 @@ function refreshAll() {
   var persistTip = state.persist === false ? " · 存储不可用(仅本次会话)" : "";
   var demoTip = store.demo ? " · 含示例数据" : "";
   document.getElementById("statusLeft").textContent = "网页版 v" + WEB_VERSION + " · 本地缓存 · " + roleLabel() + persistTip + demoTip;
-  var tr = document.getElementById("topbarAction");
-  if (tr) {
-    if (state.current === "dashboard" && can("docs:create")) {
-      tr.innerHTML = '<button class="btn primary" id="dashNew">提交新材料</button>';
-      document.getElementById("dashNew").onclick = function(){ switchView("submit"); };
-    } else {
-      tr.innerHTML = "";
-    }
-  }
   refreshReminders();
   if (state.current === "dashboard") renderDashboard();
   else if (state.current === "docs") renderDocs();
@@ -2401,32 +2502,12 @@ function renderDashboard() {
 
   var chk = rosterCheck();
   var tsk = taskStats();
-  var kpiDefs = [
-    {key:"total",    label:"材料总数", color:"var(--muted)",  filter:"全部"},
-    {key:"pending",  label:"待审核",   color:"var(--orange)", filter:"待审核"},
-    {key:"archived", label:"已归档",   color:"var(--green)",  filter:"已归档"},
-    {key:"rejected", label:"已驳回",   color:"var(--red)",    filter:"已驳回"}
-  ];
-  var kpiHtml = kpiDefs.map(function(c){
-    return '<div class="kpi" data-filter="' + esc(c.filter) + '" role="button" tabindex="0" title="查看' + c.label + '">' +
-      '<span class="lbl" style="color:' + c.color + '"><span class="dot"></span>' + c.label + "</span>" +
-      '<span class="num">' + s[c.key] + "</span></div>";
-  }).join("");
 
   /* 衍生提醒：不占首屏卡片，收成一行可点摘要 */
   var auxItems = [];
   if (canRoster) auxItems.push('<a data-go="roster">未交 ' + chk.absent.length + " 人</a>");
   if (canTask) auxItems.push('<a data-go="tasks">临期 ' + tsk.due + " · 逾期 " + tsk.overdue + "</a>");
   var auxHtml = auxItems.length ? '<div class="aux-line">' + auxItems.join("") + "</div>" : "";
-
-  var total = docs.length || 1;
-  var catHtml = CATS.map(function(cat){
-    var n = docs.filter(function(d){ return d.cat === cat; }).length;
-    var pct = Math.round(100 * n / total);
-    return '<div class="cat-row"><span class="name">' + esc(cat) + "</span>" +
-      '<span class="track"><span class="fill" style="width:' + pct + '%"></span></span>' +
-      '<span class="cnt">' + n + "</span></div>";
-  }).join("");
 
   var recent = logs.slice(0, 6).map(function(l){
     return "<tr><td>" + esc(l.time) + "</td><td>" + esc(l.who) + "</td><td>" +
@@ -2551,14 +2632,31 @@ function renderDashboard() {
       "<thead><tr><th>材料名称</th><th>提交人</th><th>学号</th><th>提交时间</th></tr></thead><tbody>" + pendBody + "</tbody></table></div>" +
     "</div>";
 
-  var kpiCard = '<div class="b-card b-kpis"><h3>当前指标</h3><div class="b-kpi-grid">' + kpiHtml + "</div></div>";
-  var heroCard = '<div class="b-card b-hero">' + actionHtml + auxHtml +
-    '<div class="b-hero-note">材料与日志只在本机浏览器；提交、审核、归档全程留痕，不依赖账号。</div></div>';
+  var briefItems = [];
+  if (isApplicant) {
+    briefItems.push({label:"待我关注", value:focusDocs.length, go:"docs"});
+    briefItems.push({label:"已归档", value:s.archived, go:"docs", filter:"已归档"});
+    briefItems.push({label:"已驳回", value:s.rejected, go:"docs", filter:"已驳回"});
+  } else {
+    briefItems.push({label:"待审核", value:s.pending, go:"docs", filter:"待审核"});
+    if (canRoster) briefItems.push({label:"名单未交", value:chk.absent.length, go:"roster"});
+    else briefItems.push({label:"已归档", value:s.archived, go:"docs", filter:"已归档"});
+    if (canTask) briefItems.push({label:"任务逾期", value:tsk.overdue, go:"tasks"});
+    else briefItems.push({label:"已驳回", value:s.rejected, go:"docs", filter:"已驳回"});
+  }
+  var briefHtml = '<div class="b-brief">' + briefItems.map(function(x){
+    var attrs = 'data-go="' + x.go + '"' + (x.filter ? ' data-filter="' + esc(x.filter) + '"' : "");
+    return '<button type="button" class="b-brief-item" ' + attrs + "><span>" + esc(x.label) + "</span><b>" + x.value + "</b></button>";
+  }).join("") + "</div>";
+
+  var heroCard = '<div class="b-card b-hero"><div class="b-hero-k">现在欠什么</div>' + briefHtml + actionHtml + auxHtml +
+    '<div class="b-hero-note">材料与日志只在本机浏览器；提交、审核、归档全程留痕，不依赖账号。</div>' +
+    '<div class="b-hero-ai"><div><b>AI 副驾</b> 选中材料可查缺项、写驳回草稿；也能按台账拟一条不点名的催交提醒。</div>' +
+    '<button type="button" data-ai-copilot>打开副驾 →</button></div></div>';
   var queueCard = '<div class="b-card b-queue">' + queueHtml +
       '<div class="b-queue-foot"><div class="b-queue-flow"><span>提交</span><span>→</span><span>审核</span><span>→</span><span>归档</span></div>' +
       '<a data-go="docs">查看全部台账 →</a></div></div>';
   var sideCard = rightPanel ? '<div class="b-card b-side">' + rightPanel + "</div>" : "";
-  var catCard = '<div class="b-card b-cat"><h3>类别分布</h3>' + catHtml + "</div>";
   var entryDefs = [
     {key:"docs", label:"材料台账"},
     {key:"roster", label:"名单核对"},
@@ -2573,12 +2671,10 @@ function renderDashboard() {
     for (var i = 0; i < NAV.length; i++) if (NAV[i].key === e.key) { item = NAV[i]; break; }
     if (item && navVisible(item)) entryLinks += '<a data-go="' + e.key + '">' + e.label + '<span>→</span></a>';
   });
-  var entryCard = '<div class="b-card b-entry"><h3>常用入口</h3><div class="b-links">' + entryLinks + "</div></div>";
-  var localCard = '<div class="b-card b-local"><h3>本地处理器 <span class="b-tag">实验</span></h3>' +
-      '<p class="b-local-copy">PDF、音视频这类重活再启动；不在首屏加载 11.26 MB 内核。</p>' +
-      '<a class="btn mini" href="../lab/unkernel/unkernel-本地引擎验证台.html">打开内核实验室</a>' +
-      '<div class="b-local-meta">unkernel 0.2 · Linux 7.3.4 · JSPI</div></div>';
-  var bentoHtml = '<div class="bento">' + heroCard + kpiCard + queueCard + sideCard + catCard + entryCard + localCard + "</div>";
+  var toolsCard = '<div class="b-card b-entry b-tools"><h3>常用入口</h3><div class="b-links">' + entryLinks + "</div>" +
+      '<div class="b-tool-local"><div class="btl-t">本地处理器 · 实验<br>PDF、音视频重活再启动</div>' +
+      '<a href="../lab/unkernel/unkernel-本地引擎验证台.html">打开</a></div></div>';
+  var bentoHtml = '<div class="bento">' + heroCard + sideCard + queueCard + toolsCard + "</div>";
 
   document.getElementById("view-dashboard").innerHTML = empty
     ? firstRunCard + emptyStartHtml + (rightPanel ? '<div class="bento"><div class="b-card b-span-12">' + rightPanel + "</div></div>" : "")
@@ -2594,6 +2690,9 @@ function renderDashboard() {
       if (a.dataset.filter) { docsFilter.status = a.dataset.filter; docsFilter.page = 1; }
       switchView(a.dataset.go);
     };
+  });
+  document.querySelectorAll("#view-dashboard [data-ai-copilot]").forEach(function(b){
+    b.onclick = function(){ openAICopilot("desk"); };
   });
   document.querySelectorAll("#view-dashboard [data-focus]").forEach(function(a){
     a.onclick = function(){
@@ -3276,7 +3375,15 @@ function renderDrawer(d) {
       '<span class="k">说明</span><span class="v">' + esc(d.note || "无") + "</span>" +
       (d.reason ? '<span class="k">审核备注</span><span class="v">' + esc(d.reason) + "</span>" : "") +
     "</div></div>" +
-    '<div class="drawer-section"><h4>留痕记录</h4>' + traceHtml + "</div>";
+    '<div class="drawer-section"><h4>留痕记录</h4>' + traceHtml + "</div>" +
+    '<div class="drawer-section ai-suggest"><h4>AI 建议</h4>' +
+      '<div class="as-sub">只读当前材料，出草稿；不改状态、不归档、不发消息。</div>' +
+      '<div class="ai-suggest-grid">' +
+        '<button type="button" data-ai-doc="missing">查缺项<span>字段、附件、佐证</span></button>' +
+        '<button type="button" data-ai-doc="reject">驳回原因草稿<span>具体、不指责人</span></button>' +
+        '<button type="button" data-ai-doc="name">归档命名建议<span>按归档规则试算</span></button>' +
+        '<button type="button" data-ai-doc="note">写情况说明<span>事实、缺口、下一步</span></button>' +
+      '</div></div>';
 
   var canArchive = can("docs:archive"), canReject = can("docs:reject");
   var footer = "";
@@ -3288,6 +3395,9 @@ function renderDrawer(d) {
   var drA = document.getElementById("drArchive"), drR = document.getElementById("drReject");
   if (drA) drA.onclick = archiveSelected;
   if (drR) drR.onclick = rejectSelected;
+  document.querySelectorAll("#drawerBody [data-ai-doc]").forEach(function(b){
+    b.onclick = function(){ openAICopilot("doc", d.id, b.dataset.aiDoc); };
+  });
 }
 
 /* 通用动作管线：按类型配置校验角色、状态、确认文案，改状态并写留痕 */
@@ -4832,10 +4942,25 @@ function initSidebar() {
 
 document.getElementById("drawerClose").onclick = closeDrawer;
 document.getElementById("drawerMask").onclick = closeDrawer;
+document.getElementById("aiBtn").onclick = function(){ openAICopilot("desk"); };
+document.getElementById("aiCopilotMask").onclick = closeAICopilot;
+document.getElementById("acpClose").onclick = closeAICopilot;
+document.getElementById("acpConfig").onclick = function(){ closeAICopilot(); switchView("ai"); };
+document.getElementById("acpSend").onclick = function(){
+  var input = document.getElementById("acpInput");
+  if (input) aiCopilotAsk(input.value);
+};
+document.getElementById("acpInput").addEventListener("keydown", function(e){
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    aiCopilotAsk(document.getElementById("acpInput").value);
+  }
+});
 document.addEventListener("keydown", function(e){
   if (e.key !== "Escape") return;
   var cm = document.getElementById("cmdkMask");
   if (cm && cm.classList.contains("show")) closeCommandPalette();
+  else if (document.getElementById("aiCopilot").classList.contains("show")) closeAICopilot();
   else if (document.getElementById("reminderPop").classList.contains("show")) closeReminders();
   else if (document.getElementById("drawer").classList.contains("show")) closeDrawer();
 });
@@ -5564,6 +5689,171 @@ function aiStop(){
   if (aiState.controller) { try { aiState.controller.abort(); } catch(e){} }
   if (aiState.engine && aiState.engine.interruptGenerate) { try { aiState.engine.interruptGenerate(); } catch(e){} }
   aiSetStatus("已停止生成。", "");
+}
+
+/* ============ AI 副驾：流程内联建议，不跳页 ============ */
+var aiCopilotState = {
+  kind:"desk", docId:null, busy:false, output:"", status:"", statusCls:"", needConfig:false
+};
+var AI_COPILOT_QUICK = {
+  desk: [
+    {key:"priority", label:"先处理什么", prompt:"按当前工作台数据，告诉我今天先处理哪三件事，按优先级排，每一步给出具体动作；不要泛泛鼓励。"},
+    {key:"remind", label:"写群提醒", prompt:"根据当前台账与名单，写一段不点名、不催逼的班级群提醒，含缺哪几类、截止时间、提交入口。"},
+    {key:"check", label:"列缺项", prompt:"按当前台账列出还缺什么，按类别和状态归纳，标出没有佐证或口径不清的地方。"}
+  ],
+  doc: [
+    {key:"missing", label:"查缺项", prompt:"以当前选中的这条材料为准，检查它缺哪些字段、附件或佐证；只依据上下文，不编造。"},
+    {key:"reject", label:"驳回原因草稿", prompt:"如果这条材料需要退回补交，写一段具体、不指责人的驳回原因草稿，说明缺什么、怎么补。"},
+    {key:"name", label:"归档命名建议", prompt:"按“类别 / 学号-姓名 / 编号_材料名”的规则，给当前材料一个归档命名建议，并说明理由。"},
+    {key:"note", label:"情况说明", prompt:"围绕当前材料写一段给辅导员的情况说明：只写已知事实，缺什么单独列，不夸大进度。"}
+  ]
+};
+function aiCopilotDoc(docId){
+  return docId == null ? null : findDoc(docId);
+}
+function aiCopilotQuickDefs(kind, docId){
+  var list = AI_COPILOT_QUICK[kind] || AI_COPILOT_QUICK.desk;
+  return list.slice();
+}
+function aiCopilotContext(kind, docId){
+  var d = aiCopilotDoc(docId);
+  var base = aiBuildContext();
+  if (kind === "doc" && d) {
+    var atts = (d.attachments || []).map(function(a){ return a.name || "未命名"; }).join("、") || d.file || "无附件";
+    var docCtx = "【当前选中材料】\n编号：" + (d.code || "无") +
+      "\n名称：" + (d.name || "未命名") +
+      "\n类别：" + (d.cat || "未分类") +
+      "\n提交人：" + (d.who || "未填") + "（" + (d.sid || "无学号") + "）" +
+      "\n状态：" + (d.status || "未知") +
+      "\n提交时间：" + (d.time || "未记录") +
+      "\n附件：" + atts +
+      "\n说明：" + (d.note || "无") +
+      (d.reason ? "\n审核备注：" + d.reason : "");
+    return docCtx + (base ? "\n\n" + base : "");
+  }
+  return "【当前页面】工作台概览" + (base ? "\n" + base : "\n（未选择台账上下文）");
+}
+function aiCopilotContextLabel(){
+  if (aiCopilotState.kind === "doc") {
+    var d = aiCopilotDoc(aiCopilotState.docId);
+    return d ? "当前材料 · " + (d.name || "未命名") : "当前材料";
+  }
+  return "当前工作台 · 待审 / 名单 / 任务";
+}
+function aiCopilotPaint(){
+  var out = document.getElementById("acpOutput");
+  var st = document.getElementById("acpStatus");
+  if (out) {
+    if (aiCopilotState.output) {
+      out.innerHTML = esc(aiCopilotState.output).replace(/\n/g, "<br>");
+    } else if (aiCopilotState.busy) {
+      out.innerHTML = '<span class="acp-empty">正在生成建议…</span>';
+    } else {
+      out.innerHTML = '<div class="acp-guide">' +
+        '<div><b>查缺项</b><span>字段、附件、佐证，按当前材料说清缺什么</span></div>' +
+        '<div><b>写草稿</b><span>驳回原因、催交提醒、情况说明，发出前你自己核对</span></div>' +
+        '<div><b>不改账</b><span>只读上下文，不自动改状态、不归档、不发消息</span></div>' +
+        '</div>';
+    }
+    if (aiCopilotState.needConfig) {
+      out.innerHTML += '<div class="acp-action"><button class="btn mini" type="button" data-acp-config>去完整助手填 Key</button></div>';
+    }
+  }
+  if (st) {
+    st.textContent = aiCopilotState.status || "";
+    st.className = "acp-status" + (aiCopilotState.statusCls ? " " + aiCopilotState.statusCls : "");
+  }
+  document.querySelectorAll("[data-acp-config]").forEach(function(b){
+    b.onclick = function(){ closeAICopilot(); switchView("ai"); };
+  });
+}
+function aiCopilotRender(){
+  var quick = document.getElementById("acpQuick");
+  var ctx = document.getElementById("acpContext");
+  var sub = document.getElementById("acpSub");
+  if (sub) sub.textContent = aiState.provider === "api"
+    ? "API 模式：选中的只读上下文会发到你填的接口；只给建议，不改台账、不发消息。"
+    : "只读上下文，只给建议；不改台账、不发消息。默认本地模型，首次运行会下载权重。";
+  if (ctx) ctx.textContent = aiCopilotContextLabel();
+  if (quick) {
+    quick.innerHTML = aiCopilotQuickDefs(aiCopilotState.kind, aiCopilotState.docId).map(function(q){
+      return '<button type="button" data-acp-quick="' + esc(q.key) + '">' + esc(q.label) + "</button>";
+    }).join("");
+    quick.querySelectorAll("[data-acp-quick]").forEach(function(b){
+      b.onclick = function(){
+        var defs = aiCopilotQuickDefs(aiCopilotState.kind, aiCopilotState.docId);
+        var hit = defs.filter(function(x){ return x.key === b.dataset.acpQuick; })[0];
+        if (hit) aiCopilotAsk(hit.prompt);
+      };
+    });
+  }
+  aiCopilotPaint();
+}
+function openAICopilot(kind, docId, autoKey){
+  aiCopilotState.kind = kind === "doc" ? "doc" : "desk";
+  aiCopilotState.docId = aiCopilotState.kind === "doc" ? docId : null;
+  aiCopilotState.output = "";
+  aiCopilotState.status = "";
+  aiCopilotState.statusCls = "";
+  aiCopilotState.needConfig = false;
+  closeDrawer();
+  document.getElementById("aiCopilot").classList.add("show");
+  document.getElementById("aiCopilotMask").classList.add("show");
+  aiCopilotRender();
+  var input = document.getElementById("acpInput");
+  if (input) input.value = "";
+  if (autoKey) {
+    var defs = aiCopilotQuickDefs(aiCopilotState.kind, aiCopilotState.docId);
+    var hit = defs.filter(function(x){ return x.key === autoKey; })[0];
+    if (hit) aiCopilotAsk(hit.prompt);
+  }
+}
+function closeAICopilot(){
+  document.getElementById("aiCopilot").classList.remove("show");
+  document.getElementById("aiCopilotMask").classList.remove("show");
+}
+function aiCopilotAsk(prompt){
+  prompt = clean(prompt);
+  if (!prompt) { aiCopilotState.status = "先写一句你要它做什么。"; aiCopilotState.statusCls = "err"; aiCopilotPaint(); return; }
+  if (aiCopilotState.busy) return;
+  if (aiState.provider === "api" && !clean(aiState.apiKey)) {
+    aiCopilotState.status = "API 模式还没填 Key；先去完整助手填写，或切到本地模型。";
+    aiCopilotState.statusCls = "err";
+    aiCopilotState.needConfig = true;
+    aiCopilotPaint();
+    return;
+  }
+  aiCopilotState.busy = true;
+  aiCopilotState.output = "";
+  aiCopilotState.status = aiState.provider === "local" ? "本地模型生成中…" : "调用 API 生成中…";
+  aiCopilotState.statusCls = "busy";
+  aiCopilotState.needConfig = false;
+  aiCopilotPaint();
+  var context = aiCopilotContext(aiCopilotState.kind, aiCopilotState.docId);
+  var messages = [
+    {role:"system", content:aiSystemPrompt() + "\n\n以下是当前工作台的只读上下文：\n" + context},
+    {role:"user", content:prompt}
+  ];
+  aiState.stopFlag = false;
+  var runner = aiState.provider === "local" ? aiLocalChat : aiApiChat;
+  Promise.resolve().then(function(){ return runner(messages, function(delta){
+    aiCopilotState.output += delta;
+    aiCopilotPaint();
+  }); }).then(function(){
+    if (!aiCopilotState.output) aiCopilotState.output = "（没有返回内容。可以换个问法，或检查模型/接口是否正常。）";
+    aiCopilotState.busy = false;
+    aiCopilotState.status = "生成完成；只是草稿，发出前自己核对。";
+    aiCopilotState.statusCls = "";
+    aiCopilotPaint();
+    try { addLog("AI 建议", prompt.slice(0, 40), roleLabel(), aiState.provider === "local" ? "本地模型" : "API"); } catch(e){}
+  }).catch(function(e){
+    var info = aiErrorInfo(e);
+    aiCopilotState.busy = false;
+    aiCopilotState.needConfig = /Key|API 模式/.test(info.what || "") || (e && e.status === 401);
+    aiCopilotState.status = "生成失败：" + info.what;
+    aiCopilotState.statusCls = "err";
+    aiCopilotPaint();
+  });
 }
 function aiSend(){
   if (aiState.busy) return;
