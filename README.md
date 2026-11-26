@@ -2,7 +2,7 @@
 
 > 面向班级学委 / 辅导员的**离线优先**材料工作台：把材料从提交、审核、归档到留痕的流程收拢在一个本地程序里闭环。
 >
-> 当前版本：**网页版 v0.27.0 · 桌面端 v0.27.0（静默版）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
+> 当前版本：**网页版 v0.27.0 · 桌面端 v0.27.1（轻装版）** ｜ 运行环境：Python 3 + Tkinter + Pillow（EXE 已内置）｜ 协议：MIT（占位，可更换）
 
 ## 一、项目简介
 
@@ -116,9 +116,13 @@ class-console/
 
 ### 下载现成程序（Windows）
 
-前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.27.0)
-下载附件 `class-console-v0.27.0.exe`，双击即可独立运行，无需安装 Python；数据保存在本机，离线可用。
-SHA256：`58B05926E677A0F7A2B56DF2BBE6F921F87A67BC5BF334E7C71C1D171F04B559`（32,356,277 字节）。
+前往 [Releases 页面](https://github.com/MedianiGray/class-console/releases/tag/v0.27.1) 选包：
+
+- **推荐**：`class-console-v0.27.1-portable.zip`，解压一次，之后双击 `班级操作台.exe`；同机已有数据约 2 秒进主窗口，先出加载页约 0.6 秒。
+- **备选**：`class-console-v0.27.1.exe`，单文件免解压，适合 U 盘带走；每次启动约 4–7 秒。
+
+便携包 SHA256：`4740BCAD46FAE30E46F19C47A2A69EFDD95AB6FAFEC9357A7512EE43D644CB1D`（32,991,282 字节）。
+单文件 SHA256：`1191ADBBD353D54FF78F8FA6BC148158C0B057486E8FE385ABA2CB3DC7D81BC1`（32,359,493 字节）。
 安装、SmartScreen、首启、数据位置、迁移与卸载见 [`docs/安装与首启说明.md`](docs/安装与首启说明.md)。
 
 ### 浏览器本地缓存版

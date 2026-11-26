@@ -6,6 +6,8 @@
 """
 
 import sys
+import os
+import time
 import ctypes
 import traceback
 import datetime
@@ -19,6 +21,51 @@ import theme
 from version import VERSION, VERSION_LABEL
 
 CRASH_LOG_NAME = "crash.log"
+_TRACE_FILE = os.environ.get("CC_STARTUP_TRACE")
+_TRACE_T0 = time.perf_counter()
+
+
+def _trace(label):
+    """仅当设置 CC_STARTUP_TRACE 时记录启动分段，正常启动不写文件。"""
+    if not _TRACE_FILE:
+        return
+    try:
+        with open(_TRACE_FILE, "a", encoding="utf-8") as f:
+            f.write("%.0f\t%s\n" % ((time.perf_counter() - _TRACE_T0) * 1000, label))
+    except OSError:
+        pass
+
+
+def _show_loading_shell(root):
+    """在数据与界面构建期间先画出一块品牌占位，避免双击后长时间无反馈。"""
+    root.configure(bg="#EDF0F5")
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    win_w = min(1220, max(960, sw - 80))
+    win_h = min(860, max(620, sh - 70))
+    root.geometry("%dx%d+%d+%d" % (win_w, win_h,
+                                   max(0, (sw - win_w) // 2),
+                                   max(0, (sh - win_h) // 3)))
+    card = tk.Frame(root, bg="#FFFFFF", highlightthickness=1,
+                    highlightbackground="#DDE3EC")
+    card.place(relx=0.5, rely=0.5, anchor="center", width=584, height=304)
+    tk.Label(card, text="CC", bg="#3A58D8", fg="#FFFFFF",
+             font=(theme.FONT, 22, "bold"), width=3, height=1).place(x=28, y=36)
+    tk.Label(card, text="班级操作台", bg="#FFFFFF", fg="#131A24",
+             font=(theme.FONT, 24, "bold")).place(x=116, y=30)
+    tk.Label(card, text="v%s · %s" % (VERSION, VERSION_LABEL),
+             bg="#FFFFFF", fg="#5E6976", font=(theme.FONT, 10)).place(x=118, y=74)
+    tk.Frame(card, bg="#E8EDF5", height=1, width=528).place(x=28, y=124)
+    tk.Label(card, text="正在打开本地工作台…", bg="#FFFFFF", fg="#33404F",
+             font=(theme.FONT, 11)).place(x=28, y=152)
+    tk.Label(card, text="材料、名单、任务都在这台电脑上，不联网。",
+             bg="#FFFFFF", fg="#5E6976", font=(theme.FONT, 9)).place(x=28, y=184)
+    tk.Label(card, text="首次启动会建库，请稍候", bg="#FFFFFF", fg="#8894A3",
+             font=(theme.FONT, 9)).place(x=28, y=246)
+    root.update_idletasks()
+    root.update()
+    _trace("loading-shell-painted")
+    return card
+
 
 
 def crash_log_path():
@@ -136,17 +183,20 @@ def center_window(root, w, h):
 
 
 def main():
+    _trace("main-enter")
     enable_dpi_awareness()
     theme.init_from_settings()
     root = tk.Tk()
-    root.title("班级操作台 · v%s %s" % (VERSION, VERSION_LABEL))
+    root.title("班级操作台 · 正在打开…")
     _install_error_logger(root)
     try:
-        root.configure(bg=theme.C["bg"])
-        theme.apply_tk_defaults(root)
-        theme.setup_ttk(root)
+        loading = _show_loading_shell(root)
         repo = build_repository()
+        _trace("repository-ready")
         MainWindow(root, repo)
+        _trace("main-window-built")
+        loading.destroy()
+        root.title("班级操作台 · v%s %s" % (VERSION, VERSION_LABEL))
         issue = getattr(database, "LAST_STARTUP_ISSUE", None)
         if issue:
             root.after(120, lambda: _show_startup_issue(root, issue))
@@ -154,6 +204,7 @@ def main():
         center_window(root, min(1220, max(960, sw - 80)),
                       min(860, max(620, sh - 70)))
         root.minsize(960, 640)
+        root.after(20, lambda: _trace("main-window-painted"))
         root.mainloop()
     except Exception as e:
         path = record_crash(type(e), e, e.__traceback__)

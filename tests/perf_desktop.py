@@ -214,14 +214,26 @@ def prepare_appdata(label):
     return appdata, round((time.perf_counter() - t0) * 1000, 1)
 
 
-def measure_startup(label, command, runs=3):
+def window_width(hwnd):
+    if os.name != "nt":
+        return 0
+    rect = wt.RECT()
+    if not ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return 0
+    return int(rect.right - rect.left)
+
+
+def measure_startup(label, command, runs=3, prepare=True):
     results = []
     if os.name != "nt":
         return {"label": label, "skipped": "非 Windows", "runs": []}
     for index in range(1, runs + 1):
         # 先建好空库，启动计时只覆盖“已有数据 → 主窗口”，
         # 首次建库另记 prepareMs，避免把一次性初始化混进冷启动。
-        appdata, prep_ms = prepare_appdata(label)
+        if prepare:
+            appdata, prep_ms = prepare_appdata(label)
+        else:
+            appdata, prep_ms = Path(tempfile.mkdtemp(prefix="cc-perf-clean-")), 0
         env = dict(os.environ, APPDATA=str(appdata))
         before = {item[0] for item in all_windows()}
         t0 = time.perf_counter()
@@ -230,7 +242,9 @@ def measure_startup(label, command, runs=3):
         found = None
         while time.perf_counter() - t0 < 30:
             for hwnd, title, pid in all_windows():
-                if hwnd not in before and "班级操作台" in title:
+                if (hwnd not in before and "班级操作台" in title
+                        and "正在打开" not in title
+                        and window_width(hwnd) >= 900):
                     found = (hwnd, title, pid)
                     break
             if found:
