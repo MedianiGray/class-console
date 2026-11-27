@@ -46,6 +46,7 @@ VIEWS = {
     "docs": ("ui_docs", "DocsView"),
     "files": ("ui_files", "FileRoomView"),
     "collect": ("ui_collect", "CollectView"),
+    "hub": ("ui_hub", "HubView"),
     "roster": ("ui_roster", "RosterView"),
     "tasks": ("ui_tasks", "TasksView"),
     "service": ("ui_service", "ServiceView"),
@@ -92,12 +93,14 @@ class MainWindow(ttk.Frame):
         ("roster", "名单核对", "roster:manage", "◎", "crew"),
         ("tasks", "任务跟踪", "task:manage", "◷", "crew"),
         ("service", "服务留痕", "logs:view", "♡", "crew"),
+        ("hub", "能力中心", None, "◇", "aux"),
         ("collect", "文件夹收集", "docs:collect", "▣", "aux"),
         ("logs", "操作日志", "logs:view", "≡", "aux"),
     ]
     NAV_SHORT = {"dashboard": "概览", "docs": "台账", "files": "文件",
                  "collect": "收集", "roster": "名单", "tasks": "任务",
-                 "submit": "提交", "service": "服务", "logs": "日志"}
+                 "submit": "提交", "service": "服务", "logs": "日志",
+                 "hub": "中心"}
     GROUPS = [("flow", "办理材料"), ("crew", "跟进核对")]
     MORE_GROUP = "aux"
 
@@ -640,18 +643,6 @@ class MainWindow(ttk.Frame):
         self.cmdk = ui_cmdk.open_palette(self)
         return "break"
 
-    def _open_more(self):
-        old = getattr(self, "more_dialog", None)
-        if old is not None:
-            try:
-                if old.top.winfo_exists():
-                    old.close()
-            except Exception:
-                pass
-        import ui_more
-        self.more_dialog = ui_more.open_more(self)
-        return self.more_dialog
-
     def _sync_role_hint(self):
         meta = ROLES.get(self.role, ROLES["handler"])
         try:
@@ -684,8 +675,10 @@ class MainWindow(ttk.Frame):
         self._build_nav()
 
     def more_items(self):
+        """能力中心页要用的低频项；不含「能力中心」自身。"""
         items = [it for it in self.NAV
-                 if it[4] == self.MORE_GROUP and self._nav_visible(it[0])]
+                 if it[4] == self.MORE_GROUP and it[0] != "hub"
+                 and self._nav_visible(it[0])]
         if self.can("docs:collect"):
             items.append(("ai", "AI 建议", "docs:collect", "✦", self.MORE_GROUP))
         return items
@@ -706,7 +699,8 @@ class MainWindow(ttk.Frame):
             self._nav_row(first)
 
         for gkey, glabel in self.GROUPS:
-            items = [it for it in self.NAV if it[4] == gkey and self._nav_visible(it[0])]
+            items = [it for it in self.NAV
+                     if it[4] == gkey and self._nav_visible(it[0])]
             if not items:
                 continue
             closed = gkey in self._closed_groups
@@ -726,41 +720,14 @@ class MainWindow(ttk.Frame):
                 continue
             for item in items:
                 self._nav_row(item)
-        self._build_more_row()
-        self._paint_nav_active()
 
-    def _build_more_row(self):
-        """低频入口合成一行；折叠时只留三点，不显示数量。"""
-        items = self.more_items()
-        if not items:
-            return
-        if not self.collapsed:
-            head = tk.Frame(self.nav_box, bg=C["sidebar"])
-            head.pack(fill="x", pady=(14, 4))
-            tk.Label(head, text="更多", bg=C["sidebar"], fg=C["sub"],
-                     font=(FONT, 9), anchor="w").pack(side="left", padx=(8, 0))
-            self.more_group_head = head
-        else:
-            tk.Frame(self.nav_box, bg=C["line"], height=1).pack(
-                fill="x", padx=6, pady=(10, 5))
-        row = tk.Frame(self.nav_box, bg=C["sidebar"])
-        row.pack(fill="x", pady=1)
-        bar = tk.Frame(row, bg=C["sidebar"], width=3)
-        bar.pack(side="left", fill="y")
-        text = "···" if self.collapsed else "···   更多功能"
-        btn = tk.Label(row, text=text, bg=C["sidebar"], fg=C["muted"],
-                       anchor="center" if self.collapsed else "w",
-                       padx=0 if self.collapsed else 9,
-                       pady=6, cursor="hand2",
-                       font=(FONT, 11 if self.collapsed else 10))
-        btn.pack(side="left", fill="x", expand=True)
-        btn.bind("<Button-1>", lambda e: self._open_more())
-        if not self.collapsed:
-            self.more_count = tk.Label(row, text=str(len(items)), bg=C["sidebar"],
-                                       fg=C["sub"], font=(FONT, 8), padx=6)
-            self.more_count.pack(side="right", padx=(0, 8))
-        self.more_btn = btn
-        self.more_bar = bar
+        # 能力中心：主流程之外的固定落点，一级入口，不再用「更多」折叠
+        hub = next((it for it in self.NAV if it[0] == "hub"), None)
+        if hub is not None and self._nav_visible("hub"):
+            if not self.collapsed:
+                tk.Frame(self.nav_box, bg=C["sidebar"], height=8).pack(fill="x")
+            self._nav_row(hub)
+        self._paint_nav_active()
 
     def _paint_nav_active(self):
         for k, (btn, _row, bar) in self.nav_items.items():
@@ -768,14 +735,6 @@ class MainWindow(ttk.Frame):
             btn.config(bg=C["sidebar_active"] if active else C["sidebar"],
                        fg=C["primary"] if active else C["muted"])
             bar.config(bg=C["primary"] if active else C["sidebar"])
-        if self.more_btn is not None:
-            more_active = self.current in [it[0] for it in self.more_items()]
-            self.more_btn.config(bg=C["sidebar_active"] if more_active else C["sidebar"],
-                                 fg=C["primary"] if more_active else C["muted"])
-            self.more_bar.config(bg=C["primary"] if more_active else C["sidebar"])
-            if self.more_count is not None:
-                self.more_count.config(bg=C["sidebar_active"] if more_active else C["sidebar"],
-                                       fg=C["primary"] if more_active else C["sub"])
 
     def _nav_row(self, item):
         key, label, _perm, icon, _g = item
@@ -1019,7 +978,7 @@ class MainWindow(ttk.Frame):
     def _nav_eyebrow(self, key):
         group = next((g for k, _l, _p, _i, g in self.NAV if k == key), None)
         glabel = dict(self.GROUPS).get(
-            group, "更多" if group == self.MORE_GROUP else "总览")
+            group, "能力中心" if group == self.MORE_GROUP else "总览")
         return "工作台 · %s" % glabel
 
     def switch(self, key):

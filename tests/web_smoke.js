@@ -547,18 +547,29 @@ assert("概览不再铺类别分布卡", dashHtml.indexOf("b-cat") < 0);
 assert("首屏三个问题入口", (dashHtml.match(/class="b-brief-item"/g) || []).length === 3);
 assert("首屏只留一个实心主按钮", (dashHtml.match(/class="btn primary"/g) || []).length === 1);
 
-// 更多功能：辅助项收口、分类、按权限收敛
+// 能力中心：一级入口、两类分组、权限置灰、旧「更多」不再承载入口
 sandbox.state.role = "handler";
-assert("更多入口分组为更多", sandbox.NAV_GROUPS[2].label === "更多");
-assert("更多功能收纳三项辅助", sandbox.moreItems().length === 3);
-assert("更多功能按两类分组", sandbox.moreMenuSections().length === 2);
-assert("智能辅助只含 AI", sandbox.moreMenuSections()[0].items.length === 1 && sandbox.moreMenuSections()[0].items[0].key === "ai");
-assert("文件与留痕含收集与日志", sandbox.moreMenuSections()[1].items.length === 2);
-const moreHtml = sandbox.moreMenuHtml();
-assert("更多菜单不混入主流程", moreHtml.indexOf("智能辅助") >= 0 && moreHtml.indexOf("文件与留痕") >= 0 && moreHtml.indexOf("工作台概览") < 0);
+assert("能力中心分组独立无标题", sandbox.NAV_GROUPS[2].key === "hub" && sandbox.NAV_GROUPS[2].label === "");
+assert("侧栏含能力中心一级项", sandbox.NAV.some(n => n.key === "hub" && n.group === "hub"));
+assert("收集与日志归入能力中心", ["collect", "logs"].every(k => {
+  const it = sandbox.NAV.find(n => n.key === k); return it && it.group === "hub";
+}));
+assert("更多分组不再承载入口", !sandbox.NAV.some(n => n.group === "aux"));
+assert("能力中心分两组", sandbox.HUB_SECTIONS.length === 2);
+sandbox.state.current = "hub";
+sandbox.renderHub();
+const hubHtml = els["view-hub"].innerHTML;
+assert("能力中心渲染两组标题", hubHtml.indexOf("智能辅助") >= 0 && hubHtml.indexOf("文件与留痕") >= 0);
+assert("能力中心含备份卡与导出", hubHtml.indexOf("备份与恢复") >= 0 && hubHtml.indexOf("导出备份") >= 0);
+assert("能力中心无主流程按钮", hubHtml.indexOf("提交材料") < 0 && hubHtml.indexOf("工作台概览") < 0);
 sandbox.state.role = "applicant";
-assert("申请人更多入口只留 AI", sandbox.moreItems().length === 1 && sandbox.moreMenuSections().length === 1);
+sandbox.renderHub();
+const hubApplicant = els["view-hub"].innerHTML;
+assert("申请人可进能力中心", sandbox.navVisible(sandbox.NAV.find(n => n.key === "hub")));
+assert("申请人看到置灰卡片", hubApplicant.indexOf("当前岗位不可用") >= 0);
+assert("申请人看不到备份导出", hubApplicant.indexOf("导出备份") < 0);
 sandbox.state.role = "handler";
+sandbox.renderHub();
 
 // 首次引导：示例数据不计进度、三步卡可收起、可从更多重看
 sandbox.state.applicantSid = "";
@@ -579,7 +590,9 @@ assert("首导卡可清示例", frHtml.indexOf("data-demo-clear") >= 0);
 sandbox.firstRun.dismissed = true;
 assert("收起后不再渲染首导", sandbox.firstRunHtml() === "");
 sandbox.firstRun.dismissed = false;
-assert("更多菜单带使用帮助", moreHtml.indexOf("data-more-help") >= 0 && moreHtml.indexOf("使用帮助") >= 0);
+sandbox.state.role = "handler";
+sandbox.renderHub();
+assert("能力中心页脚带使用帮助", els["view-hub"].innerHTML.indexOf("data-hub-help") >= 0 && els["view-hub"].innerHTML.indexOf("使用帮助") >= 0);
 
 // 真实材料与归档才算完成；申请人只看本人步骤
 sandbox.store.docs.push({id:99, name:"真实材料", status:"已归档", sid:"250201", demo:false});

@@ -1,4 +1,4 @@
-﻿const CACHE = 'cc-web-v0271-shell-v1';
+﻿const CACHE = 'cc-web-v0280-shell-v1';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {

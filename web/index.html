@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>班级材料操作台 · 浏览器本地版 v0.27.1</title>
+<title>班级材料操作台 · 浏览器本地版 v0.28.0</title>
 <style>
   :root{
     color-scheme:light;
@@ -292,13 +292,39 @@
   .nav button.nav-aux{color:var(--sub);font-size:13px}
   .nav button.nav-aux .ico{opacity:.65}
   .nav button.nav-aux:hover:not(.active){color:var(--text)}
-  .nav button.nav-more{color:var(--sub);font-size:13px}
-  .nav button.nav-more .ico{opacity:.65}
-  .nav button.nav-more .more-count{margin-left:auto;min-width:18px;height:18px;border-radius:999px;
-    background:var(--bg-soft);color:var(--sub);font-size:10px;font-weight:600;
-    display:flex;align-items:center;justify-content:center;padding:0 5px}
-  .nav button.nav-more.active .more-count{background:var(--primary);color:#fff}
-  .sidebar.collapsed .nav button.nav-more .more-count{display:none}
+
+  /* v1.1 能力中心：主流程之外的低频入口，集中一页 */
+  .hub-sec{margin:0 0 20px}
+  .hub-sec-h{display:flex;align-items:baseline;gap:10px}
+  .hub-sec-h h3{font-size:14px;font-weight:600;margin:0}
+  .hub-sec-d{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
+  .hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:12px}
+  .hub-card{display:flex;flex-direction:column;gap:8px;text-align:left;background:var(--card);
+    border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;cursor:pointer;
+    transition:border-color .15s,background .15s}
+  .hub-card:hover{border-color:var(--line-strong);background:var(--bg-soft)}
+  .hub-card.off{opacity:.62;cursor:not-allowed}
+  .hub-card.off:hover{border-color:var(--line);background:var(--card)}
+  .hub-card .hc-top{display:flex;align-items:center;gap:10px}
+  .hub-card .hc-ico{width:30px;height:30px;border-radius:8px;background:var(--primary-soft);
+    color:var(--primary);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .hub-card .hc-ico svg{width:16px;height:16px}
+  .hub-card .hc-t{font-size:13.5px;font-weight:600;color:var(--text)}
+  .hub-card .hc-badge{margin-left:auto;font-size:10.5px;color:var(--sub);background:var(--bg-soft);
+    border:1px solid var(--line);border-radius:999px;padding:2px 8px;flex-shrink:0}
+  .hub-card .hc-s{font-size:12.5px;color:var(--muted);line-height:1.55}
+  .hub-card .hc-act{display:flex;gap:8px;margin-top:2px}
+  .hub-card .hc-act .btn{min-height:28px;padding:0 12px;font-size:12px}
+  .hub-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    font-size:12px;color:var(--sub);border-top:1px dashed var(--line);padding-top:10px}
+  .hub-foot button{border:0;background:transparent;color:var(--primary);font-size:12px;
+    font-weight:500;cursor:pointer;padding:0}
+  .hub-bar{display:flex;align-items:center;gap:10px;margin:2px 0 4px}
+  .hub-bar input{flex:0 1 300px;height:34px;border:1px solid var(--line);border-radius:8px;
+    background:var(--card);color:var(--text);font-size:13px;padding:0 12px;outline:none}
+  .hub-bar input:focus{border-color:var(--primary)}
+  .hub-empty{border:1px dashed var(--line);border-radius:10px;padding:26px 20px;color:var(--muted);
+    font-size:12.5px;text-align:center}
 
   /* 首屏下一步行动条：全页唯一强调带 */
   .action-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;
@@ -549,26 +575,6 @@
   .modal .body .kv{display:grid;grid-template-columns:86px 1fr;gap:6px 12px;padding:4px 0}
   .modal .body .kv .k{color:var(--muted)}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
-  .more-intro{font-size:12.5px;line-height:1.6;color:var(--muted);margin:-2px 0 2px}
-  .more-sec{margin-top:16px}
-  .more-sec-h{font-size:11.5px;font-weight:600;color:var(--sub);letter-spacing:.04em;margin:0 0 3px}
-  .more-sec-d{font-size:11.5px;color:var(--muted);margin:0 0 8px}
-  .more-list{display:flex;flex-direction:column;gap:8px}
-  .more-item{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--line);
-    border-radius:10px;background:var(--card-soft);cursor:pointer;text-align:left;color:var(--text)}
-  .more-item:hover{border-color:var(--line-strong);background:var(--bg-soft)}
-  .more-item .mi-ico{width:30px;height:30px;border-radius:8px;background:var(--primary-soft);color:var(--primary);
-    display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .more-item .mi-ico svg{width:16px;height:16px}
-  .more-item .mi-t{display:block;font-size:13px;font-weight:600;line-height:1.3}
-  .more-item .mi-s{display:block;font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:1px}
-  .more-item .mi-badge{margin-left:auto;font-size:10px;font-weight:600;color:var(--sub);
-    background:var(--bg-soft);border-radius:999px;padding:2px 7px;white-space:nowrap}
-  .more-help{display:flex;align-items:center;justify-content:space-between;gap:12px;
-    border-top:1px solid var(--line);margin-top:16px;padding-top:12px}
-  .more-help button{border:0;background:transparent;color:var(--primary);font-size:12.5px;
-    font-weight:500;cursor:pointer;padding:0}
-  .more-help span{font-size:11.5px;color:var(--muted)}
 
   /* 详情抽屉 */
   .drawer-mask{position:fixed;inset:0;background:rgba(31,41,55,.32);opacity:0;pointer-events:none;
@@ -1216,6 +1222,7 @@
       <section class="view" id="view-tasks"></section>
       <section class="view" id="view-submit"></section>
       <section class="view" id="view-templates"></section>
+      <section class="view" id="view-hub"></section>
       <section class="view" id="view-collect"></section>
       <section class="view" id="view-ai"></section>
       <section class="view" id="view-logs"></section>
@@ -1324,7 +1331,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.27.1";
+var WEB_VERSION = "0.28.0";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -1562,7 +1569,7 @@ function firstRunHtml(){
     : "";
   return '<div class="first-run">' +
     '<div class="fr-head"><div><div class="fr-title">三步上手</div>' +
-      '<div class="fr-sub">不弹欢迎页。完成一次提交 → 审核 → 归档，这张卡会自动收起，之后可在「更多 → 使用帮助」重看。</div></div>' +
+      '<div class="fr-sub">不弹欢迎页。完成一次提交 → 审核 → 归档，这张卡会自动收起，之后可在「能力中心 → 使用帮助」重看。</div></div>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0">' +
         '<span class="fr-count">' + doneCount + ' / 3</span>' +
         '<button class="fr-dismiss" type="button" data-first-run-dismiss>收起</button>' +
@@ -1581,7 +1588,7 @@ function maybeCompleteFirstRun(){
   if (!p.done) return;
   firstRun.dismissed = true;
   saveFirstRunPref();
-  toast("上手完成，步骤已收进「更多 → 使用帮助」");
+  toast("上手完成，步骤已收进「能力中心 → 使用帮助」");
 }
 function initFirstRun(){
   if (firstRun.seen || firstRun.dismissed) return;
@@ -2290,7 +2297,7 @@ var ICONS = {
 var NAV_GROUPS = [
   {key:"main",   label:"办理材料"},
   {key:"follow", label:"跟进核对"},
-  {key:"aux",    label:"更多"}
+  {key:"hub",    label:""}
 ];
 var NAV = [
   {key:"dashboard", title:"工作台概览", ico:"dashboard", group:"main"},
@@ -2299,13 +2306,10 @@ var NAV = [
   {key:"roster",    title:"名单核对",   ico:"roster",    perm:"roster:manage", group:"follow"},
   {key:"tasks",     title:"任务跟踪",   ico:"tasks",      perm:"task:manage", group:"follow"},
   {key:"templates", title:"材料模板",   ico:"sliders",    perm:"template:config", group:"follow"},
-  {key:"ai",        title:"AI 助手",    ico:"spark",      group:"aux", tier:"aux", moreSection:"smart",  moreTag:"进阶"},
-  {key:"collect",   title:"文件夹收集", ico:"folder",    perm:"docs:collect", group:"aux", tier:"aux", moreSection:"files", moreTag:"本地"},
-  {key:"logs",      title:"操作日志",   ico:"logs",      perm:"logs:view",   group:"aux", tier:"aux", moreSection:"files", moreTag:"留痕"}
-];
-var MORE_SECTIONS = [
-  {key:"smart", title:"智能辅助", desc:"读上下文、出草稿，只给建议，不替你执行"},
-  {key:"files", title:"文件与留痕", desc:"目录比对与操作记录，低频但可追溯"}
+  {key:"hub",       title:"能力中心",   ico:"more",      group:"hub"},
+  {key:"ai",        title:"AI 助手",    ico:"spark",      group:"hub", tier:"aux", moreSection:"smart",  moreTag:"进阶"},
+  {key:"collect",   title:"文件夹收集", ico:"folder",    perm:"docs:collect", group:"hub", tier:"aux", moreSection:"files", moreTag:"本地"},
+  {key:"logs",      title:"操作日志",   ico:"logs",      perm:"logs:view",   group:"hub", tier:"aux", moreSection:"files", moreTag:"留痕"}
 ];
 
 /* ---- 岗位与权限点模型 ----
@@ -2436,73 +2440,140 @@ function renderStorageNotice() {
   el.hidden = false;
 }
 
-/* ============ 导航与全局刷新 ============ */
-function moreItems(){
-  return NAV.filter(function(n){ return n.group === "aux" && navVisible(n); });
+/* ============ 能力中心（v1.1 单开模块） ============ */
+var HUB_SECTIONS = [
+  {key:"smart", title:"智能辅助", desc:"读上下文、出草稿，只给建议，不替你执行"},
+  {key:"files", title:"文件与留痕", desc:"目录比对、操作记录与备份，低频但可追溯"}
+];
+var HUB_SUB = {
+  ai:      "本地模型或自有 API；先给上下文，再给可执行建议",
+  collect: "比对目录变化，勾选后登记入账",
+  logs:    "提交、审核与导入导出的本机记录"
+};
+function hubCardHtml(n){
+  var off = !navVisible(n);
+  var badge = off ? "当前岗位不可用" : (n.moreTag || "按需");
+  var sub = HUB_SUB[n.key] || (VIEW_META[n.key] && VIEW_META[n.key].sub) || "按需打开";
+  return '<button type="button" class="hub-card' + (off ? " off" : "") + '" data-hub-key="' + esc(n.key) + '" data-k="' + esc(n.title + " " + sub + " " + badge) + '">' +
+    '<span class="hc-top"><span class="hc-ico">' + (ICONS[n.ico] || "") + '</span>' +
+    '<span class="hc-t">' + esc(n.title) + '</span>' +
+    '<span class="hc-badge">' + esc(badge) + '</span></span>' +
+    '<span class="hc-s">' + esc(sub) + '</span>' +
+    '</button>';
 }
-function moreMenuSections(){
-  var all = moreItems();
-  return MORE_SECTIONS.map(function(sec){
-    return {
-      key: sec.key,
-      title: sec.title,
-      desc: sec.desc,
-      items: all.filter(function(n){ return n.moreSection === sec.key; })
-    };
-  }).filter(function(sec){ return sec.items.length > 0; });
+var hubQuery = "";
+function filterHub(){
+  var el = document.getElementById("view-hub");
+  if (!el) return;
+  var q = (hubQuery || "").trim().toLowerCase();
+  var cards = el.querySelectorAll(".hub-card");
+  var any = false;
+  for (var i = 0; i < cards.length; i++) {
+    var k = (cards[i].getAttribute("data-k") || "").toLowerCase();
+    var hit = !q || k.indexOf(q) >= 0;
+    cards[i].style.display = hit ? "" : "none";
+    if (hit) any = true;
+  }
+  var secs = el.querySelectorAll(".hub-sec");
+  for (var s = 0; s < secs.length; s++) {
+    var sc = secs[s].querySelectorAll(".hub-card");
+    var vis = false;
+    for (var j = 0; j < sc.length; j++) {
+      if (sc[j].style.display !== "none") { vis = true; break; }
+    }
+    secs[s].style.display = vis ? "" : "none";
+  }
+  var empty = document.getElementById("hubEmpty");
+  if (empty) empty.hidden = any;
 }
-function moreMenuHtml(){
-  var secs = moreMenuSections();
-  var help = '<div class="more-help"><button type="button" data-more-help>使用帮助</button>' +
-    '<span>三步上手，随时重看</span></div>';
-  if (!secs.length) return '<div class="more-intro">当前岗位没有可用的扩展工具。</div>' + help;
-  return '<div class="more-intro">主流程只保留办理与跟进；低频、进阶能力统一收在这里，按需打开，不占首屏。</div>' +
-    secs.map(function(sec){
-      return '<div class="more-sec"><div class="more-sec-h">' + esc(sec.title) + '</div>' +
-        '<div class="more-sec-d">' + esc(sec.desc) + '</div><div class="more-list">' +
-        sec.items.map(function(n){
-          var meta = VIEW_META[n.key] || {};
-          return '<button type="button" class="more-item" data-more-key="' + esc(n.key) + '">' +
-            '<span class="mi-ico">' + (ICONS[n.ico] || "") + '</span>' +
-            '<span><span class="mi-t">' + esc(n.title) + '</span>' +
-            '<span class="mi-s">' + esc(meta.sub || "按需打开") + '</span></span>' +
-            (n.moreTag ? '<span class="mi-badge">' + esc(n.moreTag) + '</span>' : "") +
-          '</button>';
-        }).join("") + '</div></div>';
-    }).join("") + help;
+function setHubQuery(v){
+  hubQuery = v || "";
+  filterHub();
 }
-function openMoreMenu(){
-  showModal("更多功能", moreMenuHtml(), [{label:"关闭", cls:"btn"}]);
-  var nodes = document.querySelectorAll("#modalBody [data-more-key]");
+function renderHub(){
+  var el = document.getElementById("view-hub");
+  if (!el) return;
+  var body = HUB_SECTIONS.map(function(sec){
+    var cards = NAV.filter(function(n){
+      return n.group === "hub" && n.moreSection === sec.key && n.key !== "hub";
+    }).map(hubCardHtml);
+    if (sec.key === "files") {
+      var canRestore = can("backup:restore");
+      var canBackup = can("logs:view");
+      if (!canBackup) {
+        cards.push('<div class="hub-card off" data-hub-key="backup" data-k="备份与恢复 备份 恢复 JSON 导出 导入 当前岗位不可用"><span class="hc-top">' +
+          '<span class="hc-ico">' + (ICONS.logs || "") + '</span>' +
+          '<span class="hc-t">备份与恢复</span>' +
+          '<span class="hc-badge">当前岗位不可用</span></span>' +
+          '<span class="hc-s">导出与导入都需要留痕权限；当前岗位看不到本机日志与备份。</span></div>');
+      } else {
+        cards.push('<div class="hub-card" data-k="备份与恢复 备份 恢复 JSON 导出 导入 留痕"><span class="hc-top">' +
+          '<span class="hc-ico">' + (ICONS.logs || "") + '</span>' +
+          '<span class="hc-t">备份与恢复</span>' +
+          '<span class="hc-badge">' + (canRestore ? "留痕" : "仅导出") + '</span></span>' +
+          '<span class="hc-s">导出 JSON 留底；' + (canRestore ? "导入前先看差异预览，可整份回滚。" : "导入需审核或汇总岗，当前只可导出。") + '</span>' +
+          '<span class="hc-act"><button type="button" class="btn" id="hubBackupExport">导出备份</button>' +
+          (canRestore ? '<button type="button" class="btn subtle" id="hubBackupImport">导入备份</button>' : "") +
+          '</span></div>');
+      }
+    }
+    return '<div class="hub-sec"><div class="hub-sec-h"><h3>' + esc(sec.title) + '</h3></div>' +
+      '<div class="hub-sec-d">' + esc(sec.desc) + '</div>' +
+      '<div class="hub-grid">' + cards.join("") + '</div></div>';
+  }).join("");
+  el.innerHTML = '<div class="hub-bar"><input id="hubQ" type="search" placeholder="在本页找能力，如 AI、日志、备份…" value="' + esc(hubQuery) + '"></div>' +
+    body +
+    '<div class="hub-empty" id="hubEmpty" hidden>没有匹配的能力。换个词，或清空搜索回到全部卡片。</div>' +
+    '<div class="hub-foot"><span>这里只负责找到并打开；提交、审核、归档等操作仍回到对应页面完成。</span>' +
+    '<button type="button" data-hub-help>使用帮助</button></div>' +
+    '<input type="file" id="hubImportFile" accept="application/json,.json" style="display:none">';
+
+  var nodes = el.querySelectorAll("[data-hub-key]");
   for (var i = 0; i < nodes.length; i++) {
     nodes[i].onclick = function(){
-      var key = this.getAttribute("data-more-key");
-      closeModal();
+      var key = this.getAttribute("data-hub-key");
+      if (this.classList.contains("off")) { toast("当前岗位无权访问该能力，换岗位或找管理员"); return; }
       switchView(key);
     };
   }
-  var help = document.querySelector("#modalBody [data-more-help]");
-  if (help) help.onclick = function(){ closeModal(); openFirstRunHelp(); };
+  var helpBtn = el.querySelector("[data-hub-help]");
+  if (helpBtn) helpBtn.onclick = openFirstRunHelp;
+  var exp = document.getElementById("hubBackupExport");
+  if (exp) exp.onclick = exportBackup;
+  var imp = document.getElementById("hubBackupImport");
+  var file = document.getElementById("hubImportFile");
+  if (imp && file) {
+    imp.onclick = function(){ file.click(); };
+    file.onchange = importBackup;
+  }
+  var q = document.getElementById("hubQ");
+  if (q) q.oninput = function(){ setHubQuery(this.value); };
+  filterHub();
 }
+
+/* ============ 导航与全局刷新 ============ */
 function buildNav() {
   var nav = document.getElementById("nav");
   nav.innerHTML = "";
   NAV_GROUPS.forEach(function(g){
     var items = NAV.filter(function(n){ return n.group === g.key && navVisible(n); });
     if (!items.length) return;
-    var label = document.createElement("div");
-    label.className = "nav-group-label";
-    label.textContent = g.label;
-    nav.appendChild(label);
-    if (g.key === "aux") {
-      var more = document.createElement("button");
-      more.dataset.key = "more";
-      more.title = "更多功能";
-      more.className = "nav-more";
-      more.innerHTML = '<span class="ico">' + ICONS.more + '</span><span class="txt">更多功能</span>' +
-        '<span class="more-count">' + items.length + '</span>';
-      more.onclick = openMoreMenu;
-      nav.appendChild(more);
+    if (g.label) {
+      var label = document.createElement("div");
+      label.className = "nav-group-label";
+      label.textContent = g.label;
+      nav.appendChild(label);
+    }
+    if (g.key === "hub") {
+      var entry = items.filter(function(n){ return n.key === "hub"; })[0];
+      if (!entry) return;
+      var hb = document.createElement("button");
+      hb.dataset.key = "hub";
+      hb.title = "能力中心";
+      hb.innerHTML = '<span class="ico">' + (ICONS[entry.ico] || "") + '</span><span class="txt">' +
+        esc(entry.title) + "</span>";
+      hb.onclick = function(){ switchView("hub"); };
+      nav.appendChild(hb);
       return;
     }
     items.forEach(function(n){
@@ -2515,9 +2586,6 @@ function buildNav() {
       nav.appendChild(b);
     });
   });
-  var cur = NAV.find(function(n){ return n.key === state.current; });
-  var mb = document.querySelector('.nav button[data-key="more"]');
-  if (mb && cur && cur.group === "aux") mb.classList.add("active");
 }
 var VIEW_META = {
   dashboard:{eyebrow:"工作台 · 今日概览", sub:"从提交到归档全程留痕；数据只在本机浏览器，不上云"},
@@ -2526,9 +2594,10 @@ var VIEW_META = {
   tasks:    {eyebrow:"协同跟进 · 任务", sub:"截止日期、临期与逾期跟踪"},
   submit:   {eyebrow:"材料流程 · 提交", sub:"登记材料，审核通过后归档"},
   templates:{eyebrow:"协同跟进 · 模板", sub:"内置字段固定保留，附加字段可按需增删"},
-  collect:  {eyebrow:"更多 · 文件夹", sub:"比对目录变化，勾选后登记入账"},
-  ai:       {eyebrow:"更多 · 智能整理", sub:"本地模型或自有 API；先给上下文，再给可执行建议"},
-  logs:     {eyebrow:"更多 · 留痕", sub:"提交、审核与导入导出的本机记录"}
+  hub:      {eyebrow:"能力中心 · 低频入口", sub:"主流程之外，仍找得到；这里只负责打开，操作回原页面"},
+  collect:  {eyebrow:"能力中心 · 文件夹", sub:"比对目录变化，勾选后登记入账"},
+  ai:       {eyebrow:"能力中心 · 智能整理", sub:"本地模型或自有 API；先给上下文，再给可执行建议"},
+  logs:     {eyebrow:"能力中心 · 留痕", sub:"提交、审核与导入导出的本机记录"}
 };
 function renderPageHead(target){
   var head = document.getElementById("pageHead");
@@ -2551,8 +2620,6 @@ function switchView(key) {
     var btn = document.querySelector('.nav button[data-key="' + n.key + '"]');
     if (btn) btn.classList.toggle("active", n.key === key);
   });
-  var moreBtn = document.querySelector('.nav button[data-key="more"]');
-  if (moreBtn) moreBtn.classList.toggle("active", target.group === "aux");
   var vt = document.getElementById("viewTitle");
   if (vt) vt.textContent = target.title;
   renderPageHead(target);
@@ -2571,6 +2638,7 @@ function refreshAll() {
   else if (state.current === "roster") renderRoster();
   else if (state.current === "tasks") renderTasks();
   else if (state.current === "templates") renderTemplates();
+  else if (state.current === "hub") renderHub();
   else if (state.current === "collect") renderCollect();
   else if (state.current === "ai") renderAI();
   else if (state.current === "logs") renderLogs();

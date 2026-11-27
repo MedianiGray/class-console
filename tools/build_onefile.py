@@ -16,7 +16,7 @@ from version import VERSION  # noqa: E402
 
 HIDDEN = [
     "ui_ai", "ui_audit", "ui_cmdk", "ui_collect", "ui_dashboard", "ui_docs",
-    "ui_empty", "ui_error", "ui_files", "ui_logs", "ui_more", "ui_reminders",
+    "ui_empty", "ui_error", "ui_files", "ui_hub", "ui_logs", "ui_reminders",
     "ui_roster", "ui_service", "ui_settings", "ui_submit", "ui_tasks",
     "ui_filetools", "filetools", "tts", "assistant", "ui_pet",
 ]
