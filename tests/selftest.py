@@ -935,6 +935,12 @@ def main():
     assert "唤起：" in c2.help_text(), c2.help_text()
     print("53. 入口交代 OK")
 
+    # 54. 位置交代：嵌右栏说得清，窄了浮着也说得清
+    loc = c2.help_text()
+    assert "窗口够宽" in loc and "不压" in loc, loc
+    assert "浮在角上" in loc, loc
+    print("54. 位置交代 OK")
+
     print("SELFTEST OK")
 
 

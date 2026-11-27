@@ -56,6 +56,19 @@ def main():
     exe = target / (name + ".exe")
     exe.rename(target / "班级操作台.exe")
 
+    # PyInstaller 有时会把 Win7 时代的 UCRT 运行库一起收进来（ucrtbase.dll 约 1.3MB
+    # 加 api-ms-win-*.dll 43 个约 1MB）；本程序只支持 Win10/11，系统自带 UCRT，
+    # 删掉不改行为，还能少让杀软扫 44 个文件。
+    pruned = 0
+    for dll in target.rglob("api-ms-win-*.dll"):
+        dll.unlink()
+        pruned += 1
+    for dll in target.rglob("ucrtbase.dll"):
+        dll.unlink()
+        pruned += 1
+    if pruned:
+        print("[2/3] 去掉系统自带 UCRT 文件 %d 个" % pruned)
+
     zip_path = ROOT / "dist" / ("class-console-v%s-portable.zip" % VERSION)
     if zip_path.exists():
         zip_path.unlink()

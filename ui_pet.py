@@ -27,6 +27,9 @@ W_IDLE, H_IDLE = 288, 68
 W_OPEN, H_OPEN = 322, 508    # 展开态多留一行给「这份」那类长回答
 KEY = "#FF00FE"          # 透明色键，只用于圆角外的空隙
 
+DOCK_MIN_W = 1300        # 主窗口够宽才嵌进右栏；窄了宁可浮着，别把内容挤坏
+DOCK_MIN_CONTENT = 620   # 让出右栏后，内容区至少还要留这么宽
+
 MOD_ALT, MOD_CONTROL, MOD_NOREPEAT = 0x0001, 0x0002, 0x4000
 VK_A = 0x41
 WM_HOTKEY = 0x0312
@@ -62,6 +65,8 @@ class AssistantPet(object):
         self.hotkey = ""
         self.name = str(theme.load_ui("pet_name", "班级助手") or "班级助手")
         self.follow = bool(theme.load_ui("pet_follow", True))
+        self.dock_mode = str(theme.load_ui("pet_dock", "auto") or "auto")   # auto / float
+        self._docked = False
         self._relayout_job = None
         self.assistant = assistant.Assistant(
             repo, speak=self._speak, open_view=self._open_view,
@@ -109,6 +114,7 @@ class AssistantPet(object):
         self.win.bind("<Button-3>", self._menu)
         try:
             self.root.bind("<Configure>", self._on_root_configure, add="+")
+            self.root.bind("<FocusIn>", self._on_root_focus, add="+")
         except tk.TclError:
             pass
         self._start_hotkey()
@@ -164,6 +170,7 @@ class AssistantPet(object):
 
     def destroy(self):
         theme.save_ui("pet_on", False)
+        self._reserve(0)
         try:
             self.win.destroy()
         except tk.TclError:
@@ -230,6 +237,59 @@ class AssistantPet(object):
         if self.follow and self.alive():
             self.render()
 
+    def _on_root_focus(self, event=None):
+        """嵌在右栏时，主窗口一被点回前台就把它抬回同一层，别消失在主窗口后面。"""
+        if self._docked and self.expanded and self.alive():
+            try:
+                self.win.lift()
+            except tk.TclError:
+                pass
+
+    # ---------- 嵌入右栏 ----------
+    def _reserve(self, width):
+        fn = getattr(self.app, "reserve_right", None)
+        if not callable(fn):
+            return
+        try:
+            fn(width)
+        except Exception:
+            pass
+
+    def _dock_slot(self):
+        """窗口够宽时，把面板停进主窗口右侧让位槽：不压台账右栏的详情与朗读。"""
+        if self.dock_mode != "auto":
+            return None
+        met = getattr(self.app, "tail_metrics", None)
+        if not callable(met):
+            return None
+        try:
+            if not self.root.winfo_viewable():
+                return None
+        except tk.TclError:
+            return None
+        m = met() or {}
+        rw = int(m.get("w") or 0)
+        if rw < DOCK_MIN_W:
+            return None
+        if rw - int(m.get("sidebar") or 0) - W_OPEN < DOCK_MIN_CONTENT:
+            return None
+        return [int(m.get("x") or 0) + rw - W_OPEN,
+                int(m.get("y") or 0) + int(m.get("top") or 64) + 8]
+
+    def _set_docked(self, on):
+        if self._docked == on:
+            return
+        self._docked = on
+        try:
+            self.win.attributes("-topmost", not on)   # 嵌进窗口就不该压在别人程序上
+        except tk.TclError:
+            pass
+        if on:
+            try:
+                self.win.lift()
+            except tk.TclError:
+                pass
+
     # ---------- 位置 ----------
     def _place_window(self):
         pos = theme.load_ui("pet_pos", None)
@@ -276,6 +336,12 @@ class AssistantPet(object):
         theme.save_ui("pet_pos", [int(self._pos[0]), int(self._pos[1])])
 
     def _press(self, event):
+        if self._docked:
+            # 从右栏拖走 = 决定浮着；先把让出的空间还回去
+            self.follow = False
+            theme.save_ui("pet_follow", False)
+            self._set_docked(False)
+            self._reserve(0)
         self._drag = {"x": event.x_root, "y": event.y_root,
                       "px": self._pos[0], "py": self._pos[1],
                       "moved": False}
@@ -308,7 +374,19 @@ class AssistantPet(object):
     def render(self):
         c = theme.C
         w, h = self._window_size()
-        if self.follow:
+        docked = False
+        if self.follow and self.expanded:
+            slot = self._dock_slot()
+            if slot:
+                self._reserve(W_OPEN)
+                self._pos = slot
+                docked = True
+            else:
+                self._reserve(0)
+        else:
+            self._reserve(0)
+        self._set_docked(docked)
+        if self.follow and not docked:
             self._anchor_to_root(w, h)
         self._apply_geometry(w, h)
         self.canvas.configure(width=w, height=h)
@@ -523,6 +601,8 @@ class AssistantPet(object):
                       command=self._toggle_autostart)
         m.add_command(label="跟随主窗口：%s" % ("开" if self.follow else "关"),
                       command=self._toggle_follow)
+        m.add_command(label="嵌入窗口右栏：%s" % ("自动" if self.dock_mode == "auto" else "关"),
+                      command=self._toggle_dock)
         m.add_command(label="全局热键：%s" % (self.hotkey or "不可用（点我即可）"),
                       command=lambda: None)
         m.add_separator()
@@ -550,7 +630,15 @@ class AssistantPet(object):
         if self.follow:
             self.render()
         else:
+            self._reserve(0)
+            self._set_docked(False)
             self._save_pos()
+
+    def _toggle_dock(self):
+        """自动 = 窗口够宽就嵌右栏；关 = 只浮在外面。"""
+        self.dock_mode = "float" if self.dock_mode == "auto" else "auto"
+        theme.save_ui("pet_dock", self.dock_mode)
+        self.render()
 
     def _rename(self):
         try:

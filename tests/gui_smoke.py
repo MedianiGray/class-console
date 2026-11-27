@@ -709,6 +709,42 @@ def main():
     texts = [pet.canvas.itemcget(i, "text") for i in pet.canvas.find_all()
              if pet.canvas.type(i) == "text"]
     assert any(pet.last_reply[:6] in t for t in texts), (pet.last_reply[:6], texts)
+
+    # 嵌进右栏：窗口够宽就让位，别压住详情；窄了退回浮层
+    root.geometry("1360x820+30+30")
+    root.update()
+    for _ in range(8):
+        root.update()
+        time.sleep(0.05)
+    wide = app.content.winfo_width()
+    pet.expand()
+    root.update()
+    for _ in range(8):
+        root.update()
+        time.sleep(0.05)
+    assert pet._docked, "1360 宽时助手应嵌进右栏"
+    assert app.content.winfo_width() <= wide - 300, (wide, app.content.winfo_width())
+    assert app.content.pack_info().get("padx") == (0, 322), app.content.pack_info().get("padx")
+    pet.collapse()
+    root.update()
+    for _ in range(8):
+        root.update()
+        time.sleep(0.05)
+    assert not pet._docked and app.content.winfo_width() >= wide, (
+        pet._docked, app.content.winfo_width(), wide)
+    root.geometry("1220x820+30+30")
+    root.update()
+    for _ in range(8):
+        root.update()
+        time.sleep(0.05)
+    pet.expand()
+    root.update()
+    for _ in range(8):
+        root.update()
+        time.sleep(0.05)
+    assert not pet._docked, "窗口窄回去后应退回浮层"
+    pet.collapse()
+    root.update()
     pet.destroy()
     root.update()
     assert getattr(app, "assistant_pet", None) is pet and not pet.alive()

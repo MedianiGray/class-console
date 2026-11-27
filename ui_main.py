@@ -314,6 +314,33 @@ class MainWindow(ttk.Frame):
         self._extras_ready = True
         self._trace("shell-extras-ready")
 
+    # ---------- 给悬浮助手让位 ----------
+    def reserve_right(self, width=0):
+        """在内容区右侧留出一条空白（嵌入模式用）；返回实际让出的宽度。
+
+        靠 pack 的 padx 让，不改任何视图的内部布局；0 就是恢复原样。
+        """
+        try:
+            w = max(0, int(width))
+            self.content.pack_configure(padx=(0, w))
+        except Exception:
+            return 0
+        return w
+
+    def tail_metrics(self):
+        """悬浮助手定位要的东西：主窗口客户区原点 / 尺寸 / 顶栏高度 / 侧栏宽度。"""
+        try:
+            top = getattr(self, "topbar", None)
+            th = (top.winfo_height() if top else 64) or 64
+            side = getattr(self, "sidebar", None)
+            sb = (side.winfo_width() if side else 212) or 0
+            return {"x": self.winfo_rootx(), "y": self.winfo_rooty(),
+                    "w": self.winfo_width(), "h": self.winfo_height(),
+                    "top": th, "sidebar": sb}
+        except Exception:
+            return None
+
+
     def _build_content(self):
         """页头 + 视图容器。分帧启动时留到第二帧。"""
         header = tk.Frame(self.content, bg=C["bg"])

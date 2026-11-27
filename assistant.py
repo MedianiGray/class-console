@@ -121,6 +121,8 @@ class Assistant(object):
         lines.append("唤起：%s" % (hotkey or "点我，或用顶栏「✦ 助手」"))
         lines.append("展开时我会把你当前在哪一页、选中了谁都摆在上面；"
                      "没说清是谁，我会反问，不猜。")
+        lines.append("窗口够宽时我嵌在窗口右侧那条，不压你正在看的详情；"
+                     "窗口窄了才浮在角上。右键可以把这条改掉。")
         lines.append("试试这样说：")
         for cap in CAPS:
             if cap[0] == "help":
