@@ -192,10 +192,16 @@ class ProjectsView(ttk.Frame):
             meta += " · 截止 " + project["due_date"]
         self.detail_meta.config(text=meta)
         self.detail_goal.config(text=project.get("goal") or "还没有写目标；编辑项目时可以补一句。")
+        try:
+            assets = len(self.repo.list_project_assets(project["id"]))
+            runs = len(self.repo.list_project_runs(project["id"]))
+            asset_text = " · 资产 %d · 执行记录 %d" % (assets, runs)
+        except Exception:
+            asset_text = ""
         self.detail_stats.config(
-            text="交付物 %d 项 · 已通过 %d · 缺项 %d · 完成率 %d%%" %
+            text="交付物 %d 项 · 已通过 %d · 缺项 %d · 完成率 %d%%%s" %
                  (project["total"], project["done"], project["missing"],
-                  project["progress"]))
+                  project["progress"], asset_text))
         rows = self.repo.list_deliverables(project["id"])
         for i, d in enumerate(rows):
             tag = "zebra"

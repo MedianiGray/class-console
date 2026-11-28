@@ -20,6 +20,7 @@ HIDDEN = [
     "ui_empty", "ui_error", "ui_files", "ui_hub", "ui_logs", "ui_reminders",
     "ui_roster", "ui_service", "ui_settings", "ui_submit", "ui_tasks",
     "ui_filetools", "filetools", "tts", "assistant", "ui_pet", "ui_projects",
+    "ui_media", "media",
 ]
 
 

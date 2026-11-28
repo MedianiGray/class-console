@@ -18,6 +18,7 @@ os.environ["APPDATA"] = tempfile.mkdtemp(prefix="cc-gui-appdata-")
 import tkinter as tk  # noqa: E402
 from tkinter import ttk  # noqa: E402
 import ui_logs  # noqa: E402
+import media  # noqa: E402
 from ui_empty import EmptyState  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
@@ -52,7 +53,7 @@ def main():
     app.reset_first_run(); root.update()
     print("首次引导卡 OK")
 
-    for k in ("dashboard", "projects", "docs", "files", "roster", "tasks", "submit", "logs"):
+    for k in ("dashboard", "projects", "media", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
         assert app.views[k].winfo_manager() == "pack", (k, app.views[k].winfo_manager())
@@ -76,6 +77,23 @@ def main():
     repo.remove_project(pid); pv.refresh(); root.update()
     assert not pv.tree.get_children()
     print("项目视图 OK")
+
+    # 媒体工作台：不弹窗，只核对控件、预设与项目下拉
+    app.switch("media"); root.update()
+    mv = app.views["media"]
+    assert mv.preset_var.get() == media.preset_items()[0][1], mv.preset_var.get()
+    assert mv.btn_start.cget("text") == "开始转码"
+    assert not mv.tree.get_children(), "空态不该有行"
+    mv._set_paths([]); root.update()
+    assert "ffmpeg" in mv.summary.cget("text") or not media.available()
+    mid = repo.add_project({"name": "媒体冒烟项目", "kind": "media",
+                            "stage": "生产", "owner": "覃祖悦"})
+    mv.refresh(); root.update()
+    assert any("媒体冒烟项目" in str(x) for x in mv.project_cb.cget("values")), \
+        mv.project_cb.cget("values")
+    assert "ffmpeg" in mv.summary.cget("text") or not media.available()
+    repo.remove_project(mid); mv.refresh(); root.update()
+    print("媒体视图 OK")
 
     # 名单视图：添加 / 移除
     rv = app.views["roster"]

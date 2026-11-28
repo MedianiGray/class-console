@@ -21,6 +21,7 @@ import archive  # noqa: E402
 import audit  # noqa: E402
 import fileroom  # noqa: E402
 import handover  # noqa: E402
+import media  # noqa: E402
 import main as app_main  # noqa: E402
 import service  # noqa: E402
 from ui_main import old_user_should_skip_first_run  # noqa: E402
@@ -979,6 +980,8 @@ def main():
     assert "3" in pdet["text"] and "必交缺" in pdet["text"], pdet
     pv2 = pa.handle("打开项目工作台")
     assert pv2["action"] == "open_view" and switches[-1] == "projects", (pv2, switches)
+    mvv = pa.handle("打开媒体工作台")
+    assert mvv["action"] == "open_view" and switches[-1] == "media", (mvv, switches)
     # 项目层只读：不让助手替它改状态
     refused_p = pa.handle("帮我把项目删除")
     assert refused_p["ok"] is False and refused_p["action"] == "unknown", refused_p
@@ -1006,6 +1009,20 @@ def main():
     assert r.list_deliverables(pid) == []
     assert r.stats()["total"] == before
     print("55. 项目底座/模板/统计/备份恢复 OK")
+
+    # 56. 媒体层：预设、缺文件预检、摘要文案（不依赖 ffmpeg 也能跑）
+    assert set(media.PRESETS) == {"mp3_192", "mp3_128", "m4a_128", "wav_16k"}
+    wav = media.preset("wav_16k")
+    assert wav["codec"] == "pcm_s16le" and wav["sample_rate"] == 16000
+    assert wav["channels"] == 1, wav
+    tempdir = Path(tempfile.mkdtemp())
+    rows, out_root = media.plan([str(tempdir / "没有这个.wav")], tempdir)
+    assert len(rows) == 1 and not rows[0]["ok"], rows
+    assert "不存在" in rows[0]["reason"] or "读" in rows[0]["reason"], rows[0]
+    txt = media.summary_text({"total": 3, "done": 2, "failed": 1,
+                              "manifest_csv": "清单.csv"})
+    assert "3" in txt and "2" in txt and "1" in txt and "清单" in txt, txt
+    print("56. 媒体预设/预检/摘要 OK")
 
     print("SELFTEST OK")
 

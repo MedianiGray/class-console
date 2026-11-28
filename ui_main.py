@@ -26,12 +26,12 @@ ROLES = {
 }
 PERMISSIONS = {
     "handler":   ["docs:create", "docs:edit", "docs:import", "docs:collect", "docs:archive", "docs:reject",
-                  "docs:export", "roster:manage", "task:manage", "template:config", "logs:view"],
+                  "docs:export", "roster:manage", "task:manage", "template:config", "logs:view", "media:run"],
     "reviewer":  ["docs:create", "docs:edit", "docs:import", "docs:collect", "docs:archive", "docs:reject", "docs:export",
-                  "roster:manage", "task:manage", "template:config", "backup:restore", "logs:view"],
+                  "roster:manage", "task:manage", "template:config", "backup:restore", "logs:view", "media:run"],
     "manager":   ["docs:collect", "docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "template:config",
-                  "backup:restore", "logs:view", "config:manage"],
+                  "backup:restore", "logs:view", "config:manage", "media:run"],
     "applicant": ["docs:create", "docs:edit"],
 }
 
@@ -44,6 +44,7 @@ def old_user_should_skip_first_run(doc_count, done, dismissed):
 VIEWS = {
     "dashboard": ("ui_dashboard", "DashboardView"),
     "projects": ("ui_projects", "ProjectsView"),
+    "media": ("ui_media", "MediaView"),
     "docs": ("ui_docs", "DocsView"),
     "files": ("ui_files", "FileRoomView"),
     "collect": ("ui_collect", "CollectView"),
@@ -89,6 +90,7 @@ class MainWindow(ttk.Frame):
     NAV = [
         ("dashboard", "工作台概览", None, "◈", None),
         ("projects", "项目工作台", None, "▦", "project"),
+        ("media", "媒体工作台", "media:run", "▷", "project"),
         ("docs", "材料台账", None, "▤", "flow"),
         ("files", "文件室", "docs:archive", "▧", "flow"),
         ("submit", "提交材料", "docs:create", "＋", "flow"),
@@ -99,7 +101,7 @@ class MainWindow(ttk.Frame):
         ("collect", "文件夹收集", "docs:collect", "▣", "aux"),
         ("logs", "操作日志", "logs:view", "≡", "aux"),
     ]
-    NAV_SHORT = {"dashboard": "概览", "projects": "项目", "docs": "台账", "files": "文件",
+    NAV_SHORT = {"dashboard": "概览", "projects": "项目", "media": "媒体", "docs": "台账", "files": "文件",
                  "collect": "收集", "roster": "名单", "tasks": "任务",
                  "submit": "提交", "service": "服务", "logs": "日志",
                  "hub": "中心"}
