@@ -925,7 +925,10 @@ class SettingsDialog:
                 data.get("roster"), data.get("tasks"),
                 data.get("attachments"), data.get("templates"),
                 data.get("events", []), data.get("exemptions", []),
-                data.get("followups", []))
+                data.get("followups", []),
+                data.get("projects", []),
+                data.get("project_deliverables", []),
+                data.get("project_events", []))
         except Exception as e:
             self._data_error(
                 "交接包没有导入完成",
@@ -980,7 +983,10 @@ class SettingsDialog:
                                      data.get("attachments"), data.get("templates"),
                                      data.get("events", []),
                                      data.get("exemptions", []),
-                                     data.get("followups", []))
+                                     data.get("followups", []),
+                                     data.get("projects", []),
+                                     data.get("project_deliverables", []),
+                                     data.get("project_events", []))
         except Exception as e:
             self._data_error(
                 "恢复没有完成",

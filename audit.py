@@ -398,6 +398,12 @@ def backup_preview(data, repo) -> dict:
         data.get("exemptions"), list) else []
     followups = data.get("followups") if isinstance(
         data.get("followups"), list) else []
+    projects = data.get("projects") if isinstance(
+        data.get("projects"), list) else []
+    project_deliverables = data.get("project_deliverables") if isinstance(
+        data.get("project_deliverables"), list) else []
+    project_events = data.get("project_events") if isinstance(
+        data.get("project_events"), list) else []
     counts = data.get("counts")
     if counts is not None:
         if not isinstance(counts, dict):
@@ -407,7 +413,10 @@ def backup_preview(data, repo) -> dict:
                   "attachments": len(attachments),
                   "templates": len(templates),
                   "exemptions": len(exemptions),
-                  "followups": len(followups)}
+                  "followups": len(followups),
+                  "projects": len(projects),
+                  "project_deliverables": len(project_deliverables),
+                  "project_events": len(project_events)}
         for key, now in actual.items():
             if key not in counts:
                 continue
@@ -442,11 +451,13 @@ def backup_preview(data, repo) -> dict:
         "附件：备份 %d 个\n"
         "模板附加字段：备份 %d 项\n"
         "免交 / 延期：备份 %d 条\n"
-        "催交 / 回执：备份 %d 条\n" % (
+        "催交 / 回执：备份 %d 条\n"
+        "项目：备份 %d 个 · 交付物 %d 项 · 项目记录 %d 条\n" % (
             current["total"], len(valid_docs), current_logs, len(valid_logs),
             len(repo.list_roster()), len(roster), len(repo.list_tasks()),
             len(tasks), len(attachments), len(templates),
-            len(exemptions), len(followups)))
+            len(exemptions), len(followups),
+            len(projects), len(project_deliverables), len(project_events)))
     if warnings:
         text += "\n注意：\n- " + "\n- ".join(warnings) + "\n"
     text += "\n确定用备份覆盖本机数据吗？"
@@ -454,5 +465,8 @@ def backup_preview(data, repo) -> dict:
             "counts": {"docs": len(valid_docs), "logs": len(valid_logs),
                        "roster": len(roster), "tasks": len(tasks),
                        "attachments": len(attachments), "templates": len(templates),
-                       "exemptions": len(exemptions), "followups": len(followups)},
+                       "exemptions": len(exemptions), "followups": len(followups),
+                       "projects": len(projects),
+                       "project_deliverables": len(project_deliverables),
+                       "project_events": len(project_events)},
             "warnings": warnings}

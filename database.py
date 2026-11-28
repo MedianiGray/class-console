@@ -212,6 +212,53 @@ FORM_PREFIX = {k: v["prefix"] for k, v in FORM_TEMPLATES.items()}
 FORM_TYPES = ("general",) + tuple(FORM_TEMPLATES)
 TEMPLATE_FIELD_TYPES = ("text", "textarea", "date", "select")
 
+# v0.31 项目底座：项目类型、阶段、状态与交付物状态。
+PROJECT_KINDS = {
+    "class": "班级材料",
+    "media": "媒体内容",
+    "competition": "赛事评审",
+    "product": "产品研制",
+    "data": "数据洞察",
+    "event": "活动运营",
+}
+PROJECT_KIND_ORDER = tuple(PROJECT_KINDS)
+PROJECT_STAGES = ("发现", "定义", "计划", "采集", "生产", "评审", "交付", "运营", "复盘")
+PROJECT_STATUS = ("进行中", "已暂停", "已完成", "已归档")
+DELIVERABLE_STATUS = ("待开始", "进行中", "待评审", "已通过", "已驳回")
+PROJECT_TEMPLATES = {
+    "class": (
+        ("材料收集", "采集"), ("逐份审核", "评审"),
+        ("归档落盘", "交付"), ("证据包 / 交接包", "交付"),
+    ),
+    "media": (
+        ("输入清单", "采集"), ("预检参数", "计划"), ("批量转码", "生产"),
+        ("输出质检", "评审"), ("交付包 + 哈希", "交付"),
+    ),
+    "competition": (
+        ("报名与资格", "采集"), ("作品 / 方案", "生产"),
+        ("评审标准对照", "评审"), ("提交校验", "交付"), ("答辩包", "交付"),
+    ),
+    "product": (
+        ("需求 / PRD", "定义"), ("BOM / 架构", "计划"), ("原型 / 样品", "生产"),
+        ("测试与问题", "评审"), ("发布包", "交付"), ("路演材料", "交付"),
+    ),
+    "data": (
+        ("数据源清单", "采集"), ("清洗口径", "计划"),
+        ("分析图表", "生产"), ("结论报告", "交付"),
+    ),
+    "event": (
+        ("策划与审批", "定义"), ("通知与报名", "采集"),
+        ("现场执行", "生产"), ("总结与结算", "复盘"),
+    ),
+}
+
+
+def project_template(kind: str) -> list:
+    """返回某类项目的交付物模板；未知类型回落到班级材料。"""
+    items = PROJECT_TEMPLATES.get(_clean(kind), PROJECT_TEMPLATES["class"])
+    return [{"name": name, "stage": stage, "status": "待开始",
+             "required": True, "note": ""} for name, stage in items]
+
 
 def form_template(form_type: str) -> dict:
     return FORM_TEMPLATES.get(_clean(form_type), FORM_TEMPLATES["custom"])
@@ -288,6 +335,48 @@ class LocalRepository:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     sid TEXT, who TEXT, cat TEXT, act TEXT, channel TEXT,
                     msg TEXT, time TEXT, response TEXT, note TEXT, actor TEXT
+                )""")
+            # v0.31 项目底座：项目、交付物、资产、执行记录、质量门与项目事件。
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT, kind TEXT, stage TEXT, status TEXT,
+                    owner TEXT, start_date TEXT, due_date TEXT,
+                    goal TEXT, note TEXT,
+                    created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS project_deliverables (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, stage TEXT, status TEXT,
+                    required INTEGER, note TEXT, sort_order INTEGER,
+                    created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS project_assets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, path TEXT, kind TEXT,
+                    size INTEGER, sha256 TEXT, note TEXT, created_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS project_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, deliverable_id INTEGER,
+                    tool TEXT, params TEXT, status TEXT,
+                    started_at TEXT, ended_at TEXT, output TEXT, log TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS project_gates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, deliverable_id INTEGER,
+                    gate TEXT, status TEXT, note TEXT,
+                    checked_at TEXT, checked_by TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS project_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, time TEXT, act TEXT,
+                    who TEXT, detail TEXT
                 )""")
             # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
             cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
@@ -1226,6 +1315,477 @@ class LocalRepository:
         return {"total": len(tasks), "ongoing": ongoing, "due": due,
                 "overdue": overdue, "done": done}
 
+    # ---------- 项目底座 v0.31 ----------
+    def _project_event(self, conn, project_id, act, who="系统", detail=""):
+        conn.execute("""INSERT INTO project_events
+            (project_id,time,act,who,detail) VALUES (?,?,?,?,?)""",
+            (project_id, now_full(), _clean(act), _clean(who), _clean(detail)))
+
+    def _project_exists(self, project_id):
+        conn = self._conn()
+        try:
+            return conn.execute("SELECT id FROM projects WHERE id=?",
+                                (project_id,)).fetchone() is not None
+        finally:
+            conn.close()
+
+    def list_projects(self, kind="全部", status="全部") -> list:
+        sql = "SELECT * FROM projects"
+        where, args = [], []
+        kind = _clean(kind) or "全部"
+        status = _clean(status) or "全部"
+        if kind != "全部":
+            where.append("kind=?")
+            args.append(kind)
+        if status != "全部":
+            where.append("status=?")
+            args.append(status)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += (" ORDER BY CASE status WHEN '进行中' THEN 0 WHEN '已暂停' THEN 1"
+                " WHEN '已完成' THEN 2 ELSE 3 END, updated_at DESC, id DESC")
+        conn = self._conn()
+        try:
+            rows = [dict(r) for r in conn.execute(sql, args).fetchall()]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取项目失败：%s" % e)
+        finally:
+            conn.close()
+        for p in rows:
+            st = self.project_stats(p["id"])
+            p.update({"total": st["total"], "done": st["done"],
+                      "progress": st["progress"], "missing": st["missing"]})
+        return rows
+
+    def find_project(self, project_id) -> dict:
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM projects WHERE id=?",
+                               (project_id,)).fetchone()
+        except sqlite3.Error as e:
+            raise RepositoryError("读取项目失败：%s" % e)
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        p = dict(row)
+        p.update(self.project_stats(project_id))
+        return p
+
+    def add_project(self, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("项目数据格式不正确")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("项目名称不能为空")
+        kind = _clean(data.get("kind")) or "class"
+        if kind not in PROJECT_KINDS:
+            raise RepositoryError("项目类型不在允许范围内")
+        stage = _clean(data.get("stage")) or "定义"
+        if stage not in PROJECT_STAGES:
+            raise RepositoryError("项目阶段不在允许范围内")
+        status = _clean(data.get("status")) or "进行中"
+        if status not in PROJECT_STATUS:
+            raise RepositoryError("项目状态不在允许范围内")
+        start_date = normalize_deadline(data.get("start_date")) if data.get("start_date") else ""
+        due_date = normalize_deadline(data.get("due_date")) if data.get("due_date") else ""
+        now = now_full()
+        conn = self._conn()
+        try:
+            cur = conn.execute("""INSERT INTO projects
+                (name,kind,stage,status,owner,start_date,due_date,goal,note,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (name, kind, stage, status, _clean(data.get("owner")),
+                 start_date, due_date, _clean(data.get("goal")),
+                 _clean(data.get("note")), now, now))
+            pid = cur.lastrowid
+            self._project_event(conn, pid, "创建项目", _clean(data.get("owner")) or "系统")
+            conn.commit()
+            return pid
+        except sqlite3.Error as e:
+            raise RepositoryError("创建项目失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_project(self, project_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("项目数据格式不正确")
+        current = self.find_project(project_id)
+        if current is None:
+            raise RepositoryError("项目不存在")
+        allowed = ("name", "kind", "stage", "status", "owner",
+                   "start_date", "due_date", "goal", "note")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            value = data.get(key)
+            if key == "name":
+                value = _clean(value)
+                if not value:
+                    raise RepositoryError("项目名称不能为空")
+            elif key == "kind":
+                value = _clean(value)
+                if value not in PROJECT_KINDS:
+                    raise RepositoryError("项目类型不在允许范围内")
+            elif key == "stage":
+                value = _clean(value)
+                if value not in PROJECT_STAGES:
+                    raise RepositoryError("项目阶段不在允许范围内")
+            elif key == "status":
+                value = _clean(value)
+                if value not in PROJECT_STATUS:
+                    raise RepositoryError("项目状态不在允许范围内")
+            elif key in ("start_date", "due_date"):
+                value = normalize_deadline(value) if value else ""
+            else:
+                value = _clean(value)
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        sets = ", ".join("%s=?" % k for k in values)
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE projects SET %s WHERE id=?" % sets,
+                         list(values.values()) + [project_id])
+            self._project_event(conn, project_id, "更新项目", "系统",
+                                "、".join(k for k in values if k != "updated_at"))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新项目失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_project(self, project_id):
+        current = self.find_project(project_id)
+        if current is None:
+            raise RepositoryError("项目不存在")
+        conn = self._conn()
+        try:
+            for table in ("project_deliverables", "project_assets",
+                          "project_runs", "project_gates", "project_events"):
+                conn.execute("DELETE FROM %s WHERE project_id=?" % table, (project_id,))
+            conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除项目失败：%s" % e)
+        finally:
+            conn.close()
+        try:
+            self.add_log("删除项目", current.get("name", ""), "系统", "系统")
+        except Exception:
+            pass
+
+    def list_deliverables(self, project_id) -> list:
+        conn = self._conn()
+        try:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM project_deliverables WHERE project_id=? "
+                "ORDER BY sort_order, id", (project_id,)).fetchall()]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取交付物失败：%s" % e)
+        finally:
+            conn.close()
+        for d in rows:
+            d["required"] = bool(d.get("required"))
+        return rows
+
+    def list_all_deliverables(self) -> list:
+        conn = self._conn()
+        try:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM project_deliverables ORDER BY project_id, sort_order, id").fetchall()]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取交付物失败：%s" % e)
+        finally:
+            conn.close()
+        for d in rows:
+            d["required"] = bool(d.get("required"))
+        return rows
+
+    def add_deliverable(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("交付物数据格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("交付物名称不能为空")
+        stage = _clean(data.get("stage")) or "生产"
+        if stage not in PROJECT_STAGES:
+            raise RepositoryError("交付物阶段不在允许范围内")
+        status = _clean(data.get("status")) or "待开始"
+        if status not in DELIVERABLE_STATUS:
+            raise RepositoryError("交付物状态不在允许范围内")
+        required = 1 if data.get("required", True) else 0
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM project_deliverables WHERE project_id=?",
+                               (project_id,)).fetchone()
+            sort_order = int(row["n"])
+            cur = conn.execute("""INSERT INTO project_deliverables
+                (project_id,name,stage,status,required,note,sort_order,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+                (project_id, name, stage, status, required,
+                 _clean(data.get("note")), sort_order, now, now))
+            did = cur.lastrowid
+            self._project_event(conn, project_id, "添加交付物", "系统", name)
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?",
+                         (now, project_id))
+            conn.commit()
+            return did
+        except sqlite3.Error as e:
+            raise RepositoryError("添加交付物失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_deliverable(self, deliverable_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("交付物数据格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM project_deliverables WHERE id=?",
+                               (deliverable_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("交付物不存在")
+        allowed = ("name", "stage", "status", "required", "note", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "name":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("交付物名称不能为空")
+            elif key == "stage":
+                value = _clean(data.get(key))
+                if value not in PROJECT_STAGES:
+                    raise RepositoryError("交付物阶段不在允许范围内")
+            elif key == "status":
+                value = _clean(data.get(key))
+                if value not in DELIVERABLE_STATUS:
+                    raise RepositoryError("交付物状态不在允许范围内")
+            elif key == "required":
+                value = 1 if data.get(key) else 0
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("交付物排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        sets = ", ".join("%s=?" % k for k in values)
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE project_deliverables SET %s WHERE id=?" % sets,
+                         list(values.values()) + [deliverable_id])
+            self._project_event(conn, row["project_id"], "更新交付物", "系统",
+                                row["name"] + " → " + values.get("status", ""))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?",
+                         (now_full(), row["project_id"]))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新交付物失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_deliverable(self, deliverable_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM project_deliverables WHERE id=?",
+                               (deliverable_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("交付物不存在")
+            conn.execute("DELETE FROM project_deliverables WHERE id=?",
+                         (deliverable_id,))
+            self._project_event(conn, row["project_id"], "删除交付物", "系统",
+                                row["name"])
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?",
+                         (now_full(), row["project_id"]))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除交付物失败：%s" % e)
+        finally:
+            conn.close()
+
+    def project_stats(self, project_id) -> dict:
+        conn = self._conn()
+        try:
+            row = conn.execute("""SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status='已通过' THEN 1 ELSE 0 END) AS done,
+                SUM(CASE WHEN required=1 THEN 1 ELSE 0 END) AS required,
+                SUM(CASE WHEN required=1 AND status='已通过' THEN 1 ELSE 0 END) AS required_done
+                FROM project_deliverables WHERE project_id=?""",
+                (project_id,)).fetchone()
+            total = int(row["total"] or 0)
+            done = int(row["done"] or 0)
+            required = int(row["required"] or 0)
+            required_done = int(row["required_done"] or 0)
+            return {"total": total, "done": done, "required": required,
+                    "required_done": required_done,
+                    "progress": (round(done * 100.0 / total) if total else 0),
+                    "missing": max(0, required - required_done)}
+        except sqlite3.Error as e:
+            raise RepositoryError("读取项目进度失败：%s" % e)
+        finally:
+            conn.close()
+
+    def apply_project_template(self, project_id, kind=None) -> int:
+        current = self.find_project(project_id)
+        if current is None:
+            raise RepositoryError("项目不存在")
+        kind = _clean(kind) or current.get("kind") or "class"
+        existing = {d["name"] for d in self.list_deliverables(project_id)}
+        added = 0
+        for item in project_template(kind):
+            if item["name"] in existing:
+                continue
+            self.add_deliverable(project_id, item)
+            added += 1
+        return added
+
+    def project_events(self, project_id, limit=50) -> list:
+        conn = self._conn()
+        try:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM project_events WHERE project_id=? "
+                "ORDER BY id DESC LIMIT ?", (project_id, int(limit))).fetchall()]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取项目记录失败：%s" % e)
+        finally:
+            conn.close()
+        return rows
+
+    def list_all_project_events(self) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM project_events ORDER BY id").fetchall()]
+        finally:
+            conn.close()
+
+    def add_project_asset(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("资产数据格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("资产名称不能为空")
+        conn = self._conn()
+        try:
+            cur = conn.execute("""INSERT INTO project_assets
+                (project_id,name,path,kind,size,sha256,note,created_at)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (project_id, name, _clean(data.get("path")),
+                 _clean(data.get("kind")), int(data.get("size") or 0),
+                 _clean(data.get("sha256")), _clean(data.get("note")), now_full()))
+            self._project_event(conn, project_id, "登记资产", "系统", name)
+            conn.commit()
+            return cur.lastrowid
+        except (sqlite3.Error, TypeError, ValueError) as e:
+            raise RepositoryError("登记资产失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_project_assets(self, project_id) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM project_assets WHERE project_id=? ORDER BY id",
+                (project_id,)).fetchall()]
+        finally:
+            conn.close()
+
+    def add_project_run(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("执行记录格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        conn = self._conn()
+        try:
+            cur = conn.execute("""INSERT INTO project_runs
+                (project_id,deliverable_id,tool,params,status,
+                 started_at,ended_at,output,log) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (project_id, data.get("deliverable_id"),
+                 _clean(data.get("tool")), _clean(data.get("params")),
+                 _clean(data.get("status")) or "已结束",
+                 _clean(data.get("started_at")) or now_full(),
+                 _clean(data.get("ended_at")), _clean(data.get("output")),
+                 _clean(data.get("log"))))
+            self._project_event(conn, project_id, "执行", _clean(data.get("tool")) or "系统")
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("写入执行记录失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_project_runs(self, project_id) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM project_runs WHERE project_id=? ORDER BY id DESC",
+                (project_id,)).fetchall()]
+        finally:
+            conn.close()
+
+    def set_project_gate(self, project_id, gate, status, deliverable_id=None,
+                         note="", checked_by="") -> int:
+        gate = _clean(gate)
+        status = _clean(status)
+        if not gate:
+            raise RepositoryError("质量门名称不能为空")
+        if status not in ("待检查", "通过", "不通过", "跳过"):
+            raise RepositoryError("质量门状态不在允许范围内")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        conn = self._conn()
+        try:
+            row = conn.execute("""SELECT id FROM project_gates
+                WHERE project_id=? AND gate=? AND
+                (deliverable_id IS ? OR deliverable_id=?)""",
+                (project_id, gate, deliverable_id, deliverable_id)).fetchone()
+            if row:
+                conn.execute("""UPDATE project_gates SET status=?,note=?,
+                    checked_at=?,checked_by=? WHERE id=?""",
+                    (status, _clean(note), now_full(),
+                     _clean(checked_by) or "系统", row["id"]))
+                gid = row["id"]
+            else:
+                cur = conn.execute("""INSERT INTO project_gates
+                    (project_id,deliverable_id,gate,status,note,checked_at,checked_by)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (project_id, deliverable_id, gate, status, _clean(note),
+                     now_full(), _clean(checked_by) or "系统"))
+                gid = cur.lastrowid
+            self._project_event(conn, project_id, "质量门", _clean(checked_by) or "系统",
+                                gate + " · " + status)
+            conn.commit()
+            return gid
+        except sqlite3.Error as e:
+            raise RepositoryError("写入质量门失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_project_gates(self, project_id) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM project_gates WHERE project_id=? ORDER BY id",
+                (project_id,)).fetchall()]
+        finally:
+            conn.close()
+
     # ---------- 统计 / 备份 ----------
     def stats(self) -> dict:
         conn = self._conn()
@@ -1248,23 +1808,34 @@ class LocalRepository:
         templates = []
         for ft in FORM_TYPES:
             templates.extend(self.template_custom(ft))
+        projects = self.list_projects()
+        deliverables = self.list_all_deliverables()
+        project_events = self.list_all_project_events()
         return {"app": "class-console", "version": VERSION,
                 "exportedAt": datetime.datetime.now().isoformat(timespec="seconds"),
                 "counts": {"docs": len(docs), "logs": len(self.list_logs()),
                            "roster": len(self.list_roster()),
                            "tasks": len(self.list_tasks()),
                            "attachments": len(atts),
-                           "templates": len(templates)},
+                           "templates": len(templates),
+                           "projects": len(projects),
+                           "project_deliverables": len(deliverables),
+                           "project_events": len(project_events)},
                 "docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
                 "attachments": atts, "templates": templates,
                 "events": self.list_all_events(),
                 "exemptions": self.list_exemptions(),
-                "followups": self.list_followups()}
+                "followups": self.list_followups(),
+                "projects": projects,
+                "project_deliverables": deliverables,
+                "project_events": project_events}
 
     def restore(self, docs: list, logs: list, roster=None, tasks=None,
                 attachments=None, templates=None, events=None,
-                exemptions=None, followups=None):
+                exemptions=None, followups=None,
+                projects=None, project_deliverables=None,
+                project_events=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
@@ -1273,6 +1844,11 @@ class LocalRepository:
         events = events if isinstance(events, list) else []
         exemptions = exemptions if isinstance(exemptions, list) else []
         followups = followups if isinstance(followups, list) else []
+        projects = projects if isinstance(projects, list) else []
+        project_deliverables = (project_deliverables
+                                if isinstance(project_deliverables, list) else [])
+        project_events = (project_events
+                           if isinstance(project_events, list) else [])
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
@@ -1283,6 +1859,12 @@ class LocalRepository:
             conn.execute("DELETE FROM doc_events")
             conn.execute("DELETE FROM exemptions")
             conn.execute("DELETE FROM followups")
+            conn.execute("DELETE FROM project_deliverables")
+            conn.execute("DELETE FROM project_assets")
+            conn.execute("DELETE FROM project_runs")
+            conn.execute("DELETE FROM project_gates")
+            conn.execute("DELETE FROM project_events")
+            conn.execute("DELETE FROM projects")
             if isinstance(templates, list):
                 conn.execute("DELETE FROM template_fields")
                 for tf in templates:
@@ -1387,6 +1969,82 @@ class LocalRepository:
                      _clean(f.get("channel")) or "本机", _clean(f.get("msg")),
                      _full_time(f.get("time")), _clean(f.get("response")),
                      _clean(f.get("note")), _clean(f.get("actor")) or "系统"))
+            project_map = {}
+            for p in projects:
+                if not isinstance(p, dict):
+                    continue
+                name = _clean(p.get("name"))
+                if not name:
+                    continue
+                kind = _clean(p.get("kind"))
+                if kind not in PROJECT_KINDS:
+                    kind = "class"
+                stage = _clean(p.get("stage"))
+                if stage not in PROJECT_STAGES:
+                    stage = "定义"
+                status = _clean(p.get("status"))
+                if status not in PROJECT_STATUS:
+                    status = "进行中"
+                start_date = ""
+                due_date = ""
+                if p.get("start_date"):
+                    try:
+                        start_date = normalize_deadline(p.get("start_date"))
+                    except Exception:
+                        start_date = ""
+                if p.get("due_date"):
+                    try:
+                        due_date = normalize_deadline(p.get("due_date"))
+                    except Exception:
+                        due_date = ""
+                cur = conn.execute("""INSERT INTO projects
+                    (name,kind,stage,status,owner,start_date,due_date,goal,note,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (name, kind, stage, status, _clean(p.get("owner")),
+                     start_date, due_date, _clean(p.get("goal")),
+                     _clean(p.get("note")),
+                     _clean(p.get("created_at")) or now_full(),
+                     _clean(p.get("updated_at")) or now_full()))
+                project_map[str(p.get("id"))] = cur.lastrowid
+            for d in project_deliverables:
+                if not isinstance(d, dict):
+                    continue
+                pid = project_map.get(str(d.get("project_id")))
+                if pid is None:
+                    continue
+                name = _clean(d.get("name"))
+                if not name:
+                    continue
+                stage = _clean(d.get("stage"))
+                if stage not in PROJECT_STAGES:
+                    stage = "生产"
+                status = _clean(d.get("status"))
+                if status not in DELIVERABLE_STATUS:
+                    status = "待开始"
+                try:
+                    sort_order = int(d.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO project_deliverables
+                    (project_id,name,stage,status,required,note,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (pid, name, stage, status,
+                     1 if d.get("required", True) else 0,
+                     _clean(d.get("note")), sort_order,
+                     _clean(d.get("created_at")) or now_full(),
+                     _clean(d.get("updated_at")) or now_full()))
+            for ev in project_events:
+                if not isinstance(ev, dict):
+                    continue
+                pid = project_map.get(str(ev.get("project_id")))
+                if pid is None:
+                    continue
+                conn.execute("""INSERT INTO project_events
+                    (project_id,time,act,who,detail) VALUES (?,?,?,?,?)""",
+                    (pid, _clean(ev.get("time")) or now_full(),
+                     _clean(ev.get("act")) or "恢复",
+                     _clean(ev.get("who")) or "系统",
+                     _clean(ev.get("detail"))))
             conn.commit()
         except sqlite3.Error as e:
             conn.rollback()

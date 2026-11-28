@@ -661,5 +661,22 @@ localStorageStub.setItem = a3OrigSet;
 sandbox.saveStore();
 assert("重试写入恢复持久化", sandbox.state.persist === true && sandbox.storageState.issue === null);
 
+sandbox.state.role = "handler";
+sandbox.state.applicantSid = "";
+const a4Missing = sandbox.aiRuleReply("谁还没交材料");
+assert("本地助手能查未交名单", a4Missing.indexOf("还没交") >= 0);
+const a4Chase = sandbox.aiRuleReply("给未交的人写一段催交话术");
+assert("本地助手能写催交草稿", a4Chase.indexOf("【补交提醒草稿】") >= 0 && a4Chase.indexOf("只是草稿") >= 0);
+const a4Pending = sandbox.aiRuleReply("有哪些待审");
+assert("本地助手能查待审", a4Pending.indexOf("待审核") >= 0);
+const a4Person = sandbox.aiRuleReply("250201 还缺什么");
+assert("本地助手能按学号查缺项", a4Person.indexOf("250201") >= 0 && a4Person.indexOf("还没看到的类别") >= 0);
+const a4Overview = sandbox.aiRuleReply("当前台账什么情况");
+assert("本地助手能答概览", a4Overview.indexOf("当前台账") >= 0);
+const a4Refuse = sandbox.aiRuleReply("把这份材料归档");
+assert("本地助手不代改台账", a4Refuse.indexOf("不替你改台账") >= 0);
+const a4Help = sandbox.aiRuleReply("你能做什么");
+assert("本地助手自我介绍", a4Help.indexOf("不下载") >= 0 && a4Help.indexOf("谁还没交") >= 0);
+
 console.log("\n结果: " + pass + " 通过, " + fail + " 失败");
 process.exit(fail ? 1 : 0);

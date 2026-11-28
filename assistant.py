@@ -24,6 +24,8 @@ CAPS = (
     ("doc_info", "当前这份材料", "这份什么情况"),
     ("pending", "待审清单", "有哪些待审的"),
     ("missing_people", "谁还没交", "谁还没交材料"),
+    ("projects", "项目进度", "现在有哪些项目"),
+    ("project_detail", "单个项目缺什么", "班级材料项目还缺什么"),
     ("open_view", "打开页面", "打开服务留痕"),
     ("speak", "朗读上一句", "念一下"),
     ("help", "能做什么", "你都能做什么"),
@@ -38,6 +40,7 @@ VIEWS = (
     ("tasks", "任务跟踪", ("任务", "任务跟踪", "待办")),
     ("service", "服务留痕", ("服务", "服务留痕", "催交记录")),
     ("logs", "审计日志", ("日志", "审计", "记录")),
+    ("projects", "项目工作台", ("项目", "项目工作台", "交付物")),
 )
 
 SPEAK_WORDS = ("朗读", "念一下", "念一遍", "读一下", "读一遍", "念给我")
@@ -60,7 +63,7 @@ AI_SYSTEM = (
     "你是班级操作台的助手，只负责把用户的话翻译成一个意图，不要回答问题本身。"
     "可选意图：%s。"
     '只输出一个 JSON 对象：{"intent":"意图名","args":{...},"reply":"不超过20字的回应"}。'
-    "args 可用键：sid（6位学号）、who（姓名）、view（页面名）。"
+    "args 可用键：sid（6位学号）、who（姓名）、view（页面名）、project（项目名）。"
     "用户可能省略主语（「他缺什么」「这份能归档吗」），这时把 args 留空，由本地上下文补。"
     "没有把握时 intent 用 unknown，不要编造学号和姓名。"
 )
@@ -114,7 +117,7 @@ class Assistant(object):
         return "今天：" + "、".join(parts) + "。"
 
     def help_text(self):
-        lines = ["我能直接查本机台账，也能替你把话术、朗读、切页面接起来。"]
+        lines = ["我能直接查本机台账、名单、任务和项目，也能替你把话术、朗读、切页面接起来。"]
         lines.append("AI 通道：%s" % ("已接上，能听懂更自由的说法"
                                    if self.ai_ready() else "未接，我按本地规则理解，不联网"))
         hotkey = getattr(self, "hotkey_note", "")
@@ -333,6 +336,79 @@ class Assistant(object):
         lines.append("要话术就说「给某某写催交话术」。")
         return "\n".join(lines)
 
+    def projects_text(self, limit=8):
+        """项目层只报事实：到哪一步、完成率、缺几个必交物。"""
+        try:
+            rows = self.repo.list_projects()
+        except Exception:
+            return "项目层还没读出来。"
+        if not rows:
+            return ("还没有项目。去「项目工作台」新建一个，或套用班级材料模板；"
+                    "建完再问我「班级材料项目还缺什么」。")
+        lines = ["当前 %d 个项目（按进行中优先）：" % len(rows)]
+        for p in rows[:limit]:
+            lines.append("· %s｜%s｜%s｜%s%%（%s/%s）%s" % (
+                _clean(p.get("name")), _clean(p.get("kind")), _clean(p.get("stage")),
+                p.get("progress", 0), p.get("done", 0), p.get("total", 0),
+                ("｜缺 %s 个必交物" % p.get("missing")) if p.get("missing") else ""))
+        if len(rows) > limit:
+            lines.append("另有 %d 个项目，去「项目工作台」看全部。" % (len(rows) - limit))
+        lines.append("要看单个项目，就说「某某项目还缺什么」。")
+        return "\n".join(lines)
+
+    def project_detail_text(self, text=""):
+        try:
+            rows = self.repo.list_projects()
+        except Exception:
+            return "项目层还没读出来。"
+        if not rows:
+            return "还没有项目。先去「项目工作台」新建一个。"
+        hit = None
+        for p in rows:
+            name = _clean(p.get("name"))
+            if name and (name in text or (len(name) >= 4 and text in name)):
+                hit = p
+                break
+        if not hit:
+            hit = rows[0]
+        try:
+            items = self.repo.list_deliverables(hit.get("id"))
+        except Exception:
+            items = []
+        lines = ["项目：%s（%s · %s · %s）" % (
+            _clean(hit.get("name")), _clean(hit.get("kind")),
+            _clean(hit.get("stage")), _clean(hit.get("status")))]
+        lines.append("完成 %s/%s，进度 %s%%；必交缺 %s 个。" % (
+            hit.get("done", 0), hit.get("total", 0),
+            hit.get("progress", 0), hit.get("missing", 0)))
+        if items:
+            lines.append("交付物：")
+            for d in items[:10]:
+                mark = "✓" if _clean(d.get("status")) == "已通过" else "·"
+                lines.append("%s %s｜%s｜%s%s" % (
+                    mark, _clean(d.get("name")), _clean(d.get("stage")),
+                    _clean(d.get("status")),
+                    "（必交）" if d.get("required") else "（选做）"))
+            if len(items) > 10:
+                lines.append("另有 %d 项，去「项目工作台」看全部。" % (len(items) - 10))
+        else:
+            lines.append("还没有交付物；可以套用模板或手动添加。")
+        lines.append("我只报进度，不改项目状态；要通过/驳回请去「项目工作台」。")
+        return "\n".join(lines)
+
+    def _project_in(self, text):
+        try:
+            rows = self.repo.list_projects()
+        except Exception:
+            return None
+        best = None
+        for p in rows:
+            name = _clean(p.get("name"))
+            if len(name) >= 2 and name in text:
+                if best is None or len(name) > len(_clean(best.get("name"))):
+                    best = p
+        return best
+
     # ---------- 本地路由 ----------
     def _local(self, text):
         if any(w in text for w in HELP_WORDS):
@@ -356,6 +432,13 @@ class Assistant(object):
 
         if any(w in text for w in DOC_WORDS) and not self._find_person(text):
             return self._doc_info(text)
+
+        if self._project_in(text):
+            return self._ok("project_detail", self.project_detail_text(text))
+        if "项目" in text or "交付物" in text:
+            if any(w in text for w in ("缺", "进度", "交付物", "卡", "怎么样", "到哪")):
+                return self._ok("project_detail", self.project_detail_text(text))
+            return self._ok("projects", self.projects_text())
 
         person = self._resolve_person(text)
         if person:
@@ -421,6 +504,12 @@ class Assistant(object):
             return self._ok("pending", self.pending_text(), source)
         if intent == "missing_people":
             return self._ok("missing_people", self.missing_people_text(), source)
+        if intent == "projects":
+            return self._ok("projects", self.projects_text(), source)
+        if intent == "project_detail":
+            name = _clean(args.get("project"))
+            return self._ok("project_detail",
+                            self.project_detail_text(name or raw), source)
         if intent == "open_view":
             name = _clean(args.get("view")) or (_clean(args.get("page")))
             target = self._view_by_name(name) if name else self._view_in(raw)

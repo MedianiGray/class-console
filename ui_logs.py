@@ -178,7 +178,10 @@ class LogsView(ttk.Frame):
                               data.get("roster", []), data.get("tasks", []),
                               data.get("attachments", []), data.get("templates"),
                               data.get("events", []), data.get("exemptions", []),
-                              data.get("followups", []))
+                              data.get("followups", []),
+                              data.get("projects", []),
+                              data.get("project_deliverables", []),
+                              data.get("project_events", []))
         except Exception as e:
             messagebox.showerror("导入失败", str(e))
             return

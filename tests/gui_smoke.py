@@ -52,11 +52,30 @@ def main():
     app.reset_first_run(); root.update()
     print("首次引导卡 OK")
 
-    for k in ("dashboard", "docs", "files", "roster", "tasks", "submit", "logs"):
+    for k in ("dashboard", "projects", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
         assert app.views[k].winfo_manager() == "pack", (k, app.views[k].winfo_manager())
     print("视图切换 OK")
+
+    # 项目底座：建项目、套模板、选交付物改状态、进度刷新
+    app.switch("projects"); root.update()
+    pv = app.views["projects"]
+    pid = repo.add_project({"name": "冒烟项目", "kind": "class", "stage": "采集",
+                            "owner": "覃祖悦", "due_date": "2099-01-01"})
+    repo.apply_project_template(pid)
+    pv.refresh(); root.update()
+    assert pv.tree.get_children(), "项目未进入列表"
+    assert pv.detail_title.cget("text") == "冒烟项目", pv.detail_title.cget("text")
+    assert pv.dtree.get_children(), "交付物模板未显示"
+    pv.dtree.selection_set(pv.dtree.get_children()[0])
+    pv._update_buttons(); root.update()
+    pv.mark_deliverable("已通过"); root.update()
+    assert repo.project_stats(pid)["done"] == 1
+    assert "25%" in pv.detail_stats.cget("text"), pv.detail_stats.cget("text")
+    repo.remove_project(pid); pv.refresh(); root.update()
+    assert not pv.tree.get_children()
+    print("项目视图 OK")
 
     # 名单视图：添加 / 移除
     rv = app.views["roster"]

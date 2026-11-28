@@ -53,7 +53,7 @@ class AssistantPet(object):
         self.app = window
         self.root = window.winfo_toplevel()
         self.repo = repo
-        self.lines = [("bot", "我在。我不改台账、不归档——只帮你查、写话术、念给你听、切页面。")]
+        self.lines = [("bot", "我在。我不改台账、不归档——只帮你查台账、名单、项目，写话术、念给你听、切页面。")]
         self.expanded = False
         self.busy = False
         self.last_reply = ""

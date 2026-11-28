@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>班级材料操作台 · 浏览器本地版 v0.28.1</title>
+<title>班级操作台 · 浏览器本地版 v0.28.2</title>
 <style>
   :root{
     color-scheme:light;
@@ -1302,7 +1302,7 @@
   <header>
     <div class="acp-h">
       <h3><span class="b-tag">AI</span> 副驾</h3>
-      <div class="acp-sub" id="acpSub">只读上下文，只给建议；不改台账、不发消息。默认本地模型，首次运行会下载权重。</div>
+      <div class="acp-sub" id="acpSub">本地助手立即可用；只读上下文，只给建议，不改台账、不发消息。</div>
     </div>
     <button class="acp-close" id="acpClose" aria-label="关闭 AI 副驾">×</button>
   </header>
@@ -1346,7 +1346,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.28.1";
+var WEB_VERSION = "0.28.2";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -2322,7 +2322,7 @@ var NAV = [
   {key:"tasks",     title:"任务跟踪",   ico:"tasks",      perm:"task:manage", group:"follow"},
   {key:"templates", title:"材料模板",   ico:"sliders",    perm:"template:config", group:"follow"},
   {key:"hub",       title:"能力中心",   ico:"more",      group:"hub"},
-  {key:"ai",        title:"AI 助手",    ico:"spark",      group:"hub", tier:"aux", moreSection:"smart",  moreTag:"进阶"},
+  {key:"ai",        title:"AI 助手",    ico:"spark",      group:"main"},
   {key:"collect",   title:"文件夹收集", ico:"folder",    perm:"docs:collect", group:"hub", tier:"aux", moreSection:"files", moreTag:"本地"},
   {key:"logs",      title:"操作日志",   ico:"logs",      perm:"logs:view",   group:"hub", tier:"aux", moreSection:"files", moreTag:"留痕"}
 ];
@@ -2463,7 +2463,7 @@ var HUB_SECTIONS = [
 ];
 var hubLabOpen = false;
 var HUB_SUB = {
-  ai:      "本地模型或自有 API；先给上下文，再给可执行建议",
+  ai:      "不用下载、不用 Key；直接查台账、名单、缺项，写催交草稿",
   collect: "比对目录变化，勾选后登记入账",
   logs:    "提交、审核与导入导出的本机记录"
 };
@@ -2657,7 +2657,7 @@ var VIEW_META = {
   templates:{eyebrow:"协同跟进 · 模板", sub:"内置字段固定保留，附加字段可按需增删"},
   hub:      {eyebrow:"能力中心 · 低频入口", sub:"主流程之外，仍找得到；这里只负责打开，操作回原页面"},
   collect:  {eyebrow:"能力中心 · 文件夹", sub:"比对目录变化，勾选后登记入账"},
-  ai:       {eyebrow:"能力中心 · 智能整理", sub:"本地模型或自有 API；先给上下文，再给可执行建议"},
+  ai:       {eyebrow:"能力中心 · 智能整理", sub:"不用下载、不用 Key；直接查台账、名单、缺项，写催交草稿"},
   logs:     {eyebrow:"能力中心 · 留痕", sub:"提交、审核与导入导出的本机记录"}
 };
 function renderPageHead(target){
@@ -5828,7 +5828,7 @@ var AI_MODELS = [
 ];
 var AI_PREF_KEY = "classconsole_ai_prefs_v1";
 var aiState = {
-  built:false, provider:"local", modelId:AI_MODELS[0].id,
+  built:false, provider:"rule", modelId:AI_MODELS[0].id,
   apiKey:"", apiModel:"deepseek-flash", apiBase:"https://api.deepseek.com",
   includeDocs:true, includeRoster:true, includeTasks:true, taskNote:"",
   messages:[], engine:null, loading:false, busy:false, stopFlag:false,
@@ -5841,7 +5841,7 @@ function aiLoadPrefs(){
     if (!raw) return;
     var d = JSON.parse(raw);
     if (!d || typeof d !== "object") return;
-    if (d.provider === "api" || d.provider === "local") aiState.provider = d.provider;
+    if (d.provider === "api" || d.provider === "local" || d.provider === "rule") aiState.provider = d.provider;
     if (AI_MODELS.some(function(m){ return m.id === d.modelId; })) aiState.modelId = d.modelId;
     if (typeof d.apiModel === "string" && d.apiModel.trim()) aiState.apiModel = d.apiModel.trim();
     if (typeof d.apiBase === "string" && d.apiBase.trim()) aiState.apiBase = d.apiBase.trim();
@@ -5984,13 +5984,16 @@ function aiChatHtml(){
       action = aiState.loading
         ? '<button class="btn primary" disabled>模型加载中…</button>'
         : emptyBtn("加载本地模型", 'data-ai-empty="load"');
+    } else if (aiState.provider === "rule") {
+      action = emptyBtn("直接问一句", 'data-ai-empty="type"');
     } else {
       action = emptyBtn("输入一个问题", 'data-ai-empty="type"', "ghost");
     }
     return '<div class="ai-empty"><div class="ae-ico">✦</div>' +
-      '<div class="ae-t">把材料任务交给它拆</div>' +
-      '<div class="ae-s">它可以读当前台账、名单和任务，帮你列缺项、写催交话术、拆目录与分工。<br>' +
-      '本地模式不出设备；API 模式会把上下文发到你填写的接口。</div>' +
+      '<div class="ae-t">' + (aiState.provider === "rule" ? "不用下载，先让它查本机" : "把材料任务交给它拆") + '</div>' +
+      '<div class="ae-s">' + (aiState.provider === "rule"
+        ? "能直接答：谁还没交、有哪些待审、某人缺什么、当前概况，并写催交草稿。<br>不联网、不下载模型，台账和名单不出本机。"
+        : "它可以读当前台账、名单和任务，帮你列缺项、写催交话术、拆目录与分工。<br>本地模式不出设备；API 模式会把上下文发到你填写的接口。") + '</div>' +
       '<div class="ae-actions">' + action + "</div></div>";
   }
   return aiState.messages.map(function(m, i){
@@ -6073,16 +6076,20 @@ function aiSyncProviderUI(){
   var hint = document.getElementById("aiProviderHint");
   if (hint) {
     hint.textContent = aiState.provider === "local"
-      ? "本地模式：模型下载到本机缓存，对话内容不出设备。"
-      : "API 模式：上下文和问题会发送到你填写的接口，请勿放入身份证号等敏感信息。";
+      ? "本地模型：模型下载到本机缓存，对话内容不出设备。"
+      : (aiState.provider === "rule"
+        ? "本地助手：不下载、不联网，直接查当前台账、名单和任务；只回答能核对的事实。"
+        : "API 模式：上下文和问题会发送到你填写的接口，请勿放入身份证号等敏感信息。");
   }
 }
 function aiProvider(p){
-  if (p !== "local" && p !== "api") return;
+  if (p !== "local" && p !== "api" && p !== "rule") return;
   aiState.provider = p;
   aiSavePrefs();
   aiSyncProviderUI();
-  aiSetStatus(p === "local" ? "本地模型按需加载；首次会下载权重。" : "填写 Key 后即可调用；Key 只存在当前页面内存。");
+  aiSetStatus(p === "local" ? "本地模型按需加载；首次会下载权重。"
+    : (p === "rule" ? "本地助手立即可用：查台账、名单、缺项、催交草稿，不联网。"
+      : "填写 Key 后即可调用；Key 只存在当前页面内存。"));
 }
 function aiQuick(text){
   var input = document.getElementById("aiInput");
@@ -6399,7 +6406,9 @@ function aiCopilotRender(){
   var sub = document.getElementById("acpSub");
   if (sub) sub.textContent = aiState.provider === "api"
     ? "API 模式：选中的只读上下文会发到你填的接口；只给建议，不改台账、不发消息。"
-    : "只读上下文，只给建议；不改台账、不发消息。默认本地模型，首次运行会下载权重。";
+    : (aiState.provider === "local"
+      ? "本地模型：只读上下文，只给建议；不改台账、不发消息。"
+      : "本地助手：不用下载、不用 Key，直接查台账、名单和缺项；不改台账、不发消息。");
   if (ctx) ctx.textContent = aiCopilotContextLabel();
   if (quick) {
     quick.innerHTML = aiCopilotQuickDefs(aiCopilotState.kind, aiCopilotState.docId).map(function(q){
@@ -6442,6 +6451,16 @@ function aiCopilotAsk(prompt){
   prompt = clean(prompt);
   if (!prompt) { aiCopilotState.status = "先写一句你要它做什么。"; aiCopilotState.statusCls = "err"; aiCopilotPaint(); return; }
   if (aiCopilotState.busy) return;
+  if (aiState.provider === "rule") {
+    aiCopilotState.busy = false;
+    aiCopilotState.output = aiRuleReply(prompt);
+    aiCopilotState.status = "本地助手已答；只读本机记录，未联网。";
+    aiCopilotState.statusCls = "";
+    aiCopilotState.needConfig = false;
+    aiCopilotPaint();
+    try { addLog("AI 副驾问答", prompt.slice(0, 40), roleLabel(), "本地规则"); } catch(e){}
+    return;
+  }
   if (aiState.provider === "api" && !clean(aiState.apiKey)) {
     aiCopilotState.status = "API 模式还没填 Key；先去完整助手填写，或切到本地模型。";
     aiCopilotState.statusCls = "err";
@@ -6481,12 +6500,193 @@ function aiCopilotAsk(prompt){
     aiCopilotPaint();
   });
 }
+function aiRulePerson(text){
+  var q = clean(text);
+  var m = q.match(/\b(25\d{4})\b/);
+  if (m) {
+    var bySid = findRosterBySid(m[1]);
+    return {sid:m[1], who:bySid ? bySid.who : m[1]};
+  }
+  var hit = null;
+  store.roster.some(function(r){
+    if (r.who && q.indexOf(r.who) >= 0) { hit = {sid:r.sid, who:r.who}; return true; }
+    return false;
+  });
+  if (hit) return hit;
+  if (/我/.test(q) && state.role === "applicant" && clean(state.applicantSid)) {
+    var me = findRosterBySid(state.applicantSid);
+    return {sid:state.applicantSid, who:me ? me.who : state.applicantSid};
+  }
+  return null;
+}
+function aiRuleCheck(){
+  return can("roster:manage") ? rosterCheck() : null;
+}
+function aiRuleDocsOf(sid){
+  return visibleDocs(store.docs).filter(function(d){ return clean(d.sid) === clean(sid); });
+}
+function aiRulePersonStatus(p){
+  var docs = aiRuleDocsOf(p.sid);
+  var head = (p.who || p.sid) + (p.who && p.sid ? "（" + p.sid + "）" : "") + "：系统里登记了 " + docs.length + " 份材料。";
+  if (!docs.length) {
+    return head + "\n还没看到任何记录。先确认学号是否对，或去「提交材料」补一份。";
+  }
+  var lines = docs.slice(0, 6).map(function(d){
+    return "· " + clean(d.name || "未命名") + "｜" + clean(d.status || "待审核") + "｜" + clean(d.cat || "未分类");
+  });
+  var got = {};
+  docs.forEach(function(d){ if (d.cat) got[d.cat] = true; });
+  var missing = CATS.filter(function(c){ return !got[c]; });
+  return head + "\n" + lines.join("\n") +
+    (missing.length ? "\n还没看到的类别：" + missing.join("、") + "。" : "\n五类材料都已有记录。") +
+    "\n要改状态请去「材料台账」，我不替你归档。";
+}
+function aiRuleChase(p){
+  var check = aiRuleCheck();
+  var target = p;
+  if (!target && check && check.absent.length) {
+    target = {sid:check.absent[0].sid, who:check.absent[0].who};
+  }
+  if (!target) {
+    return check ? "名单里没有未交的人，暂时不用催。" : "申请人视角看不到整班名单；可以说自己的学号，我只看本人材料。";
+  }
+  var docs = aiRuleDocsOf(target.sid);
+  var got = {};
+  docs.forEach(function(d){ if (d.cat) got[d.cat] = true; });
+  var missing = CATS.filter(function(c){ return !got[c]; });
+  var due = "";
+  if (can("task:manage")) {
+    var open = listTasks().filter(function(t){ return !t.done && t.title && t.title.indexOf("催交：") === 0 && t.title.indexOf(target.who) >= 0; });
+    if (open.length && open[0].deadline) due = "请在 " + open[0].deadline + " 前补交。";
+  }
+  return "【补交提醒草稿】\n" + (target.who || target.sid) + "同学，这次材料还差：" +
+    (missing.length ? missing.join("、") : "系统里还没看到你的材料") + "。\n" +
+    (due || "请按班级通知的时间补交；如果已经交过，回我一句，我去核对记录。") +
+    "\n\n这条只是草稿，发之前自己核对姓名和缺项。";
+}
+function aiRuleOverview(){
+  var st = stats(visibleDocs(store.docs));
+  var text = "当前台账 " + st.total + " 份：待审 " + st.pending + "、已归档 " + st.archived + "、已驳回 " + st.rejected + "。";
+  var check = aiRuleCheck();
+  if (check) text += "名单 " + check.done + "/" + check.total + " 人已交，未交 " + check.absent.length + " 人。";
+  else text += "申请人视角只统计本人材料。";
+  return text;
+}
+function aiRulePending(){
+  var rows = visibleDocs(store.docs).filter(function(d){ return d.status === "待审核"; });
+  if (!rows.length) return "当前没有待审核材料。";
+  return "待审核 " + rows.length + " 份：\n" + rows.slice(0, 8).map(function(d){
+    return "· " + clean(d.name || "未命名") + "（" + clean(d.who || "未填姓名") + " · " + clean(d.cat || "未分类") + "）";
+  }).join("\n") + (rows.length > 8 ? "\n另有 " + (rows.length - 8) + " 份，去「材料台账」看全部。" : "");
+}
+function aiRuleMissing(){
+  var check = aiRuleCheck();
+  if (!check) return "申请人视角看不到整班名单；可以说自己的学号，我只看本人材料。";
+  if (!check.absent.length) return "名单 " + check.done + "/" + check.total + " 人已交，没有未交的人。";
+  return "还没交 " + check.absent.length + " 人：\n" + check.absent.slice(0, 12).map(function(r){
+    return "· " + r.who + "（" + r.sid + "）";
+  }).join("\n") + (check.absent.length > 12 ? "\n另有 " + (check.absent.length - 12) + " 人。" : "") +
+    "\n去「名单核对」可以按类别生成催交任务。";
+}
+function aiRuleBreakdown(){
+  var st = stats(visibleDocs(store.docs));
+  var check = aiRuleCheck();
+  return "这件事按四步走：\n" +
+    "1. 建名单：" + (check ? "名单 " + check.total + " 人，已交 " + check.done + "，未交 " + check.absent.length + "。" : "先在「名单核对」导入学号—姓名。") + "\n" +
+    "2. 定交付物：按 " + CATS.join(" / ") + " 建类别；每份写清名称、姓名、学号、附件。\n" +
+    "3. 收与审：当前台账 " + st.total + " 份，待审 " + st.pending + "；审核通过才归档，驳回必须写原因。\n" +
+    "4. 归档交差：按「类别 / 学号-姓名 / 编号_材料名」落盘，再导证据包。\n" +
+    "入口：名单核对 → 提交/收集 → 材料台账。";
+}
+function aiRuleCategorySummary(){
+  var docs = visibleDocs(store.docs);
+  var rows = CATS.map(function(c){
+    var list = docs.filter(function(d){ return d.cat === c; });
+    var pending = list.filter(function(d){ return d.status === "待审核"; }).length;
+    var archived = list.filter(function(d){ return d.status === "已归档"; }).length;
+    var rejected = list.filter(function(d){ return d.status === "已驳回"; }).length;
+    return "· " + c + "：" + list.length + " 份（待审 " + pending + " / 归档 " + archived + " / 驳回 " + rejected + "）";
+  });
+  return "按类别核对：\n" + rows.join("\n") + "\n没列的类别就是 0 份，别把空类别当成已交。";
+}
+function aiRuleSituation(){
+  var st = stats(visibleDocs(store.docs));
+  var check = aiRuleCheck();
+  var date = nowStr().slice(0, 10);
+  return "【情况说明草稿】\n截至 " + date + "，材料台账共 " + st.total + " 份，待审 " + st.pending +
+    "、已归档 " + st.archived + "、已驳回 " + st.rejected + "。" +
+    (check ? "名单 " + check.done + "/" + check.total + " 人已交，未交 " + check.absent.length + " 人。" : "") +
+    "\n当前缺口：" + (check && check.absent.length ? check.absent.slice(0, 6).map(function(r){ return r.who; }).join("、") + "。" : "以待审核清单为准。") +
+    "\n下一步：先清待审，再按名单催未交，最后归档并导证据包。\n以上只写系统里能核对的事实，发出前自己复核。";
+}
+function aiRuleView(text){
+  var q = clean(text);
+  var map = [
+    ["提交", "submit", "提交材料"], ["收材料", "submit", "提交材料"],
+    ["台账", "docs", "材料台账"], ["材料", "docs", "材料台账"],
+    ["名单", "roster", "名单核对"], ["矩阵", "roster", "名单核对"],
+    ["任务", "tasks", "任务跟踪"], ["待办", "tasks", "任务跟踪"],
+    ["模板", "templates", "材料模板"], ["日志", "logs", "操作日志"],
+    ["收集", "collect", "文件夹收集"], ["概览", "dashboard", "工作台概览"]
+  ];
+  for (var i = 0; i < map.length; i++) {
+    if (q.indexOf(map[i][0]) >= 0) return "入口：左侧「" + map[i][2] + "」。从服务台也能直达这一页。";
+  }
+  return "";
+}
+function aiRuleReply(text){
+  var q = clean(text);
+  if (!q) return "说一句就行。";
+  if (/归档|驳回|删除|删掉|清空|改状态|登记进台账/.test(q)) {
+    return "我能查、能写草稿，但不替你改台账。归档、驳回、删除请到「材料台账」自己点；每一步都会留痕。";
+  }
+  if (/能做什么|你会什么|帮助|怎么用|你是谁/.test(q)) {
+    return "我是班级操作台的本地助手，不下载、不联网。现在能直接答：\n" +
+      "· 谁还没交材料\n· 有哪些待审\n· 250223 还缺什么\n· 当前台账概览\n" +
+      "· 给未交的人写一段催交草稿\n· 按类别归纳、拆四步、写情况说明\n" +
+      "我不改台账、不归档、不自动发消息。";
+  }
+  if (/在吗|你好|嗨|hello/i.test(q)) return "在。直接说事：谁没交、哪些待审、谁缺什么，或者要我写一段催交草稿。";
+  var person = aiRulePerson(q);
+  if (/催交|话术|提醒|催一下/.test(q)) return aiRuleChase(person);
+  if (/谁.*没交|谁还没交|谁缺|缺人|没交的有|催谁/.test(q)) return aiRuleMissing();
+  if (/待审|没审/.test(q)) return aiRulePending();
+  if (person && /还缺|缺什么|缺哪|交了什么|交了哪些|状态|查到/.test(q)) return aiRulePersonStatus(person);
+  if (/概览|多少份|什么情况|整体|总览|进度|统计/.test(q)) return aiRuleOverview();
+  if (/评优|骨架|示例|模板/.test(q)) {
+    return "评优材料示例骨架（只作示例，可按学校口径替换）：\n" +
+      "1. 思想与组织：班会/团日记录、志愿服务证明、组织任职证明、学习计划。\n" +
+      "2. 学业与技能：成绩单、竞赛证书、技能证书、作品或项目清单。\n" +
+      "3. 实践与贡献：社会实践证明、实训记录、带新人/协作记录、成果佐证。\n" +
+      "4. 品德与纪律：操行评定、无违纪证明、宿舍/班级评价、诚信承诺。\n" +
+      "5. 汇总与佐证：目录、编号、扫描件、推荐表。\n" +
+      "每项都要有文件或可核对记录，不要先写“已完成”。";
+  }
+  if (/拆|分工|清单|目录|怎么收|怎么归档/.test(q)) return aiRuleBreakdown();
+  if (/按类别|类别|归纳/.test(q)) return aiRuleCategorySummary();
+  if (/情况说明|辅导员|汇报|上报/.test(q)) return aiRuleSituation();
+  var view = aiRuleView(q);
+  if (view) return view;
+  return "这句话我还没接上本地规则。可以问：谁还没交材料、有哪些待审、250223 还缺什么、给未交的人写催交话术、当前台账什么情况。";
+}
 function aiSend(){
   if (aiState.busy) return;
   var input = document.getElementById("aiInput");
   if (!input) return;
   var text = clean(input.value);
   if (!text) { aiSetStatus("先写一句你要它做什么。", "err"); return; }
+  if (aiState.provider === "rule") {
+    aiState.lastPrompt = text;
+    input.value = "";
+    aiAppend("user", text);
+    var reply = aiRuleReply(text);
+    aiAppend("assistant", reply);
+    aiSetStatus("本地助手已答；只读本机记录，未联网。", "");
+    try { addLog("AI 助手问答", text.slice(0, 40), roleLabel(), "本地规则"); } catch(e){}
+    aiSavePrefs();
+    aiScroll();
+    return;
+  }
   if (aiState.provider === "api") {
     var keyEl = document.getElementById("aiKey");
     var modelEl = document.getElementById("aiModelName");
@@ -6563,8 +6763,9 @@ function renderAI(){
     '<div class="ai-wrap">' +
       '<div class="card ai-card">' +
         '<div class="ai-head">' +
-          '<div class="ah-t">材料整理助手 <span class="ai-badge">实验功能</span></div>' +
+          '<div class="ah-t">班级助手 <span class="ai-badge">本地可用</span></div>' +
           '<div class="ai-tabs" role="group" aria-label="推理通道">' +
+            '<button type="button" data-ai-provider="rule">本地助手</button>' +
             '<button type="button" data-ai-provider="local">本地模型</button>' +
             '<button type="button" data-ai-provider="api">DeepSeek API</button>' +
           '</div>' +

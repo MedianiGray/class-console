@@ -941,6 +941,72 @@ def main():
     assert "浮在角上" in loc, loc
     print("54. 位置交代 OK")
 
+    # 55. 项目底座：建项目、套模板、改交付物、统计、备份恢复
+    pid = r.add_project({
+        "name": "主题班会材料", "kind": "class", "stage": "采集",
+        "owner": "覃祖悦", "due_date": date_today(),
+        "goal": "把主题班会材料收齐归档", "note": "第一个项目模板",
+    })
+    assert r.find_project(pid)["name"] == "主题班会材料"
+    added = r.apply_project_template(pid)
+    assert added == 4, added
+    assert len(r.list_deliverables(pid)) == 4
+    # 重复套模板不重复添加
+    assert r.apply_project_template(pid) == 0
+    did = r.list_deliverables(pid)[0]["id"]
+    r.update_deliverable(did, {"status": "已通过", "note": "已核对"})
+    st = r.project_stats(pid)
+    assert st["total"] == 4 and st["done"] == 1 and st["progress"] == 25, st
+    assert st["missing"] == 3, st
+    # 交付物校验与资产 / 执行 / 质量门留位
+    try:
+        r.add_deliverable(pid, {"name": "x", "status": "瞎写"})
+        raise SystemExit("应拦截非法交付物状态")
+    except RepositoryError:
+        pass
+    r.add_project_asset(pid, {"name": "名单.xlsx", "kind": "xlsx", "size": 12})
+    r.add_project_run(pid, {"tool": "ffprobe", "status": "已结束", "output": "ok"})
+    r.set_project_gate(pid, "输入可识别", "通过", did, "文件能打开")
+    assert len(r.list_project_assets(pid)) == 1
+    assert len(r.list_project_runs(pid)) == 1
+    assert len(r.list_project_gates(pid)) == 1
+    # 助手接项目层：列项目、查单个项目缺什么、能打开项目页
+    pa = assistant.Assistant(r, open_view=switches.append)
+    pl = pa.handle("现在有哪些项目")
+    assert pl["action"] == "projects" and "主题班会材料" in pl["text"], pl
+    pdet = pa.handle("主题班会材料还缺什么")
+    assert pdet["action"] == "project_detail" and "交付物" in pdet["text"], pdet
+    assert "3" in pdet["text"] and "必交缺" in pdet["text"], pdet
+    pv2 = pa.handle("打开项目工作台")
+    assert pv2["action"] == "open_view" and switches[-1] == "projects", (pv2, switches)
+    # 项目层只读：不让助手替它改状态
+    refused_p = pa.handle("帮我把项目删除")
+    assert refused_p["ok"] is False and refused_p["action"] == "unknown", refused_p
+    # 备份包含项目，恢复到新库后 ID 能对上
+    bak = r.backup()
+    assert bak["counts"]["projects"] >= 1
+    assert bak["counts"]["project_deliverables"] >= 4
+    tmp2 = Path(tempfile.mkdtemp()) / "selftest-project.db"
+    r2 = LocalRepository(tmp2)
+    r2.restore(bak["docs"], bak["logs"], bak["roster"], bak["tasks"],
+               bak["attachments"], bak["templates"], bak["events"],
+               bak["exemptions"], bak["followups"], bak["projects"],
+               bak["project_deliverables"], bak["project_events"])
+    p2 = r2.find_project(pid)
+    assert p2 and p2["name"] == "主题班会材料", p2
+    assert len(r2.list_deliverables(pid)) == 4
+    assert r2.project_stats(pid)["done"] == 1
+    # 恢复预览要能报出项目条数
+    pv = audit.backup_preview(bak, r)
+    assert pv["ok"] and "项目：备份" in pv["text"], pv
+    # 删除项目不碰材料台账
+    before = r.stats()["total"]
+    r.remove_project(pid)
+    assert r.find_project(pid) is None
+    assert r.list_deliverables(pid) == []
+    assert r.stats()["total"] == before
+    print("55. 项目底座/模板/统计/备份恢复 OK")
+
     print("SELFTEST OK")
 
 
