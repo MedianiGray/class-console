@@ -20,6 +20,7 @@ from tkinter import ttk  # noqa: E402
 import ui_logs  # noqa: E402
 import media  # noqa: E402
 import docs_tools as dt  # noqa: E402
+import competition as cp  # noqa: E402
 from ui_empty import EmptyState  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
@@ -54,7 +55,7 @@ def main():
     app.reset_first_run(); root.update()
     print("首次引导卡 OK")
 
-    for k in ("dashboard", "projects", "media", "doctools", "docs", "files", "roster", "tasks", "submit", "logs"):
+    for k in ("dashboard", "projects", "competition", "media", "doctools", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
         assert app.views[k].winfo_manager() == "pack", (k, app.views[k].winfo_manager())
@@ -113,6 +114,32 @@ def main():
         dv.project_cb.cget("values")
     repo.remove_project(did); dv.refresh(); root.update()
     print("文档视图 OK")
+
+    # 赛事工作台：五个页签、默认赛程与矩阵、报名落表、项目切换
+    app.switch("competition"); root.update()
+    cv = app.views["competition"]
+    assert len(cv.nb.tabs()) == 5, cv.nb.tabs()
+    assert cv.ext_var.get() == ".pdf,.zip", cv.ext_var.get()
+    cid = repo.add_project({"name": "赛事冒烟项目", "kind": "competition",
+                            "stage": "计划", "owner": "覃祖悦",
+                            "start_date": "2099-01-01", "due_date": "2099-02-01"})
+    repo.apply_project_template(cid)
+    cp.seed_project(repo, cid)
+    cv.refresh(cid); root.update()
+    assert any("赛事冒烟项目" in str(x) for x in cv.project_cb.cget("values")), \
+        cv.project_cb.cget("values")
+    assert len(cv.cal_tree.get_children()) == 3, "默认赛程未显示"
+    assert len(cv.rubric_tree.get_children()) == 5, "默认矩阵未显示"
+    repo.add_competition_entry(cid, {"name": "张三", "sid": "250201", "role": "队长",
+                                    "confirmed": True})
+    cv._load_project(cid); root.update()
+    assert len(cv.entry_tree.get_children()) == 1
+    assert "报名 1 人" in cv.entry_summary.cget("text"), cv.entry_summary.cget("text")
+    assert "赛程 3 项" in cv.summary.cget("text"), cv.summary.cget("text")
+    assert cv.btn_new.cget("text") == "新建赛事项目"
+    repo.remove_project(cid); cv.refresh(); root.update()
+    assert not cv.cal_tree.get_children() and not cv.entry_tree.get_children()
+    print("赛事视图 OK")
 
     # 名单视图：添加 / 移除
     rv = app.views["roster"]

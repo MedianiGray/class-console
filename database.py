@@ -225,6 +225,7 @@ PROJECT_KIND_ORDER = tuple(PROJECT_KINDS)
 PROJECT_STAGES = ("发现", "定义", "计划", "采集", "生产", "评审", "交付", "运营", "复盘")
 PROJECT_STATUS = ("进行中", "已暂停", "已完成", "已归档")
 DELIVERABLE_STATUS = ("待开始", "进行中", "待评审", "已通过", "已驳回")
+COMPETITION_ROLES = ("队长", "队员", "指导教师", "其他")
 PROJECT_TEMPLATES = {
     "class": (
         ("材料收集", "采集"), ("逐份审核", "评审"),
@@ -377,6 +378,28 @@ class LocalRepository:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     project_id INTEGER, time TEXT, act TEXT,
                     who TEXT, detail TEXT
+                )""")
+            # v0.34 赛事模板：赛程、报名与评审矩阵；项目表仍是容器。
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS competition_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, title TEXT, date TEXT, note TEXT,
+                    done INTEGER, sort_order INTEGER,
+                    created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS competition_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, sid TEXT, role TEXT,
+                    contact TEXT, confirmed INTEGER, note TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS competition_rubric (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, criterion TEXT, weight INTEGER,
+                    score INTEGER, evidence TEXT, note TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
                 )""")
             # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
             cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
@@ -1464,7 +1487,9 @@ class LocalRepository:
         conn = self._conn()
         try:
             for table in ("project_deliverables", "project_assets",
-                          "project_runs", "project_gates", "project_events"):
+                          "project_runs", "project_gates", "project_events",
+                          "competition_events", "competition_entries",
+                          "competition_rubric"):
                 conn.execute("DELETE FROM %s WHERE project_id=?" % table, (project_id,))
             conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
             conn.commit()
@@ -1786,6 +1811,376 @@ class LocalRepository:
         finally:
             conn.close()
 
+    # ---------- v0.34 赛事：赛程 / 报名 / 评审矩阵 ----------
+    def _competition_rows(self, table, project_id, order="sort_order, id") -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM %s WHERE project_id=? ORDER BY %s" % (table, order),
+                (project_id,)).fetchall()]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取赛事数据失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_competition_events(self, project_id) -> list:
+        return self._competition_rows("competition_events", project_id)
+
+    def list_all_competition_events(self) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM competition_events ORDER BY project_id, sort_order, id").fetchall()]
+        finally:
+            conn.close()
+
+    def add_competition_event(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("赛程数据格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        title = _clean(data.get("title"))
+        if not title:
+            raise RepositoryError("赛程事项不能为空")
+        date_text = normalize_deadline(data.get("date")) if data.get("date") else ""
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM competition_events WHERE project_id=?",
+                               (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO competition_events
+                (project_id,title,date,note,done,sort_order,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (project_id, title, date_text, _clean(data.get("note")),
+                 1 if data.get("done") else 0, int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加赛程", "系统",
+                                title + (" · " + date_text if date_text else ""))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加赛程失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_competition_event(self, event_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("赛程数据格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM competition_events WHERE id=?",
+                               (event_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("赛程事项不存在")
+        allowed = ("title", "date", "note", "done", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "title":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("赛程事项不能为空")
+            elif key == "date":
+                value = normalize_deadline(data.get(key)) if data.get(key) else ""
+            elif key == "done":
+                value = 1 if data.get(key) else 0
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("赛程排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE competition_events SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [event_id])
+            self._project_event(conn, row["project_id"], "更新赛程", "系统",
+                                row["title"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新赛程失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_competition_event(self, event_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM competition_events WHERE id=?",
+                               (event_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("赛程事项不存在")
+            conn.execute("DELETE FROM competition_events WHERE id=?", (event_id,))
+            self._project_event(conn, row["project_id"], "删除赛程", "系统",
+                                row["title"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除赛程失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_competition_entries(self, project_id) -> list:
+        rows = self._competition_rows("competition_entries", project_id)
+        for r in rows:
+            r["confirmed"] = bool(r.get("confirmed"))
+        return rows
+
+    def list_all_competition_entries(self) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM competition_entries ORDER BY project_id, sort_order, id").fetchall()]
+        finally:
+            conn.close()
+
+    def add_competition_entry(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("报名数据格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("报名姓名不能为空")
+        sid = _clean(data.get("sid"))
+        role = _clean(data.get("role")) or "队员"
+        if role not in COMPETITION_ROLES:
+            raise RepositoryError("报名角色不在允许范围内")
+        now = now_full()
+        conn = self._conn()
+        try:
+            if sid:
+                dup = conn.execute("SELECT id FROM competition_entries "
+                                   "WHERE project_id=? AND sid=?", (project_id, sid)).fetchone()
+                if dup is not None:
+                    raise RepositoryError("该学号已在报名清单里")
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM competition_entries WHERE project_id=?",
+                               (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO competition_entries
+                (project_id,name,sid,role,contact,confirmed,note,sort_order,
+                 created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (project_id, name, sid, role, _clean(data.get("contact")),
+                 1 if data.get("confirmed") else 0, _clean(data.get("note")),
+                 int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加报名", "系统",
+                                name + (" · " + role if role else ""))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加报名失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_competition_entry(self, entry_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("报名数据格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM competition_entries WHERE id=?",
+                               (entry_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("报名记录不存在")
+        allowed = ("name", "sid", "role", "contact", "confirmed", "note")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "name":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("报名姓名不能为空")
+            elif key == "role":
+                value = _clean(data.get(key)) or "队员"
+                if value not in COMPETITION_ROLES:
+                    raise RepositoryError("报名角色不在允许范围内")
+            elif key == "sid":
+                value = _clean(data.get(key))
+            elif key == "confirmed":
+                value = 1 if data.get(key) else 0
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if "sid" in values and values["sid"]:
+            conn = self._conn()
+            try:
+                dup = conn.execute("SELECT id FROM competition_entries WHERE project_id=? "
+                                   "AND sid=? AND id<>?",
+                                   (row["project_id"], values["sid"], entry_id)).fetchone()
+            finally:
+                conn.close()
+            if dup is not None:
+                raise RepositoryError("该学号已在报名清单里")
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE competition_entries SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [entry_id])
+            self._project_event(conn, row["project_id"], "更新报名", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新报名失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_competition_entry(self, entry_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM competition_entries WHERE id=?",
+                               (entry_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("报名记录不存在")
+            conn.execute("DELETE FROM competition_entries WHERE id=?", (entry_id,))
+            self._project_event(conn, row["project_id"], "删除报名", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除报名失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_competition_rubric(self, project_id) -> list:
+        return self._competition_rows("competition_rubric", project_id)
+
+    def list_all_competition_rubric(self) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM competition_rubric ORDER BY project_id, sort_order, id").fetchall()]
+        finally:
+            conn.close()
+
+    def add_competition_criterion(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("评审项数据格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        criterion = _clean(data.get("criterion"))
+        if not criterion:
+            raise RepositoryError("评审项名称不能为空")
+        try:
+            weight = int(data.get("weight") or 0)
+        except (TypeError, ValueError):
+            raise RepositoryError("权重应为整数")
+        if weight < 0 or weight > 100:
+            raise RepositoryError("权重应在 0–100 之间")
+        score = data.get("score")
+        if score in ("", None):
+            score = None
+        else:
+            try:
+                score = int(score)
+            except (TypeError, ValueError):
+                raise RepositoryError("自评分应为整数")
+            if score < 0 or score > 100:
+                raise RepositoryError("自评分应在 0–100 之间")
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM competition_rubric WHERE project_id=?",
+                               (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO competition_rubric
+                (project_id,criterion,weight,score,evidence,note,sort_order,
+                 created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (project_id, criterion, weight, score, _clean(data.get("evidence")),
+                 _clean(data.get("note")), int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加评审项", "系统",
+                                "%s · %d%%" % (criterion, weight))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加评审项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_competition_criterion(self, criterion_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("评审项数据格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM competition_rubric WHERE id=?",
+                               (criterion_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("评审项不存在")
+        allowed = ("criterion", "weight", "score", "evidence", "note")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "criterion":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("评审项名称不能为空")
+            elif key == "weight":
+                try:
+                    value = int(data.get(key) or 0)
+                except (TypeError, ValueError):
+                    raise RepositoryError("权重应为整数")
+                if value < 0 or value > 100:
+                    raise RepositoryError("权重应在 0–100 之间")
+            elif key == "score":
+                value = data.get(key)
+                if value in ("", None):
+                    value = None
+                else:
+                    try:
+                        value = int(value)
+                    except (TypeError, ValueError):
+                        raise RepositoryError("自评分应为整数")
+                    if value < 0 or value > 100:
+                        raise RepositoryError("自评分应在 0–100 之间")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE competition_rubric SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [criterion_id])
+            self._project_event(conn, row["project_id"], "更新评审项", "系统",
+                                row["criterion"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新评审项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_competition_criterion(self, criterion_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM competition_rubric WHERE id=?",
+                               (criterion_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("评审项不存在")
+            conn.execute("DELETE FROM competition_rubric WHERE id=?", (criterion_id,))
+            self._project_event(conn, row["project_id"], "删除评审项", "系统",
+                                row["criterion"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除评审项失败：%s" % e)
+        finally:
+            conn.close()
+
     # ---------- 统计 / 备份 ----------
     def stats(self) -> dict:
         conn = self._conn()
@@ -1811,6 +2206,9 @@ class LocalRepository:
         projects = self.list_projects()
         deliverables = self.list_all_deliverables()
         project_events = self.list_all_project_events()
+        comp_events = self.list_all_competition_events()
+        comp_entries = self.list_all_competition_entries()
+        comp_rubric = self.list_all_competition_rubric()
         return {"app": "class-console", "version": VERSION,
                 "exportedAt": datetime.datetime.now().isoformat(timespec="seconds"),
                 "counts": {"docs": len(docs), "logs": len(self.list_logs()),
@@ -1820,7 +2218,10 @@ class LocalRepository:
                            "templates": len(templates),
                            "projects": len(projects),
                            "project_deliverables": len(deliverables),
-                           "project_events": len(project_events)},
+                           "project_events": len(project_events),
+                           "competition_events": len(comp_events),
+                           "competition_entries": len(comp_entries),
+                           "competition_rubric": len(comp_rubric)},
                 "docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
                 "attachments": atts, "templates": templates,
@@ -1829,13 +2230,17 @@ class LocalRepository:
                 "followups": self.list_followups(),
                 "projects": projects,
                 "project_deliverables": deliverables,
-                "project_events": project_events}
+                "project_events": project_events,
+                "competition_events": comp_events,
+                "competition_entries": comp_entries,
+                "competition_rubric": comp_rubric}
 
     def restore(self, docs: list, logs: list, roster=None, tasks=None,
                 attachments=None, templates=None, events=None,
                 exemptions=None, followups=None,
                 projects=None, project_deliverables=None,
-                project_events=None):
+                project_events=None, competition_events=None,
+                competition_entries=None, competition_rubric=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
@@ -1849,6 +2254,12 @@ class LocalRepository:
                                 if isinstance(project_deliverables, list) else [])
         project_events = (project_events
                            if isinstance(project_events, list) else [])
+        competition_events = (competition_events
+                              if isinstance(competition_events, list) else [])
+        competition_entries = (competition_entries
+                               if isinstance(competition_entries, list) else [])
+        competition_rubric = (competition_rubric
+                              if isinstance(competition_rubric, list) else [])
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
@@ -1864,6 +2275,9 @@ class LocalRepository:
             conn.execute("DELETE FROM project_runs")
             conn.execute("DELETE FROM project_gates")
             conn.execute("DELETE FROM project_events")
+            conn.execute("DELETE FROM competition_events")
+            conn.execute("DELETE FROM competition_entries")
+            conn.execute("DELETE FROM competition_rubric")
             conn.execute("DELETE FROM projects")
             if isinstance(templates, list):
                 conn.execute("DELETE FROM template_fields")
@@ -2045,6 +2459,88 @@ class LocalRepository:
                      _clean(ev.get("act")) or "恢复",
                      _clean(ev.get("who")) or "系统",
                      _clean(ev.get("detail"))))
+            for ev in competition_events:
+                if not isinstance(ev, dict):
+                    continue
+                pid = project_map.get(str(ev.get("project_id")))
+                if pid is None:
+                    continue
+                title = _clean(ev.get("title"))
+                if not title:
+                    continue
+                date_text = ""
+                if ev.get("date"):
+                    try:
+                        date_text = normalize_deadline(ev.get("date"))
+                    except Exception:
+                        date_text = ""
+                try:
+                    sort_order = int(ev.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO competition_events
+                    (project_id,title,date,note,done,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)""",
+                    (pid, title, date_text, _clean(ev.get("note")),
+                     1 if ev.get("done") else 0, sort_order,
+                     _clean(ev.get("created_at")) or now_full(),
+                     _clean(ev.get("updated_at")) or now_full()))
+            for en in competition_entries:
+                if not isinstance(en, dict):
+                    continue
+                pid = project_map.get(str(en.get("project_id")))
+                if pid is None:
+                    continue
+                name = _clean(en.get("name"))
+                if not name:
+                    continue
+                role = _clean(en.get("role")) or "队员"
+                if role not in COMPETITION_ROLES:
+                    role = "其他"
+                try:
+                    sort_order = int(en.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO competition_entries
+                    (project_id,name,sid,role,contact,confirmed,note,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, name, _clean(en.get("sid")), role,
+                     _clean(en.get("contact")),
+                     1 if en.get("confirmed") else 0, _clean(en.get("note")),
+                     sort_order, _clean(en.get("created_at")) or now_full(),
+                     _clean(en.get("updated_at")) or now_full()))
+            for rb in competition_rubric:
+                if not isinstance(rb, dict):
+                    continue
+                pid = project_map.get(str(rb.get("project_id")))
+                if pid is None:
+                    continue
+                criterion = _clean(rb.get("criterion"))
+                if not criterion:
+                    continue
+                try:
+                    weight = max(0, min(100, int(rb.get("weight") or 0)))
+                except (TypeError, ValueError):
+                    weight = 0
+                score = rb.get("score")
+                if score in ("", None):
+                    score = None
+                else:
+                    try:
+                        score = max(0, min(100, int(score)))
+                    except (TypeError, ValueError):
+                        score = None
+                try:
+                    sort_order = int(rb.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO competition_rubric
+                    (project_id,criterion,weight,score,evidence,note,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (pid, criterion, weight, score, _clean(rb.get("evidence")),
+                     _clean(rb.get("note")), sort_order,
+                     _clean(rb.get("created_at")) or now_full(),
+                     _clean(rb.get("updated_at")) or now_full()))
             conn.commit()
         except sqlite3.Error as e:
             conn.rollback()

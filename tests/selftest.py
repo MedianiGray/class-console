@@ -23,6 +23,7 @@ import fileroom  # noqa: E402
 import handover  # noqa: E402
 import media  # noqa: E402
 import docs_tools as dt  # noqa: E402
+import competition as cp  # noqa: E402
 import main as app_main  # noqa: E402
 import service  # noqa: E402
 from ui_main import old_user_should_skip_first_run  # noqa: E402
@@ -1051,6 +1052,50 @@ def main():
                            "manifest_csv": "清单.csv"})
     assert "3" in txt and "2" in txt and "1" in txt and "清单" in txt, txt
     print("57. 文档工具/六道门/页码范围 OK")
+
+    # 58. 赛事数据层：三张表、默认矩阵、校验、备份恢复与级联删除
+    cr = LocalRepository(Path(tempfile.mkdtemp()) / "comp.db")
+    cr.restore([], [])
+    cpid = cr.add_project({"name": "自检赛事", "kind": "competition",
+                           "stage": "计划", "start_date": "2026-12-01",
+                           "due_date": "2026-12-05"})
+    cr.apply_project_template(cpid)
+    seeded = cp.seed_project(cr, cpid)
+    assert seeded["events"] == 3 and seeded["rubric"] == 5, seeded
+    assert len(cr.list_competition_events(cpid)) == 3
+    rubric = cr.list_competition_rubric(cpid)
+    assert cp.rubric_stats(rubric)["weight"] == 100
+    cr.add_competition_entry(cpid, {"name": "张三", "sid": "250201", "role": "队长"})
+    try:
+        cr.add_competition_entry(cpid, {"name": "李四", "sid": "250201"})
+        raise SystemExit("同学号应拦截")
+    except RepositoryError:
+        pass
+    cr.add_competition_entry(cpid, {"name": "李四", "sid": "250202", "role": "队员"})
+    assert cp.entry_stats(cr.list_competition_entries(cpid))["total"] == 2
+    bak = cr.backup()
+    assert bak["counts"]["competition_events"] == 3
+    assert bak["counts"]["competition_entries"] == 2
+    assert bak["counts"]["competition_rubric"] == 5
+    cr2 = LocalRepository(Path(tempfile.mkdtemp()) / "comp2.db")
+    cr2.restore([], [], projects=bak["projects"],
+                competition_events=bak["competition_events"],
+                competition_entries=bak["competition_entries"],
+                competition_rubric=bak["competition_rubric"])
+    assert len(cr2.list_all_competition_events()) == 3
+    assert len(cr2.list_all_competition_entries()) == 2
+    assert len(cr2.list_all_competition_rubric()) == 5
+    cr.remove_project(cpid)
+    assert cr.list_competition_events(cpid) == []
+    assert cr.list_competition_entries(cpid) == []
+    assert cr.list_competition_rubric(cpid) == []
+    # 助手入口：认得出赛事工作台，也仍然只读
+    csw = []
+    ca = assistant.Assistant(cr, open_view=csw.append)
+    ov = ca.handle("打开赛事工作台")
+    assert ov["action"] == "open_view" and csw[-1] == "competition", (ov, csw)
+    assert ca.handle("帮我把报名名单删掉")["ok"] is False
+    print("58. 赛事数据层/备份/助手入口 OK")
 
     print("SELFTEST OK")
 

@@ -20,6 +20,7 @@ HIDDEN = [
     "ui_roster", "ui_service", "ui_settings", "ui_submit", "ui_tasks",
     "ui_filetools", "filetools", "tts", "assistant", "ui_pet", "ui_projects",
     "ui_media", "media", "ui_doc_tools", "docs_tools",
+    "ui_competition", "competition",
     "pypdf", "pypdfium2", "reportlab", "docx",
 ]
 
