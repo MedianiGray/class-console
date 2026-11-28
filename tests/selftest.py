@@ -22,6 +22,7 @@ import audit  # noqa: E402
 import fileroom  # noqa: E402
 import handover  # noqa: E402
 import media  # noqa: E402
+import docs_tools as dt  # noqa: E402
 import main as app_main  # noqa: E402
 import service  # noqa: E402
 from ui_main import old_user_should_skip_first_run  # noqa: E402
@@ -982,6 +983,8 @@ def main():
     assert pv2["action"] == "open_view" and switches[-1] == "projects", (pv2, switches)
     mvv = pa.handle("打开媒体工作台")
     assert mvv["action"] == "open_view" and switches[-1] == "media", (mvv, switches)
+    dvv = pa.handle("打开文档工作台")
+    assert dvv["action"] == "open_view" and switches[-1] == "doctools", (dvv, switches)
     # 项目层只读：不让助手替它改状态
     refused_p = pa.handle("帮我把项目删除")
     assert refused_p["ok"] is False and refused_p["action"] == "unknown", refused_p
@@ -1023,6 +1026,31 @@ def main():
                               "manifest_csv": "清单.csv"})
     assert "3" in txt and "2" in txt and "1" in txt and "清单" in txt, txt
     print("56. 媒体预设/预检/摘要 OK")
+
+    # 57. 文档工具：四类工具、六道门字段、页码范围与预检（不跑 OCR / 不写文件）
+    assert set(dt.TOOLS) == {"pdf_split", "pdf_merge", "ocr", "pdf_to_docx",
+                             "docx_to_pdf", "image_batch"}, set(dt.TOOLS)
+    for k in dt.TOOL_ORDER:
+        assert dt.describe_params(k, dt.default_params(k)), k
+        assert dt.normalize_params(k, {}), k
+    assert dt.parse_ranges("1-3,5", 5) == [(1, 3, "第001-003页"),
+                                          (5, 5, "第005页")]
+    assert len(dt.parse_ranges("", 3)) == 3
+    try:
+        dt.parse_ranges("1-9", 3)
+        raise SystemExit("应拦截越界页码")
+    except ValueError:
+        pass
+    tmp_docs = Path(tempfile.mkdtemp())
+    rows = dt.preflight("pdf_merge", [str(tmp_docs / "没有这个.pdf")], {})
+    assert rows and not rows[0]["ok"] and "不存在" in rows[0]["reason"], rows
+    assert dt.available("pdf_split")[0], "本机 PDF 工具应可用"
+    assert dt.available("image_batch")[0], "本机图片工具应可用"
+    assert len(dt.MANIFEST_HEAD) == 11, dt.MANIFEST_HEAD
+    txt = dt.summary_text({"total": 3, "done": 2, "failed": 1,
+                           "manifest_csv": "清单.csv"})
+    assert "3" in txt and "2" in txt and "1" in txt and "清单" in txt, txt
+    print("57. 文档工具/六道门/页码范围 OK")
 
     print("SELFTEST OK")
 

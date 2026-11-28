@@ -19,6 +19,7 @@ import tkinter as tk  # noqa: E402
 from tkinter import ttk  # noqa: E402
 import ui_logs  # noqa: E402
 import media  # noqa: E402
+import docs_tools as dt  # noqa: E402
 from ui_empty import EmptyState  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
@@ -53,7 +54,7 @@ def main():
     app.reset_first_run(); root.update()
     print("首次引导卡 OK")
 
-    for k in ("dashboard", "projects", "media", "docs", "files", "roster", "tasks", "submit", "logs"):
+    for k in ("dashboard", "projects", "media", "doctools", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
         assert app.views[k].winfo_manager() == "pack", (k, app.views[k].winfo_manager())
@@ -94,6 +95,24 @@ def main():
     assert "ffmpeg" in mv.summary.cget("text") or not media.available()
     repo.remove_project(mid); mv.refresh(); root.update()
     print("媒体视图 OK")
+
+    # 文档工作台：工具切换、参数区、项目下拉，不真的跑文件
+    app.switch("doctools"); root.update()
+    dv = app.views["doctools"]
+    assert dv.tool_var.get() == dt.tool_items()[0][1], dv.tool_var.get()
+    assert dv.btn_start.cget("text") == "开始"
+    assert not dv.tree.get_children(), "文档空态不该有行"
+    assert dt.available("pdf_split")[0], "PDF 工具应可用"
+    dv.tool_var.set(dt.tool_items()[5][1]); dv._on_tool_change(); root.update()
+    assert "format" in dv.param_vars and "max_edge" in dv.param_vars
+    assert dv.param_hint.cget("text"), "参数说明为空"
+    did = repo.add_project({"name": "文档冒烟项目", "kind": "class",
+                            "stage": "生产", "owner": "覃祖悦"})
+    dv.refresh(); root.update()
+    assert any("文档冒烟项目" in str(x) for x in dv.project_cb.cget("values")), \
+        dv.project_cb.cget("values")
+    repo.remove_project(did); dv.refresh(); root.update()
+    print("文档视图 OK")
 
     # 名单视图：添加 / 移除
     rv = app.views["roster"]

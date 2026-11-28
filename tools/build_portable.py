@@ -20,7 +20,8 @@ HIDDEN = [
     "ui_empty", "ui_error", "ui_files", "ui_hub", "ui_logs", "ui_reminders",
     "ui_roster", "ui_service", "ui_settings", "ui_submit", "ui_tasks",
     "ui_filetools", "filetools", "tts", "assistant", "ui_pet", "ui_projects",
-    "ui_media", "media",
+    "ui_media", "media", "ui_doc_tools", "docs_tools",
+    "pypdf", "pypdfium2", "reportlab", "docx",
 ]
 
 
@@ -45,6 +46,9 @@ def main():
         args += ["--hidden-import", item]
     for item in EXCLUDES:
         args += ["--exclude-module", item]
+    # pypdfium2 自带 pdfium 二进制，PyInstaller 默认只收 Python 文件，必须整包收。
+    args += ["--collect-all", "pypdfium2", "--collect-all", "docx",
+             "--collect-data", "reportlab"]
     args.append("main.py")
     print("[1/3] PyInstaller onedir")
     subprocess.run(args, cwd=str(ROOT), check=True)
