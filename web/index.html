@@ -57,6 +57,17 @@
   html{background:var(--bg)}
   .app{display:flex;min-height:100vh}
 
+  /* 从服务台进入的单件事办理模式：只留当前事项，不摊整套工作台 */
+  .desk-return{display:none}
+  body.desk-mode .sidebar,
+  body.desk-mode .topbar,
+  body.desk-mode .statusbar{display:none}
+  body.desk-mode .desk-return{position:sticky;top:0;z-index:20;display:inline-flex;
+    align-items:center;gap:6px;width:100%;padding:9px 24px;background:var(--card);
+    border-bottom:1px solid var(--line);font-size:12px;font-weight:700;color:var(--primary)}
+  body.desk-mode .desk-return:hover{background:var(--primary-soft)}
+  body.desk-mode .content{padding-top:18px}
+
   /* 侧边栏 */
   .sidebar{width:232px;background:var(--card);border-right:1px solid var(--line);
     display:flex;flex-direction:column;flex-shrink:0}
@@ -1169,6 +1180,7 @@
   </aside>
 
   <main class="main">
+    <a class="desk-return" href="../index.html">← 回服务台</a>
     <div class="topbar">
       <div class="tb-search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -6679,6 +6691,7 @@ try {
     initialView = viewMatch[1];
   }
 } catch(e){}
+if (/[?&]desk=1(?:&|$)/.test(qs || "")) document.body.classList.add("desk-mode");
 switchView(initialView);
 /* ============ PWA 更新提示：新版本装好后再刷新，不打断当前操作 ============ */
 var pwaState = { hadController:false, shown:false, dismissed:false, reloading:false };

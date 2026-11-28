@@ -342,13 +342,17 @@
       });
     }
 
+    function hrefFor(s){
+      return s.href.indexOf("web/index.html?") === 0 ? s.href + "&desk=1" : s.href;
+    }
+
     function renderList(){
       var rows = SERVICES.filter(match);
       resultCount.textContent = rows.length;
       emptyBox.className = "empty" + (rows.length ? "" : " show");
       grid.innerHTML = rows.map(function(s){
         var ext = s.external ? ' target="_blank" rel="noopener"' : "";
-        return '<a class="service" href="' + escapeHtml(s.href) + '"' + ext + '>'
+        return '<a class="service" href="' + escapeHtml(hrefFor(s)) + '"' + ext + '>'
           + '<span class="ico tone-' + s.tone + '" aria-hidden="true">' + escapeHtml(s.ico) + '</span>'
           + '<span class="svc-main">'
           +   '<span class="svc-title"><h3>' + escapeHtml(s.title) + '</h3><span class="role">' + escapeHtml(s.role) + '</span></span>'
@@ -362,7 +366,7 @@
     document.getElementById("searchForm").onsubmit = function(e){
       e.preventDefault();
       var first = SERVICES.filter(match)[0];
-      if (first) location.href = first.href;
+      if (first) location.href = hrefFor(first);
     };
     queryInput.oninput = function(){ query = queryInput.value.trim(); renderList(); };
     document.getElementById("clearBtn").onclick = function(){
