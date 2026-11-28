@@ -104,6 +104,23 @@ def _clean(value) -> str:
     return str(value).strip()
 
 
+def _bom_numbers(data: dict) -> tuple:
+    """BOM 数量与单价：数量必须大于 0，单价不能为负。"""
+    try:
+        qty = float(data.get("qty") if data.get("qty") not in ("", None) else 1)
+    except (TypeError, ValueError):
+        raise RepositoryError("数量应为数字")
+    if qty <= 0:
+        raise RepositoryError("数量应大于 0")
+    try:
+        unit_cost = float(data.get("unit_cost") if data.get("unit_cost") not in ("", None) else 0)
+    except (TypeError, ValueError):
+        raise RepositoryError("单价应为数字")
+    if unit_cost < 0:
+        raise RepositoryError("单价不能为负")
+    return qty, unit_cost
+
+
 def _full_time(value) -> str:
     """把旧的 MM-DD HH:MM 补成含年份时间；已是完整格式则原样返回。"""
     text = _clean(value)
@@ -226,6 +243,19 @@ PROJECT_STAGES = ("发现", "定义", "计划", "采集", "生产", "评审", "�
 PROJECT_STATUS = ("进行中", "已暂停", "已完成", "已归档")
 DELIVERABLE_STATUS = ("待开始", "进行中", "待评审", "已通过", "已驳回")
 COMPETITION_ROLES = ("队长", "队员", "指导教师", "其他")
+# v0.35 产品模板：PRD / 架构、BOM、原型、测试、评审门。
+PRODUCT_SPEC_KINDS = {"prd": "需求文档", "arch": "架构说明"}
+PRODUCT_SPEC_DEFAULTS = {
+    "prd": ("背景与问题", "目标用户", "产品目标", "功能范围",
+            "非目标与边界", "验收标准", "风险与依赖"),
+    "arch": ("总体架构", "模块与接口", "数据与存储", "部署与依赖"),
+}
+PRODUCT_BOM_KINDS = ("物料", "模块", "接口", "外包", "其他")
+PRODUCT_PROTOTYPE_STATUS = ("待做", "进行中", "可用", "已冻结")
+PRODUCT_TEST_RESULTS = ("未测", "通过", "不通过", "阻塞")
+PRODUCT_TEST_SEVERITIES = ("高", "中", "低")
+PRODUCT_REVIEW_GATES = ("立项评审", "方案评审", "样机评审", "发布评审")
+PRODUCT_REVIEW_CONCLUSIONS = ("待评审", "通过", "有条件通过", "驳回")
 PROJECT_TEMPLATES = {
     "class": (
         ("材料收集", "采集"), ("逐份审核", "评审"),
@@ -400,6 +430,41 @@ class LocalRepository:
                     project_id INTEGER, criterion TEXT, weight INTEGER,
                     score INTEGER, evidence TEXT, note TEXT,
                     sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            # v0.35 产品模板：需求/架构、BOM、原型、测试与评审门。
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS product_specs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, kind TEXT, section TEXT, content TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS product_bom (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, kind TEXT, name TEXT, spec TEXT,
+                    qty REAL, unit TEXT, unit_cost REAL, source TEXT, note TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS product_protos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, version TEXT, path TEXT,
+                    status TEXT, note TEXT, sort_order INTEGER,
+                    created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS product_tests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, method TEXT, expected TEXT,
+                    result TEXT, severity TEXT, issue TEXT, note TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS product_reviews (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, gate TEXT, reviewer TEXT, date TEXT,
+                    conclusion TEXT, note TEXT, sort_order INTEGER,
+                    created_at TEXT, updated_at TEXT
                 )""")
             # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
             cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
@@ -1489,7 +1554,8 @@ class LocalRepository:
             for table in ("project_deliverables", "project_assets",
                           "project_runs", "project_gates", "project_events",
                           "competition_events", "competition_entries",
-                          "competition_rubric"):
+                          "competition_rubric", "product_specs", "product_bom",
+                          "product_protos", "product_tests", "product_reviews"):
                 conn.execute("DELETE FROM %s WHERE project_id=?" % table, (project_id,))
             conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
             conn.commit()
@@ -2181,6 +2247,568 @@ class LocalRepository:
         finally:
             conn.close()
 
+    # ---------- v0.35 产品：PRD / 架构 / BOM / 原型 / 测试 / 评审 ----------
+    def _product_rows(self, table, project_id) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM %s WHERE project_id=? ORDER BY sort_order, id" % table,
+                (project_id,)).fetchall()]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取产品数据失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_all_product_rows(self, table) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM %s ORDER BY project_id, sort_order, id" % table).fetchall()]
+        finally:
+            conn.close()
+
+    def list_product_specs(self, project_id, kind="") -> list:
+        rows = self._product_rows("product_specs", project_id)
+        kind = _clean(kind)
+        return [r for r in rows if not kind or r.get("kind") == kind]
+
+    def list_all_product_specs(self) -> list:
+        return self.list_all_product_rows("product_specs")
+
+    def add_product_spec(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("产品文档条目格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        kind = _clean(data.get("kind")) or "prd"
+        if kind not in PRODUCT_SPEC_KINDS:
+            raise RepositoryError("产品文档类型不在允许范围内")
+        section = _clean(data.get("section"))
+        if not section:
+            raise RepositoryError("文档小节不能为空")
+        now = now_full()
+        conn = self._conn()
+        try:
+            dup = conn.execute("SELECT id FROM product_specs WHERE project_id=? "
+                               "AND kind=? AND section=?", (project_id, kind, section)).fetchone()
+            if dup is not None:
+                raise RepositoryError("同一类型下已有同名小节")
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM product_specs WHERE project_id=? AND kind=?",
+                               (project_id, kind)).fetchone()
+            cur = conn.execute("""INSERT INTO product_specs
+                (project_id,kind,section,content,sort_order,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?)""",
+                (project_id, kind, section, _clean(data.get("content")),
+                 int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加文档小节", "系统",
+                                "%s · %s" % (PRODUCT_SPEC_KINDS[kind], section))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加文档小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_product_spec(self, spec_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("产品文档条目格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_specs WHERE id=?",
+                               (spec_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("文档小节不存在")
+        allowed = ("kind", "section", "content", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "kind":
+                value = _clean(data.get(key)) or "prd"
+                if value not in PRODUCT_SPEC_KINDS:
+                    raise RepositoryError("产品文档类型不在允许范围内")
+            elif key == "section":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("文档小节不能为空")
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        kind = values.get("kind", row["kind"])
+        section = values.get("section", row["section"])
+        if kind != row["kind"] or section != row["section"]:
+            conn = self._conn()
+            try:
+                dup = conn.execute("SELECT id FROM product_specs WHERE project_id=? "
+                                   "AND kind=? AND section=? AND id<>?",
+                                   (row["project_id"], kind, section, spec_id)).fetchone()
+            finally:
+                conn.close()
+            if dup is not None:
+                raise RepositoryError("同一类型下已有同名小节")
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE product_specs SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [spec_id])
+            self._project_event(conn, row["project_id"], "更新文档小节", "系统",
+                                "%s · %s" % (PRODUCT_SPEC_KINDS.get(kind, kind), section))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新文档小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_product_spec(self, spec_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_specs WHERE id=?",
+                               (spec_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("文档小节不存在")
+            conn.execute("DELETE FROM product_specs WHERE id=?", (spec_id,))
+            self._project_event(conn, row["project_id"], "删除文档小节", "系统",
+                                row["section"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除文档小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_product_bom(self, project_id) -> list:
+        return self._product_rows("product_bom", project_id)
+
+    def list_all_product_bom(self) -> list:
+        return self.list_all_product_rows("product_bom")
+
+    def add_product_bom(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("BOM 条目格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        kind = _clean(data.get("kind")) or "物料"
+        if kind not in PRODUCT_BOM_KINDS:
+            raise RepositoryError("BOM 类型不在允许范围内")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("BOM 名称不能为空")
+        qty, unit_cost = _bom_numbers(data)
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM product_bom WHERE project_id=?",
+                               (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO product_bom
+                (project_id,kind,name,spec,qty,unit,unit_cost,source,note,
+                 sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (project_id, kind, name, _clean(data.get("spec")), qty,
+                 _clean(data.get("unit")) or "件", unit_cost,
+                 _clean(data.get("source")), _clean(data.get("note")),
+                 int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加 BOM", "系统",
+                                "%s · %s" % (kind, name))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加 BOM 失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_product_bom(self, bom_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("BOM 条目格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_bom WHERE id=?", (bom_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("BOM 条目不存在")
+        allowed = ("kind", "name", "spec", "qty", "unit", "unit_cost",
+                   "source", "note", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "kind":
+                value = _clean(data.get(key)) or "物料"
+                if value not in PRODUCT_BOM_KINDS:
+                    raise RepositoryError("BOM 类型不在允许范围内")
+            elif key == "name":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("BOM 名称不能为空")
+            elif key in ("qty", "unit_cost"):
+                try:
+                    value = float(data.get(key) or 0)
+                except (TypeError, ValueError):
+                    raise RepositoryError("数量与单价应为数字")
+                if value < 0 or (key == "qty" and value == 0):
+                    raise RepositoryError("数量应大于 0，单价不能为负")
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE product_bom SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [bom_id])
+            self._project_event(conn, row["project_id"], "更新 BOM", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新 BOM 失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_product_bom(self, bom_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_bom WHERE id=?", (bom_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("BOM 条目不存在")
+            conn.execute("DELETE FROM product_bom WHERE id=?", (bom_id,))
+            self._project_event(conn, row["project_id"], "删除 BOM", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除 BOM 失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_product_protos(self, project_id) -> list:
+        return self._product_rows("product_protos", project_id)
+
+    def list_all_product_protos(self) -> list:
+        return self.list_all_product_rows("product_protos")
+
+    def add_product_proto(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("原型条目格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("原型名称不能为空")
+        status = _clean(data.get("status")) or "待做"
+        if status not in PRODUCT_PROTOTYPE_STATUS:
+            raise RepositoryError("原型状态不在允许范围内")
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM product_protos WHERE project_id=?",
+                               (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO product_protos
+                (project_id,name,version,path,status,note,sort_order,
+                 created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (project_id, name, _clean(data.get("version")), _clean(data.get("path")),
+                 status, _clean(data.get("note")), int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加原型", "系统",
+                                name + (" · " + status if status else ""))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加原型失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_product_proto(self, proto_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("原型条目格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_protos WHERE id=?",
+                               (proto_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("原型不存在")
+        allowed = ("name", "version", "path", "status", "note", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "name":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("原型名称不能为空")
+            elif key == "status":
+                value = _clean(data.get(key)) or "待做"
+                if value not in PRODUCT_PROTOTYPE_STATUS:
+                    raise RepositoryError("原型状态不在允许范围内")
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE product_protos SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [proto_id])
+            self._project_event(conn, row["project_id"], "更新原型", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新原型失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_product_proto(self, proto_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_protos WHERE id=?",
+                               (proto_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("原型不存在")
+            conn.execute("DELETE FROM product_protos WHERE id=?", (proto_id,))
+            self._project_event(conn, row["project_id"], "删除原型", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除原型失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_product_tests(self, project_id) -> list:
+        return self._product_rows("product_tests", project_id)
+
+    def list_all_product_tests(self) -> list:
+        return self.list_all_product_rows("product_tests")
+
+    def add_product_test(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("测试条目格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("测试项名称不能为空")
+        result = _clean(data.get("result")) or "未测"
+        if result not in PRODUCT_TEST_RESULTS:
+            raise RepositoryError("测试结果不在允许范围内")
+        severity = _clean(data.get("severity")) or "中"
+        if severity not in PRODUCT_TEST_SEVERITIES:
+            raise RepositoryError("严重程度不在允许范围内")
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM product_tests WHERE project_id=?",
+                               (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO product_tests
+                (project_id,name,method,expected,result,severity,issue,note,
+                 sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (project_id, name, _clean(data.get("method")),
+                 _clean(data.get("expected")), result, severity,
+                 _clean(data.get("issue")), _clean(data.get("note")),
+                 int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加测试项", "系统",
+                                name + (" · " + result if result else ""))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加测试项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_product_test(self, test_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("测试条目格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_tests WHERE id=?",
+                               (test_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("测试项不存在")
+        allowed = ("name", "method", "expected", "result", "severity",
+                   "issue", "note", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "name":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("测试项名称不能为空")
+            elif key == "result":
+                value = _clean(data.get(key)) or "未测"
+                if value not in PRODUCT_TEST_RESULTS:
+                    raise RepositoryError("测试结果不在允许范围内")
+            elif key == "severity":
+                value = _clean(data.get(key)) or "中"
+                if value not in PRODUCT_TEST_SEVERITIES:
+                    raise RepositoryError("严重程度不在允许范围内")
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE product_tests SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [test_id])
+            self._project_event(conn, row["project_id"], "更新测试项", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新测试项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_product_test(self, test_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_tests WHERE id=?",
+                               (test_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("测试项不存在")
+            conn.execute("DELETE FROM product_tests WHERE id=?", (test_id,))
+            self._project_event(conn, row["project_id"], "删除测试项", "系统", row["name"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除测试项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_product_reviews(self, project_id) -> list:
+        return self._product_rows("product_reviews", project_id)
+
+    def list_all_product_reviews(self) -> list:
+        return self.list_all_product_rows("product_reviews")
+
+    def add_product_review(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("评审记录格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        gate = _clean(data.get("gate"))
+        if gate not in PRODUCT_REVIEW_GATES:
+            raise RepositoryError("评审门不在允许范围内")
+        conclusion = _clean(data.get("conclusion")) or "待评审"
+        if conclusion not in PRODUCT_REVIEW_CONCLUSIONS:
+            raise RepositoryError("评审结论不在允许范围内")
+        date_text = normalize_deadline(data.get("date")) if data.get("date") else ""
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM product_reviews WHERE project_id=?",
+                               (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO product_reviews
+                (project_id,gate,reviewer,date,conclusion,note,sort_order,
+                 created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (project_id, gate, _clean(data.get("reviewer")), date_text,
+                 conclusion, _clean(data.get("note")), int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加评审门", "系统",
+                                gate + (" · " + conclusion if conclusion else ""))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加评审门失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_product_review(self, review_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("评审记录格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_reviews WHERE id=?",
+                               (review_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("评审记录不存在")
+        allowed = ("gate", "reviewer", "date", "conclusion", "note", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "gate":
+                value = _clean(data.get(key))
+                if value not in PRODUCT_REVIEW_GATES:
+                    raise RepositoryError("评审门不在允许范围内")
+            elif key == "conclusion":
+                value = _clean(data.get(key)) or "待评审"
+                if value not in PRODUCT_REVIEW_CONCLUSIONS:
+                    raise RepositoryError("评审结论不在允许范围内")
+            elif key == "date":
+                value = normalize_deadline(data.get(key)) if data.get(key) else ""
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE product_reviews SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [review_id])
+            self._project_event(conn, row["project_id"], "更新评审门", "系统", row["gate"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新评审门失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_product_review(self, review_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM product_reviews WHERE id=?",
+                               (review_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("评审记录不存在")
+            conn.execute("DELETE FROM product_reviews WHERE id=?", (review_id,))
+            self._project_event(conn, row["project_id"], "删除评审门", "系统", row["gate"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除评审门失败：%s" % e)
+        finally:
+            conn.close()
+
     # ---------- 统计 / 备份 ----------
     def stats(self) -> dict:
         conn = self._conn()
@@ -2209,6 +2837,11 @@ class LocalRepository:
         comp_events = self.list_all_competition_events()
         comp_entries = self.list_all_competition_entries()
         comp_rubric = self.list_all_competition_rubric()
+        prod_specs = self.list_all_product_specs()
+        prod_bom = self.list_all_product_bom()
+        prod_protos = self.list_all_product_protos()
+        prod_tests = self.list_all_product_tests()
+        prod_reviews = self.list_all_product_reviews()
         return {"app": "class-console", "version": VERSION,
                 "exportedAt": datetime.datetime.now().isoformat(timespec="seconds"),
                 "counts": {"docs": len(docs), "logs": len(self.list_logs()),
@@ -2221,7 +2854,12 @@ class LocalRepository:
                            "project_events": len(project_events),
                            "competition_events": len(comp_events),
                            "competition_entries": len(comp_entries),
-                           "competition_rubric": len(comp_rubric)},
+                           "competition_rubric": len(comp_rubric),
+                           "product_specs": len(prod_specs),
+                           "product_bom": len(prod_bom),
+                           "product_protos": len(prod_protos),
+                           "product_tests": len(prod_tests),
+                           "product_reviews": len(prod_reviews)},
                 "docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
                 "attachments": atts, "templates": templates,
@@ -2233,14 +2871,21 @@ class LocalRepository:
                 "project_events": project_events,
                 "competition_events": comp_events,
                 "competition_entries": comp_entries,
-                "competition_rubric": comp_rubric}
+                "competition_rubric": comp_rubric,
+                "product_specs": prod_specs,
+                "product_bom": prod_bom,
+                "product_protos": prod_protos,
+                "product_tests": prod_tests,
+                "product_reviews": prod_reviews}
 
     def restore(self, docs: list, logs: list, roster=None, tasks=None,
                 attachments=None, templates=None, events=None,
                 exemptions=None, followups=None,
                 projects=None, project_deliverables=None,
                 project_events=None, competition_events=None,
-                competition_entries=None, competition_rubric=None):
+                competition_entries=None, competition_rubric=None,
+                product_specs=None, product_bom=None, product_protos=None,
+                product_tests=None, product_reviews=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
@@ -2260,6 +2905,11 @@ class LocalRepository:
                                if isinstance(competition_entries, list) else [])
         competition_rubric = (competition_rubric
                               if isinstance(competition_rubric, list) else [])
+        product_specs = product_specs if isinstance(product_specs, list) else []
+        product_bom = product_bom if isinstance(product_bom, list) else []
+        product_protos = product_protos if isinstance(product_protos, list) else []
+        product_tests = product_tests if isinstance(product_tests, list) else []
+        product_reviews = product_reviews if isinstance(product_reviews, list) else []
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
@@ -2278,6 +2928,11 @@ class LocalRepository:
             conn.execute("DELETE FROM competition_events")
             conn.execute("DELETE FROM competition_entries")
             conn.execute("DELETE FROM competition_rubric")
+            conn.execute("DELETE FROM product_specs")
+            conn.execute("DELETE FROM product_bom")
+            conn.execute("DELETE FROM product_protos")
+            conn.execute("DELETE FROM product_tests")
+            conn.execute("DELETE FROM product_reviews")
             conn.execute("DELETE FROM projects")
             if isinstance(templates, list):
                 conn.execute("DELETE FROM template_fields")
@@ -2541,6 +3196,139 @@ class LocalRepository:
                      _clean(rb.get("note")), sort_order,
                      _clean(rb.get("created_at")) or now_full(),
                      _clean(rb.get("updated_at")) or now_full()))
+            for sp in product_specs:
+                if not isinstance(sp, dict):
+                    continue
+                pid = project_map.get(str(sp.get("project_id")))
+                if pid is None:
+                    continue
+                kind = _clean(sp.get("kind")) or "prd"
+                if kind not in PRODUCT_SPEC_KINDS:
+                    kind = "prd"
+                section = _clean(sp.get("section"))
+                if not section:
+                    continue
+                try:
+                    sort_order = int(sp.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO product_specs
+                    (project_id,kind,section,content,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?)""",
+                    (pid, kind, section, _clean(sp.get("content")), sort_order,
+                     _clean(sp.get("created_at")) or now_full(),
+                     _clean(sp.get("updated_at")) or now_full()))
+            for bm in product_bom:
+                if not isinstance(bm, dict):
+                    continue
+                pid = project_map.get(str(bm.get("project_id")))
+                if pid is None:
+                    continue
+                kind = _clean(bm.get("kind")) or "物料"
+                if kind not in PRODUCT_BOM_KINDS:
+                    kind = "其他"
+                name = _clean(bm.get("name"))
+                if not name:
+                    continue
+                try:
+                    qty = float(bm.get("qty") or 0)
+                    unit_cost = float(bm.get("unit_cost") or 0)
+                except (TypeError, ValueError):
+                    qty, unit_cost = 0, 0
+                if qty <= 0:
+                    qty = 1
+                if unit_cost < 0:
+                    unit_cost = 0
+                try:
+                    sort_order = int(bm.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO product_bom
+                    (project_id,kind,name,spec,qty,unit,unit_cost,source,note,
+                     sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, kind, name, _clean(bm.get("spec")), qty,
+                     _clean(bm.get("unit")) or "件", unit_cost,
+                     _clean(bm.get("source")), _clean(bm.get("note")), sort_order,
+                     _clean(bm.get("created_at")) or now_full(),
+                     _clean(bm.get("updated_at")) or now_full()))
+            for pt in product_protos:
+                if not isinstance(pt, dict):
+                    continue
+                pid = project_map.get(str(pt.get("project_id")))
+                if pid is None:
+                    continue
+                name = _clean(pt.get("name"))
+                if not name:
+                    continue
+                status = _clean(pt.get("status")) or "待做"
+                if status not in PRODUCT_PROTOTYPE_STATUS:
+                    status = "待做"
+                try:
+                    sort_order = int(pt.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO product_protos
+                    (project_id,name,version,path,status,note,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (pid, name, _clean(pt.get("version")), _clean(pt.get("path")),
+                     status, _clean(pt.get("note")), sort_order,
+                     _clean(pt.get("created_at")) or now_full(),
+                     _clean(pt.get("updated_at")) or now_full()))
+            for ts in product_tests:
+                if not isinstance(ts, dict):
+                    continue
+                pid = project_map.get(str(ts.get("project_id")))
+                if pid is None:
+                    continue
+                name = _clean(ts.get("name"))
+                if not name:
+                    continue
+                result = _clean(ts.get("result")) or "未测"
+                if result not in PRODUCT_TEST_RESULTS:
+                    result = "未测"
+                severity = _clean(ts.get("severity")) or "中"
+                if severity not in PRODUCT_TEST_SEVERITIES:
+                    severity = "中"
+                try:
+                    sort_order = int(ts.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO product_tests
+                    (project_id,name,method,expected,result,severity,issue,note,
+                     sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, name, _clean(ts.get("method")), _clean(ts.get("expected")),
+                     result, severity, _clean(ts.get("issue")), _clean(ts.get("note")),
+                     sort_order, _clean(ts.get("created_at")) or now_full(),
+                     _clean(ts.get("updated_at")) or now_full()))
+            for rv in product_reviews:
+                if not isinstance(rv, dict):
+                    continue
+                pid = project_map.get(str(rv.get("project_id")))
+                if pid is None:
+                    continue
+                gate = _clean(rv.get("gate"))
+                if gate not in PRODUCT_REVIEW_GATES:
+                    continue
+                conclusion = _clean(rv.get("conclusion")) or "待评审"
+                if conclusion not in PRODUCT_REVIEW_CONCLUSIONS:
+                    conclusion = "待评审"
+                date_text = ""
+                if rv.get("date"):
+                    try:
+                        date_text = normalize_deadline(rv.get("date"))
+                    except Exception:
+                        date_text = ""
+                try:
+                    sort_order = int(rv.get("sort_order") or 0)
+                except (TypeError, ValueError):
+                    sort_order = 0
+                conn.execute("""INSERT INTO product_reviews
+                    (project_id,gate,reviewer,date,conclusion,note,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (pid, gate, _clean(rv.get("reviewer")), date_text,
+                     conclusion, _clean(rv.get("note")), sort_order,
+                     _clean(rv.get("created_at")) or now_full(),
+                     _clean(rv.get("updated_at")) or now_full()))
             conn.commit()
         except sqlite3.Error as e:
             conn.rollback()

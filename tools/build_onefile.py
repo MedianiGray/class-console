@@ -21,6 +21,7 @@ HIDDEN = [
     "ui_filetools", "filetools", "tts", "assistant", "ui_pet", "ui_projects",
     "ui_media", "media", "ui_doc_tools", "docs_tools",
     "ui_competition", "competition",
+    "ui_product", "products",
     "pypdf", "pypdfium2", "reportlab", "docx",
 ]
 

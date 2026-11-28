@@ -24,6 +24,7 @@ import handover  # noqa: E402
 import media  # noqa: E402
 import docs_tools as dt  # noqa: E402
 import competition as cp  # noqa: E402
+import products as pp  # noqa: E402
 import main as app_main  # noqa: E402
 import service  # noqa: E402
 from ui_main import old_user_should_skip_first_run  # noqa: E402
@@ -1096,6 +1097,64 @@ def main():
     assert ov["action"] == "open_view" and csw[-1] == "competition", (ov, csw)
     assert ca.handle("帮我把报名名单删掉")["ok"] is False
     print("58. 赛事数据层/备份/助手入口 OK")
+
+    # 59. 产品数据层：五张表、默认 PRD/架构、评审门、上线检查、备份与级联删除
+    pr = LocalRepository(Path(tempfile.mkdtemp()) / "prod.db")
+    pr.restore([], [])
+    ppid = pr.add_project({"name": "自检产品", "kind": "product",
+                           "stage": "定义", "start_date": "2026-11-01",
+                           "due_date": "2026-12-20"})
+    pr.apply_project_template(ppid)
+    ps = pp.seed_project(pr, ppid)
+    assert ps["specs"] == 11 and ps["reviews"] == 4, ps
+    assert len(pr.list_product_specs(ppid, "prd")) == 7
+    assert len(pr.list_product_specs(ppid, "arch")) == 4
+    assert len(pr.list_product_reviews(ppid)) == 4
+    pr.update_product_spec(pr.list_product_specs(ppid, "prd")[0]["id"],
+                           {"content": "人工记录容易漏。"})
+    pr.add_product_bom(ppid, {"kind": "物料", "name": "传感器", "qty": 2,
+                              "unit": "支", "unit_cost": 50, "source": "库存"})
+    try:
+        pr.add_product_bom(ppid, {"kind": "物料", "name": "零数量", "qty": 0})
+        raise SystemExit("数量为 0 应拦截")
+    except RepositoryError:
+        pass
+    pr.add_product_proto(ppid, {"name": "看板", "status": "可用", "path": __file__})
+    pr.add_product_test(ppid, {"name": "读数", "result": "通过", "severity": "高"})
+    assert pp.bom_stats(pr.list_product_bom(ppid))["cost"] == 100.0
+    assert pp.test_stats(pr.list_product_tests(ppid))["ready"]
+    rr = pp.readiness(pr, ppid)
+    assert not rr["ok"] and len(rr["items"]) == 6, rr
+    assert [i["name"] for i in rr["items"]][0] == "需求完整"
+    bak = pr.backup()
+    assert bak["counts"]["product_specs"] == 11
+    assert bak["counts"]["product_bom"] == 1
+    assert bak["counts"]["product_protos"] == 1
+    assert bak["counts"]["product_tests"] == 1
+    assert bak["counts"]["product_reviews"] == 4
+    pr2 = LocalRepository(Path(tempfile.mkdtemp()) / "prod2.db")
+    pr2.restore([], [], projects=bak["projects"],
+                product_specs=bak["product_specs"],
+                product_bom=bak["product_bom"],
+                product_protos=bak["product_protos"],
+                product_tests=bak["product_tests"],
+                product_reviews=bak["product_reviews"])
+    assert len(pr2.list_all_product_specs()) == 11
+    assert len(pr2.list_all_product_bom()) == 1
+    assert len(pr2.list_all_product_protos()) == 1
+    assert len(pr2.list_all_product_tests()) == 1
+    assert len(pr2.list_all_product_reviews()) == 4
+    pr.remove_project(ppid)
+    assert pr.list_product_specs(ppid) == []
+    assert pr.list_product_bom(ppid) == []
+    assert pr.list_product_protos(ppid) == []
+    assert pr.list_product_tests(ppid) == []
+    assert pr.list_product_reviews(ppid) == []
+    psw = []
+    pa = assistant.Assistant(pr, open_view=psw.append)
+    ov = pa.handle("打开产品工作台")
+    assert ov["action"] == "open_view" and psw[-1] == "product", (ov, psw)
+    print("59. 产品数据层/上线检查/备份/助手入口 OK")
 
     print("SELFTEST OK")
 

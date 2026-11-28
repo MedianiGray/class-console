@@ -21,6 +21,7 @@ import ui_logs  # noqa: E402
 import media  # noqa: E402
 import docs_tools as dt  # noqa: E402
 import competition as cp  # noqa: E402
+import products as pp  # noqa: E402
 from ui_empty import EmptyState  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
@@ -55,7 +56,7 @@ def main():
     app.reset_first_run(); root.update()
     print("首次引导卡 OK")
 
-    for k in ("dashboard", "projects", "competition", "media", "doctools", "docs", "files", "roster", "tasks", "submit", "logs"):
+    for k in ("dashboard", "projects", "competition", "product", "media", "doctools", "docs", "files", "roster", "tasks", "submit", "logs"):
         app.switch(k)
         root.update()
         assert app.views[k].winfo_manager() == "pack", (k, app.views[k].winfo_manager())
@@ -140,6 +141,37 @@ def main():
     repo.remove_project(cid); cv.refresh(); root.update()
     assert not cv.cal_tree.get_children() and not cv.entry_tree.get_children()
     print("赛事视图 OK")
+
+    # 产品工作台：六个页签、PRD/架构/评审默认小节、BOM 与上线检查联动
+    app.switch("product"); root.update()
+    pv = app.views["product"]
+    assert len(pv.nb.tabs()) == 6, pv.nb.tabs()
+    assert "product" in app.nav_items, "经办人应能看到产品工作台入口"
+    pid2 = repo.add_project({"name": "产品冒烟项目", "kind": "product",
+                             "stage": "定义", "owner": "覃祖悦",
+                             "start_date": "2099-01-01", "due_date": "2099-02-01"})
+    repo.apply_project_template(pid2)
+    pp.seed_project(repo, pid2)
+    pv.refresh(pid2); root.update()
+    assert any("产品冒烟项目" in str(x) for x in pv.project_cb.cget("values")), \
+        pv.project_cb.cget("values")
+    assert len(pv.prd_tree.get_children()) == 7, "PRD 默认小节未显示"
+    assert len(pv.arch_tree.get_children()) == 4, "架构默认小节未显示"
+    assert len(pv.review_tree.get_children()) == 4, "评审门未显示"
+    assert "需求 0/7" in pv.summary.cget("text"), pv.summary.cget("text")
+    assert len(pv.check_tree.get_children()) == 6, "上线检查应有六项"
+    repo.add_product_bom(pid2, {"kind": "物料", "name": "传感器",
+                                "spec": "RS485", "qty": 2, "unit": "支",
+                                "unit_cost": 100, "source": "库存"})
+    repo.add_product_test(pid2, {"name": "读数", "method": "标准液",
+                                 "expected": "误差 <5%", "result": "通过",
+                                 "severity": "高"})
+    pv._load_project(pid2); root.update()
+    assert "BOM 1 项" in pv.bom_summary.cget("text"), pv.bom_summary.cget("text")
+    assert "通过率 100%" in pv.test_summary.cget("text"), pv.test_summary.cget("text")
+    repo.remove_project(pid2); pv.refresh(); root.update()
+    assert not pv.prd_tree.get_children() and not pv.check_tree.get_children()
+    print("产品视图 OK")
 
     # 名单视图：添加 / 移除
     rv = app.views["roster"]
