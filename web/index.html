@@ -6671,7 +6671,15 @@ bindReminders();
 initSidebar();
 initTheme();
 applyRoleDefaults();
-switchView("dashboard");
+var initialView = "dashboard";
+try {
+  var qs = (typeof location !== "undefined" && location.search) || "";
+  var viewMatch = /[?&]view=([a-z]+)/.exec(qs);
+  if (viewMatch && NAV.some(function(n){ return n.key === viewMatch[1]; })) {
+    initialView = viewMatch[1];
+  }
+} catch(e){}
+switchView(initialView);
 /* ============ PWA 更新提示：新版本装好后再刷新，不打断当前操作 ============ */
 var pwaState = { hadController:false, shown:false, dismissed:false, reloading:false };
 function showPwaUpdate(){
