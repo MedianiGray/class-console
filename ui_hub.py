@@ -2,7 +2,7 @@
 """能力中心：主流程之外的低频入口，一页分组卡片。
 
 只负责“找到并打开”，不在本页执行业务动作；提交、审核、归档仍回原页面。
-与网页端能力中心同一 IA：智能辅助 / 文件与留痕两组，权限不足时卡片置灰。
+与网页端能力中心同一 IA：智能辅助 / 文件与留痕 / 实验与重活，权限不足时卡片置灰。
 """
 
 import tkinter as tk
@@ -10,13 +10,13 @@ from tkinter import ttk
 
 from theme import FONT, C
 
-# (key, 标题, 徽标, 说明, 所需权限, 图标)
+# (标题, 副标题, 卡片, 默认收起)
 SECTIONS = [
     ("智能辅助", "读上下文、出草稿，只给建议，不替你执行", [
         ("ai", "AI 建议", "进阶",
          "按文件名给类别、置信度与理由；默认本地规则，配置后可走模型。",
          "docs:collect", "✦"),
-    ]),
+    ], False),
     ("文件与留痕", "目录比对、操作记录与证据，低频但可追溯", [
         ("collect", "文件夹收集", "本地",
          "扫描本机文件夹，与台账比对后批量登记；不移动原文件。",
@@ -27,7 +27,12 @@ SECTIONS = [
         ("evidence", "证据包", "导出",
          "把台账、索引、日志与文件树打成一个 ZIP，评审方不装软件也能看。",
          "logs:view", "▤"),
-    ]),
+    ], False),
+    ("实验与重活", "一次能干一批的重活；默认收起，失败不影响材料主流程", [
+        ("filetools", "文件批量工具", "重活",
+         "批量重命名、图片格式转换、按类别归位；先预览后执行，只动归档根内文件。",
+         "docs:archive", "⛭"),
+    ], True),
 ]
 
 
@@ -36,6 +41,7 @@ class HubView(ttk.Frame):
         super().__init__(master)
         self.repo = repo
         self.window = window
+        self._lab_open = False
         self._build()
 
     # ---------- 界面 ----------
@@ -53,6 +59,19 @@ class HubView(ttk.Frame):
         entry.pack(side="left")
         self.var_q.trace_add("write", lambda *_: self._apply_filter())
 
+        # 全空态：当前岗位一张能用的卡都没有；卡片仍保留，避免“什么都看不到”
+        self.alloff = tk.Frame(self, bg=C["bg_soft"], highlightthickness=1,
+                               highlightbackground=C["line"])
+        tk.Label(self.alloff,
+                 text="当前岗位没有可打开的低频能力；卡片保留是为了让你知道有哪些。"
+                      "换岗位或找管理员即可使用，办理材料不受影响。",
+                 bg=C["bg_soft"], fg=C["muted"], font=(FONT, 9),
+                 anchor="w", justify="left", wraplength=760).pack(
+                     side="left", padx=14, pady=10)
+        ttk.Button(self.alloff, text="回工作台概览", style="Ghost.TButton",
+                   command=lambda: self.window.switch("dashboard")).pack(
+                       side="right", padx=12, pady=8)
+
         self.body = ttk.Frame(self)
         self.body.pack(fill="both", expand=True, padx=18, pady=(6, 0))
 
@@ -68,9 +87,13 @@ class HubView(ttk.Frame):
             w.destroy()
         self._cards = []
         self._sec_boxes = []
+        self._allowed_real = 0
+        self._lab_box = None
+        self._lab_toggle = None
+        self._lab_cards = []
         for col in range(3):
             self.body.columnconfigure(col, weight=1, uniform="hub")
-        for idx, (title, sub, cards) in enumerate(SECTIONS):
+        for idx, (title, sub, cards, collapsed) in enumerate(SECTIONS):
             row = idx * 2
             box = ttk.Frame(self.body)
             box.grid(row=row, column=0, columnspan=3, sticky="w",
@@ -79,9 +102,20 @@ class HubView(ttk.Frame):
                      font=(FONT, 11, "bold"), anchor="w").pack(side="left")
             tk.Label(box, text=sub, bg=C["bg"], fg=C["muted"], font=(FONT, 9),
                      anchor="w").pack(side="left", padx=(10, 0))
+            if collapsed:
+                self._lab_box = box
+                self._lab_toggle = tk.Label(
+                    box, text="展开" if not self._lab_open else "收起",
+                    bg=C["bg"], fg=C["primary"], font=(FONT, 9), cursor="hand2")
+                self._lab_toggle.pack(side="left", padx=(10, 0))
+                self._lab_toggle.bind("<Button-1>", lambda _e: self._toggle_lab())
             self._sec_boxes.append(box)
             for i, item in enumerate(cards):
-                self._card(item, row + 1, i)
+                card = self._card(item, row + 1, i)
+                if collapsed:
+                    self._lab_cards.append(card)
+                    if not self._lab_open:
+                        card.grid_remove()
         last = len(SECTIONS) * 2
         self.body.rowconfigure(last, weight=1)
         self.empty_label = tk.Label(
@@ -94,6 +128,8 @@ class HubView(ttk.Frame):
     def _card(self, item, row, col):
         key, title, badge, desc, perm, icon = item
         allowed = not perm or self.window.can(perm)
+        if allowed:
+            self._allowed_real += 1
         card = tk.Frame(self.body, bg=C["card"] if allowed else C["bg_soft"],
                         highlightthickness=1,
                         highlightbackground=C["line"],
@@ -152,6 +188,9 @@ class HubView(ttk.Frame):
             card.configure(highlightbackground=C["line"])
 
         def click(_e=None):
+            if not allowed:
+                self.window.toast("当前岗位不可用，换岗位或找管理员")
+                return
             self.open_item(key)
 
         card.bind("<Enter>", enter)
@@ -164,6 +203,13 @@ class HubView(ttk.Frame):
             w.bind("<Leave>", leave)
             w.bind("<Button-1>", click)
         self._cards.append((card, "%s %s %s" % (title, desc, badge)))
+        return card
+
+    def _toggle_lab(self):
+        self._lab_open = not self._lab_open
+        if self._lab_toggle is not None:
+            self._lab_toggle.config(text="收起" if self._lab_open else "展开")
+        self._apply_filter()
 
     def _apply_filter(self):
         """页内过滤：只藏卡片与空组，不改导航与权限；无结果显示空态。"""
@@ -178,8 +224,13 @@ class HubView(ttk.Frame):
                 any_visible = True
             else:
                 card.grid_remove()
-        for idx, (title, sub, cards) in enumerate(SECTIONS):
+        for idx, (title, sub, cards, collapsed) in enumerate(SECTIONS):
             box = self._sec_boxes[idx]
+            if collapsed and not self._lab_open and not q:
+                for card in self._lab_cards:
+                    card.grid_remove()
+                box.grid()
+                continue
             vis = any(not q or q in (
                 "%s %s %s" % (it[1], it[3], it[2])).lower()
                 for it in cards)
@@ -192,6 +243,20 @@ class HubView(ttk.Frame):
                 self.empty_label.grid_remove()
             else:
                 self.empty_label.grid()
+        self._update_alloff()
+
+    def _update_alloff(self):
+        """不是搜索无结果，而是这个岗位一张能用的卡都没有。"""
+        if not hasattr(self, "alloff"):
+            return
+        show = self._allowed_real == 0 and not self.var_q.get().strip()
+        try:
+            if show:
+                self.alloff.pack(fill="x", padx=18, pady=(0, 8), before=self.body)
+            else:
+                self.alloff.pack_forget()
+        except tk.TclError:
+            pass
 
     @staticmethod
     def _descendants(widget):
@@ -208,6 +273,12 @@ class HubView(ttk.Frame):
         if key == "ai":
             import ui_ai
             ui_ai.open_advisor(self.window)
+            return
+        if key == "filetools":
+            self.window.switch("files")
+            view = self.window.views.get("files") if self.window.views else None
+            if view is not None and hasattr(view, "open_filetools"):
+                view.open_filetools()
             return
         if key == "evidence":
             if not self.window.can("logs:view"):

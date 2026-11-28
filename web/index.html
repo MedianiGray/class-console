@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>班级材料操作台 · 浏览器本地版 v0.28.0</title>
+<title>班级材料操作台 · 浏览器本地版 v0.28.1</title>
 <style>
   :root{
     color-scheme:light;
@@ -297,6 +297,9 @@
   .hub-sec{margin:0 0 20px}
   .hub-sec-h{display:flex;align-items:baseline;gap:10px}
   .hub-sec-h h3{font-size:14px;font-weight:600;margin:0}
+  .hub-switch{margin-left:4px;border:0;background:transparent;color:var(--primary);
+    font-size:12.5px;cursor:pointer;padding:2px 0}
+  .hub-switch:hover{text-decoration:underline}
   .hub-sec-d{font-size:12.5px;color:var(--muted);margin:4px 0 10px}
   .hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:12px}
   .hub-card{display:flex;flex-direction:column;gap:8px;text-align:left;background:var(--card);
@@ -325,6 +328,11 @@
   .hub-bar input:focus{border-color:var(--primary)}
   .hub-empty{border:1px dashed var(--line);border-radius:10px;padding:26px 20px;color:var(--muted);
     font-size:12.5px;text-align:center}
+  .hub-alloff{display:flex;align-items:center;gap:12px;justify-content:space-between;
+    background:var(--bg-soft);border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;margin:2px 0 16px;font-size:12.5px;color:var(--muted);line-height:1.55}
+  .hub-alloff[hidden]{display:none!important}
+  .hub-alloff .btn{flex-shrink:0;min-height:30px;padding:0 12px;font-size:12px}
 
   /* 首屏下一步行动条：全页唯一强调带 */
   .action-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;
@@ -426,11 +434,6 @@
   .b-brief-item b{font-size:18px;font-variant-numeric:tabular-nums;color:var(--text)}
   .b-tools{grid-column:span 4}
   .b-tools .b-links{grid-template-columns:1fr}
-  .b-tool-local{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);
-    display:flex;align-items:center;justify-content:space-between;gap:10px}
-  .b-tool-local .btl-t{font-size:11.5px;color:var(--sub);line-height:1.4}
-  .b-tool-local a{color:var(--primary);font-size:11.5px;text-decoration:none;white-space:nowrap}
-  .b-tool-local a:hover{text-decoration:underline}
   .icon-btn.ai-btn{color:var(--primary);background:var(--primary-soft);border-color:transparent;
     width:auto;min-width:38px;padding:0 10px;gap:6px;display:inline-flex;align-items:center;justify-content:center}
   .icon-btn.ai-btn:hover{background:var(--primary-soft);border-color:var(--primary)}
@@ -1331,7 +1334,7 @@ var CATS = ["团务材料", "奖助材料", "学分材料", "宣传材料", "班
 var CAT_PREFIX = { "团务材料":"团务", "奖助材料":"奖助", "学分材料":"学分", "宣传材料":"宣传", "班级事务":"事务" };
 var STATUS_ALL = ["全部", "待审核", "已归档", "已驳回", "待补材料"];
 var STORE_KEY = "classconsole_web_v1";
-var WEB_VERSION = "0.28.0";
+var WEB_VERSION = "0.28.1";
 
 /* 表单模板（对齐桌面 database.py FORM_TEMPLATES）：fields 键值供表单、校验、详情、导出共用 */
 var FORM_TEMPLATES = {
@@ -2443,8 +2446,10 @@ function renderStorageNotice() {
 /* ============ 能力中心（v1.1 单开模块） ============ */
 var HUB_SECTIONS = [
   {key:"smart", title:"智能辅助", desc:"读上下文、出草稿，只给建议，不替你执行"},
-  {key:"files", title:"文件与留痕", desc:"目录比对、操作记录与备份，低频但可追溯"}
+  {key:"files", title:"文件与留痕", desc:"目录比对、操作记录与备份，低频但可追溯"},
+  {key:"lab", title:"实验与重活", desc:"一次能干一批的重活；默认收起，失败不影响材料主流程"}
 ];
+var hubLabOpen = false;
 var HUB_SUB = {
   ai:      "本地模型或自有 API；先给上下文，再给可执行建议",
   collect: "比对目录变化，勾选后登记入账",
@@ -2461,6 +2466,17 @@ function hubCardHtml(n){
     '<span class="hc-s">' + esc(sub) + '</span>' +
     '</button>';
 }
+function hubLabCardHtml(){
+  var off = !can("template:config");
+  var sub = "设计归档目录与命名模板，预览路径；实际落盘由桌面端执行。";
+  var badge = off ? "当前岗位不可用" : "设计";
+  return '<button type="button" class="hub-card' + (off ? " off" : "") + '" data-hub-key="templates" data-k="' + esc("归档规则设计 归档 批量 重活 模板 路径 " + sub + " " + badge) + '">' +
+    '<span class="hc-top"><span class="hc-ico">' + (ICONS.sliders || "") + '</span>' +
+    '<span class="hc-t">归档规则设计</span>' +
+    '<span class="hc-badge">' + esc(badge) + '</span></span>' +
+    '<span class="hc-s">' + esc(sub) + '</span>' +
+    '</button>';
+}
 var hubQuery = "";
 function filterHub(){
   var el = document.getElementById("view-hub");
@@ -2468,14 +2484,26 @@ function filterHub(){
   var q = (hubQuery || "").trim().toLowerCase();
   var cards = el.querySelectorAll(".hub-card");
   var any = false;
+  var usable = 0;
   for (var i = 0; i < cards.length; i++) {
     var k = (cards[i].getAttribute("data-k") || "").toLowerCase();
     var hit = !q || k.indexOf(q) >= 0;
     cards[i].style.display = hit ? "" : "none";
-    if (hit) any = true;
+    if (hit) {
+      any = true;
+      if (!cards[i].classList.contains("off")) usable++;
+    }
   }
   var secs = el.querySelectorAll(".hub-sec");
   for (var s = 0; s < secs.length; s++) {
+    var isLab = secs[s].getAttribute("data-sec") === "lab";
+    var grid = secs[s].querySelector(".hub-grid");
+    if (isLab && !q && !hubLabOpen) {
+      secs[s].style.display = "";
+      if (grid) grid.style.display = "none";
+      continue;
+    }
+    if (grid) grid.style.display = "";
     var sc = secs[s].querySelectorAll(".hub-card");
     var vis = false;
     for (var j = 0; j < sc.length; j++) {
@@ -2485,6 +2513,8 @@ function filterHub(){
   }
   var empty = document.getElementById("hubEmpty");
   if (empty) empty.hidden = any;
+  var alloff = document.getElementById("hubAllOff");
+  if (alloff) alloff.hidden = !(usable === 0 && !q);
 }
 function setHubQuery(v){
   hubQuery = v || "";
@@ -2517,11 +2547,18 @@ function renderHub(){
           '</span></div>');
       }
     }
-    return '<div class="hub-sec"><div class="hub-sec-h"><h3>' + esc(sec.title) + '</h3></div>' +
+    if (sec.key === "lab") cards.push(hubLabCardHtml());
+    var lab = sec.key === "lab";
+    var head = '<div class="hub-sec-h"><h3>' + esc(sec.title) + '</h3>' +
+      (lab ? '<button type="button" class="hub-switch" data-lab-toggle>' + (hubLabOpen ? "收起" : "展开") + '</button>' : "") +
+      '</div>';
+    return '<div class="hub-sec" data-sec="' + esc(sec.key) + '">' + head +
       '<div class="hub-sec-d">' + esc(sec.desc) + '</div>' +
-      '<div class="hub-grid">' + cards.join("") + '</div></div>';
+      '<div class="hub-grid"' + (lab && !hubLabOpen ? ' style="display:none"' : '') + '>' + cards.join("") + '</div></div>';
   }).join("");
   el.innerHTML = '<div class="hub-bar"><input id="hubQ" type="search" placeholder="在本页找能力，如 AI、日志、备份…" value="' + esc(hubQuery) + '"></div>' +
+    '<div class="hub-alloff" id="hubAllOff" hidden><span>当前岗位没有可打开的低频能力；卡片保留是为了让你知道有哪些。换岗位或找管理员即可使用，办理材料不受影响。</span>' +
+    '<button type="button" class="btn subtle" id="hubAllOffHome">回工作台概览</button></div>' +
     body +
     '<div class="hub-empty" id="hubEmpty" hidden>没有匹配的能力。换个词，或清空搜索回到全部卡片。</div>' +
     '<div class="hub-foot"><span>这里只负责找到并打开；提交、审核、归档等操作仍回到对应页面完成。</span>' +
@@ -2532,12 +2569,24 @@ function renderHub(){
   for (var i = 0; i < nodes.length; i++) {
     nodes[i].onclick = function(){
       var key = this.getAttribute("data-hub-key");
-      if (this.classList.contains("off")) { toast("当前岗位无权访问该能力，换岗位或找管理员"); return; }
+      if (this.classList.contains("off")) { toast("当前岗位不可用，换岗位或找管理员"); return; }
       switchView(key);
+      if (key === "templates") {
+        var ar = document.querySelector(".arch-rule");
+        if (ar && ar.scrollIntoView) ar.scrollIntoView({block:"start"});
+      }
     };
   }
   var helpBtn = el.querySelector("[data-hub-help]");
   if (helpBtn) helpBtn.onclick = openFirstRunHelp;
+  var alloffHome = document.getElementById("hubAllOffHome");
+  if (alloffHome) alloffHome.onclick = function(){ switchView("dashboard"); };
+  var labBtn = el.querySelector("[data-lab-toggle]");
+  if (labBtn) labBtn.onclick = function(){
+    hubLabOpen = !hubLabOpen;
+    this.textContent = hubLabOpen ? "收起" : "展开";
+    filterHub();
+  };
   var exp = document.getElementById("hubBackupExport");
   if (exp) exp.onclick = exportBackup;
   var imp = document.getElementById("hubBackupImport");
@@ -2945,9 +2994,7 @@ function renderDashboard() {
     for (var i = 0; i < NAV.length; i++) if (NAV[i].key === e.key) { item = NAV[i]; break; }
     if (item && navVisible(item)) entryLinks += '<a data-go="' + e.key + '">' + e.label + '<span>→</span></a>';
   });
-  var toolsCard = '<div class="b-card b-entry b-tools"><h3>常用入口</h3><div class="b-links">' + entryLinks + "</div>" +
-      '<div class="b-tool-local"><div class="btl-t">本地处理器 · 实验<br>PDF、音视频重活再启动</div>' +
-      '<a href="../lab/unkernel/unkernel-本地引擎验证台.html">打开</a></div></div>';
+  var toolsCard = '<div class="b-card b-entry b-tools"><h3>常用入口</h3><div class="b-links">' + entryLinks + "</div></div>";
   var bentoHtml = '<div class="bento">' + heroCard + sideCard + queueCard + toolsCard + "</div>";
 
   document.getElementById("view-dashboard").innerHTML = empty

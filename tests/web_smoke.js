@@ -555,19 +555,24 @@ assert("收集与日志归入能力中心", ["collect", "logs"].every(k => {
   const it = sandbox.NAV.find(n => n.key === k); return it && it.group === "hub";
 }));
 assert("更多分组不再承载入口", !sandbox.NAV.some(n => n.group === "aux"));
-assert("能力中心分两组", sandbox.HUB_SECTIONS.length === 2);
+assert("能力中心分三组", sandbox.HUB_SECTIONS.length === 3);
 sandbox.state.current = "hub";
 sandbox.renderHub();
 const hubHtml = els["view-hub"].innerHTML;
-assert("能力中心渲染两组标题", hubHtml.indexOf("智能辅助") >= 0 && hubHtml.indexOf("文件与留痕") >= 0);
+assert("能力中心渲染三组标题", ["智能辅助", "文件与留痕", "实验与重活"].every(t => hubHtml.indexOf(t) >= 0));
 assert("能力中心含备份卡与导出", hubHtml.indexOf("备份与恢复") >= 0 && hubHtml.indexOf("导出备份") >= 0);
-assert("能力中心无主流程按钮", hubHtml.indexOf("提交材料") < 0 && hubHtml.indexOf("工作台概览") < 0);
+assert("重活组含真实归档规则设计", hubHtml.indexOf("归档规则设计") >= 0);
+assert("重活组默认收起", hubHtml.indexOf("data-lab-toggle") >= 0 && hubHtml.indexOf("展开") >= 0);
+assert("能力中心无主流程按钮", hubHtml.indexOf("提交材料") < 0 && hubHtml.indexOf('class="btn primary"') < 0);
+assert("能力中心有全空态容器", hubHtml.indexOf("hubAllOff") >= 0 && hubHtml.indexOf("回工作台概览") >= 0);
 sandbox.state.role = "applicant";
 sandbox.renderHub();
 const hubApplicant = els["view-hub"].innerHTML;
 assert("申请人可进能力中心", sandbox.navVisible(sandbox.NAV.find(n => n.key === "hub")));
 assert("申请人看到置灰卡片", hubApplicant.indexOf("当前岗位不可用") >= 0);
 assert("申请人看不到备份导出", hubApplicant.indexOf("导出备份") < 0);
+assert("申请人看到全空态说明", hubApplicant.indexOf("当前岗位没有可打开的低频能力") >= 0);
+assert("申请人重活卡置灰", hubApplicant.indexOf('data-hub-key="templates"') >= 0 && hubApplicant.indexOf("归档规则设计") >= 0);
 sandbox.state.role = "handler";
 sandbox.renderHub();
 

@@ -577,8 +577,22 @@ def main():
     assert app.eyebrow_label.cget("text") == "工作台 · 能力中心"
     hub = app.views["hub"]
     hub_texts = texts(hub)
-    for label in ("智能辅助", "文件与留痕", "AI 建议", "文件夹收集", "操作日志", "证据包"):
+    for label in ("智能辅助", "文件与留痕", "实验与重活", "AI 建议", "文件夹收集", "操作日志", "证据包", "文件批量工具"):
         assert label in hub_texts, "能力中心缺少：%s" % label
+    assert hub._lab_toggle.cget("text") == "展开", "重活组默认应收起"
+    assert not hub._lab_cards[0].winfo_ismapped(), "收起时重活卡不应显示"
+    hub._toggle_lab(); root.update()
+    assert hub._lab_toggle.cget("text") == "收起", "展开后切换文案未变"
+    assert hub._lab_cards[0].winfo_ismapped(), "展开后重活卡应显示"
+    hub._toggle_lab(); root.update()
+
+    hub.open_item("filetools"); root.update()
+    assert app.current == "files", "重活入口应跳到文件室批量工具所在页"
+    dlgs = [w for w in app.views["files"].winfo_children()
+            if isinstance(w, tk.Toplevel)]
+    assert dlgs, "重活入口应直接拉起文件工具，而不是只换页"
+    dlgs[-1].destroy(); root.update()
+    app.switch("hub"); root.update()
 
     hub.open_item("collect"); root.update()
     assert app.current == "collect", "能力中心里的入口未真正跳转"
@@ -599,11 +613,15 @@ def main():
     assert "hub" in app.nav_items and "collect" not in app.nav_items
     hub = app.views["hub"]
     assert "当前岗位不可用" not in texts(hub), "汇总者应看到全部能力卡"
+    assert not hub.alloff.winfo_ismapped(), "有可用卡片时不应出现全空态"
 
     app.role_var.set("applicant"); app._toggle_role(); root.update()
     assert "hub" in app.nav_items, "申请人也应能进能力中心（卡片置灰即可）"
     hub = app.views["hub"]
     assert texts(hub).count("当前岗位不可用") >= 2, "申请人应看到置灰卡片"
+    assert hub.alloff.winfo_ismapped(), "申请人没有可用卡片时应出现全空态"
+    assert any("当前岗位没有可打开的低频能力" in t for t in texts(hub.alloff)), \
+        "全空态文案缺失"
     hub.open_item("collect"); root.update()
     assert app.current != "collect", "置灰卡片不应能跳转"
 
