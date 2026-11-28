@@ -3,167 +3,638 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>班级材料操作台 · Class Console</title>
-  <meta name="description" content="离线优先的班级材料工作台：材料提交、审核、归档与留痕本地闭环，支持浏览器在线使用与 Windows 桌面版下载。">
+  <title>班级操作台 · 为师生服务的班级工作台</title>
+  <meta name="description" content="为师生服务的离线优先班级工作台：学生免安装提交，班委收集、审核、归档、催交，教师查看进度与证据包；材料闭环先做扎实，项目与专业工具按版本逐步接入。">
   <style>
     :root{
-      --bg:#F3F5F9; --card:#FFFFFF; --line:#E8ECF2; --line-strong:#D9E0EA;
-      --text:#1B2430; --muted:#66707D;
-      --primary:#4F63EE; --primary-hover:#3D55D8; --primary-soft:#EEF1FE;
-      --green:#16A34A; --radius:10px; --shadow:0 1px 2px rgba(27,36,48,.06);
+      --bg:#F4F7F4;
+      --bg-deep:#EDF3EF;
+      --card:#FFFFFF;
+      --ink:#17231F;
+      --muted:#65736D;
+      --faint:#8A968F;
+      --line:#E1E8E3;
+      --line-strong:#CFDAD3;
+      --primary:#176B63;
+      --primary-hover:#11564F;
+      --primary-soft:#E7F2EE;
+      --amber:#B86F2A;
+      --amber-soft:#FBF1E5;
+      --green:#2E7D5B;
+      --shadow:0 1px 2px rgba(23,35,31,.05), 0 12px 32px rgba(23,35,31,.06);
+      --radius:14px;
     }
     *{box-sizing:border-box;margin:0;padding:0}
-    html,body{height:100%}
+    html{scroll-behavior:smooth}
     body{
       font-family:"Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
-      background:var(--bg); color:var(--text); line-height:1.55;
+      background:var(--bg); color:var(--ink); line-height:1.65;
       -webkit-font-smoothing:antialiased;
     }
-    .wrap{max-width:920px;margin:0 auto;padding:0 22px}
-
-    /* 顶部品牌 */
-    header{padding:56px 0 28px;text-align:center}
-    .logo{
-      width:54px;height:54px;border-radius:14px;background:var(--primary-soft);
-      display:inline-flex;align-items:center;justify-content:center;margin-bottom:18px;
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+    .eyebrow{
+      display:inline-flex;align-items:center;gap:8px;
+      font-size:12.5px;font-weight:700;letter-spacing:.02em;
+      color:var(--primary);background:var(--primary-soft);
+      border:1px solid #D5E7E1;border-radius:999px;padding:7px 13px;
     }
-    header h1{font-size:27px;font-weight:700;letter-spacing:.01em}
-    header p{color:var(--muted);font-size:15px;margin-top:10px;max-width:560px;margin-left:auto;margin-right:auto}
-    .ver{display:inline-flex;align-items:center;gap:6px;margin-top:14px;
-      font-size:12.5px;color:var(--primary);background:var(--primary-soft);
-      border-radius:999px;padding:5px 12px}
-    .ver .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
-
-    /* 主行动卡片 */
-    .actions{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0 10px}
-    .card{
-      background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      box-shadow:var(--shadow);padding:26px 24px;display:flex;flex-direction:column;gap:14px;
-    }
-    .card h2{font-size:17px;font-weight:700;display:flex;align-items:center;gap:10px}
-    .card .ico{width:34px;height:34px;border-radius:9px;background:var(--primary-soft);
-      display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
-    .card p{color:var(--muted);font-size:13.5px;flex:1}
-    .meta{display:flex;flex-wrap:wrap;gap:8px}
-    .meta span{font-size:12px;color:var(--muted);border:1px solid var(--line);
-      border-radius:7px;padding:4px 10px;background:var(--bg)}
+    .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
     .btn{
       display:inline-flex;align-items:center;justify-content:center;gap:8px;
-      border:0;border-radius:9px;padding:11px 18px;font-size:14.5px;font-weight:600;
-      text-decoration:none;cursor:pointer;transition:background .15s;
+      border:0;border-radius:10px;padding:12px 19px;
+      font-size:14.5px;font-weight:700;cursor:pointer;
+      transition:background .16s,border-color .16s,transform .16s;
     }
     .btn-primary{background:var(--primary);color:#fff}
-    .btn-primary:hover{background:var(--primary-hover)}
-    .btn-ghost{background:var(--card);color:var(--primary);border:1px solid var(--line-strong)}
+    .btn-primary:hover{background:var(--primary-hover);transform:translateY(-1px)}
+    .btn-ghost{background:#fff;color:var(--primary);border:1px solid var(--line-strong)}
     .btn-ghost:hover{background:var(--primary-soft)}
-    .card .links{display:flex;gap:14px;flex-wrap:wrap}
-    .card .links a{font-size:13px;color:var(--muted);text-decoration:none}
-    .card .links a:hover{color:var(--primary)}
+    .btn-text{color:var(--primary);padding:12px 6px;font-weight:700}
+    .btn-text:hover{text-decoration:underline}
+    .section{padding:64px 0}
+    .section-head{max-width:760px;margin-bottom:30px}
+    .section-head h2{font-size:30px;line-height:1.25;letter-spacing:-.015em}
+    .section-head p{color:var(--muted);font-size:15px;margin-top:10px}
+    .kicker{font-size:12px;font-weight:800;letter-spacing:.14em;color:var(--primary);text-transform:uppercase;margin-bottom:10px}
+    .muted{color:var(--muted)}
+    .tiny{font-size:12.5px;color:var(--faint)}
 
-    /* 特性 */
-    .features{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:30px 0}
-    .feat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-      padding:16px 16px;box-shadow:var(--shadow)}
-    .feat b{font-size:13.5px;display:block;margin-bottom:4px}
-    .feat span{font-size:12.5px;color:var(--muted)}
+    /* 顶部 */
+    .site-head{
+      position:sticky;top:0;z-index:30;
+      background:rgba(244,247,244,.86);
+      backdrop-filter:saturate(180%) blur(12px);
+      border-bottom:1px solid rgba(225,232,227,.82);
+    }
+    .nav-wrap{max-width:1160px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:22px}
+    .brand{display:flex;align-items:center;gap:11px;flex-shrink:0}
+    .brand-mark{
+      width:38px;height:38px;border-radius:11px;background:var(--primary);
+      display:flex;align-items:center;justify-content:center;color:#fff;
+      box-shadow:0 6px 16px rgba(23,107,99,.22);
+    }
+    .brand-name{font-size:15px;font-weight:800;letter-spacing:.01em}
+    .brand-sub{font-size:11px;color:var(--faint);letter-spacing:.08em}
+    .nav-links{display:flex;gap:20px;margin-left:auto;font-size:13px;color:var(--muted)}
+    .nav-links a:hover{color:var(--primary)}
+    .nav-cta{font-size:13px;padding:9px 14px;border-radius:9px;background:var(--primary);color:#fff;font-weight:700;white-space:nowrap}
+    .nav-cta:hover{background:var(--primary-hover)}
 
-    .note{font-size:12.5px;color:var(--muted);border-top:1px solid var(--line);
-      padding:18px 0 8px;margin-top:18px}
-    footer{padding:18px 0 34px;font-size:12.5px;color:var(--muted);
-      display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
-    footer a{color:var(--muted);text-decoration:none}
-    footer a:hover{color:var(--primary)}
+    /* Hero */
+    .hero{
+      position:relative;overflow:hidden;
+      padding:68px 0 54px;
+      background:
+        radial-gradient(720px 360px at 86% 14%, rgba(23,107,99,.10), transparent 68%),
+        radial-gradient(520px 300px at 10% 86%, rgba(184,111,42,.08), transparent 72%),
+        linear-gradient(180deg,#F7FAF7 0%,rgba(244,247,244,0) 100%);
+    }
+    .hero-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:52px;align-items:center}
+    .hero h1{
+      font-size:clamp(34px,4.5vw,54px);line-height:1.12;letter-spacing:-.025em;
+      margin:18px 0 18px;max-width:620px;
+    }
+    .hero h1 em{font-style:normal;color:var(--primary);position:relative}
+    .hero h1 em::after{
+      content:"";position:absolute;left:0;right:0;bottom:2px;height:8px;
+      background:rgba(23,107,99,.12);border-radius:4px;z-index:-1;
+    }
+    .hero-copy p{font-size:16px;color:var(--muted);max-width:600px}
+    .hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+    .hero-note{display:flex;flex-wrap:wrap;gap:14px;margin-top:18px;font-size:12.5px;color:var(--faint)}
+    .hero-note span{display:inline-flex;align-items:center;gap:6px}
+    .hero-note svg{width:14px;height:14px;stroke:var(--green);flex-shrink:0}
 
-    @media (max-width:720px){
-      header{padding:38px 0 18px}
-      .actions{grid-template-columns:1fr}
-      .features{grid-template-columns:1fr 1fr}
+    /* 产品预览 */
+    .preview{
+      background:#fff;border:1px solid var(--line);border-radius:18px;
+      box-shadow:var(--shadow);overflow:hidden;transform:rotate(.4deg);
+    }
+    .preview-top{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:13px 16px;border-bottom:1px solid var(--line);background:#FBFCFB;
+    }
+    .preview-title{font-size:12.5px;font-weight:800;color:var(--ink)}
+    .preview-pill{font-size:10.5px;color:var(--primary);background:var(--primary-soft);border-radius:999px;padding:3px 8px;font-weight:700}
+    .preview-body{display:grid;grid-template-columns:74px 1fr;min-height:300px}
+    .preview-side{background:#F0F5F1;border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:9px}
+    .side-item{height:7px;border-radius:4px;background:#D9E4DD}
+    .side-item.active{background:var(--primary);width:80%}
+    .side-block{margin-top:12px;display:flex;flex-direction:column;gap:7px}
+    .side-block i{display:block;height:6px;border-radius:3px;background:#E2EAE4}
+    .preview-main{padding:16px}
+    .p-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .p-stat{background:#F8FAF8;border:1px solid var(--line);border-radius:10px;padding:10px 11px}
+    .p-stat b{display:block;font-size:20px;line-height:1.1;color:var(--primary)}
+    .p-stat span{font-size:10.5px;color:var(--faint)}
+    .p-list{margin-top:12px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+    .p-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-bottom:1px solid var(--line);background:#fff}
+    .p-row:last-child{border-bottom:0}
+    .p-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);flex-shrink:0}
+    .p-dot.green{background:var(--green)}
+    .p-row-main{min-width:0;flex:1}
+    .p-row-main b{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .p-row-main span{display:block;font-size:9.5px;color:var(--faint)}
+    .p-tag{font-size:9.5px;border-radius:6px;padding:3px 6px;background:var(--primary-soft);color:var(--primary);font-weight:700;white-space:nowrap}
+    .p-foot{margin-top:11px;font-size:9.5px;color:var(--faint);display:flex;justify-content:space-between}
+
+    /* 对象卡 */
+    .roles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .role-card{
+      background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      padding:24px 22px 20px;box-shadow:var(--shadow);display:flex;flex-direction:column;
+    }
+    .role-ico{width:38px;height:38px;border-radius:11px;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;margin-bottom:15px}
+    .role-ico.amber{background:var(--amber-soft)}
+    .role-card h3{font-size:17px;letter-spacing:-.01em}
+    .role-card .role-sub{font-size:12.5px;color:var(--primary);font-weight:700;margin-top:3px}
+    .role-card p{font-size:13px;color:var(--muted);margin-top:10px}
+    .role-list{list-style:none;margin:13px 0 16px;display:flex;flex-direction:column;gap:7px}
+    .role-list li{font-size:12.5px;color:var(--muted);display:flex;gap:8px}
+    .role-list li::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--primary);margin-top:7px;flex-shrink:0}
+    .role-card .role-link{margin-top:auto;font-size:13px;font-weight:800;color:var(--primary)}
+    .role-card .role-link:hover{text-decoration:underline}
+
+    /* 流程 */
+    .flow{
+      background:var(--card);border:1px solid var(--line);border-radius:18px;
+      padding:28px 26px;box-shadow:var(--shadow);
+    }
+    .flow-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+    .flow-step{position:relative;padding:0 18px 0 0}
+    .flow-step:not(:last-child)::after{
+      content:"";position:absolute;right:4px;top:18px;width:18px;height:1px;background:var(--line-strong);
+    }
+    .flow-num{width:34px;height:34px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;margin-bottom:12px}
+    .flow-step h4{font-size:14.5px}
+    .flow-step p{font-size:12.5px;color:var(--muted);margin-top:6px;max-width:210px}
+    .flow-foot{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--faint)}
+
+    /* 能力 */
+    .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .feature{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:19px 18px;box-shadow:0 1px 2px rgba(23,35,31,.04)}
+    .feature b{font-size:14px;display:flex;align-items:center;gap:8px}
+    .feature b .mini{width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0}
+    .feature span{display:block;font-size:12.5px;color:var(--muted);margin-top:6px}
+    .status-grid{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:14px;margin-top:20px}
+    .status-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+    .status-box h4{font-size:12px;letter-spacing:.1em;color:var(--faint);font-weight:800;text-transform:uppercase;margin-bottom:10px}
+    .chips{display:flex;flex-wrap:wrap;gap:7px}
+    .chip{font-size:11.5px;border-radius:999px;padding:4px 9px;border:1px solid var(--line);background:#F8FAF8;color:var(--muted)}
+    .chip.ok{background:var(--primary-soft);border-color:#D5E7E1;color:var(--primary);font-weight:700}
+    .chip.build{background:var(--amber-soft);border-color:#F0DFC9;color:var(--amber);font-weight:700}
+    .chip.out{background:#F5F6F5;border-color:var(--line);color:var(--faint)}
+
+    /* 对比 */
+    .compare-wrap{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+    table.compare{width:100%;border-collapse:collapse;font-size:13px}
+    .compare th,.compare td{padding:13px 15px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+    .compare th{font-size:11.5px;letter-spacing:.05em;color:var(--faint);font-weight:800;background:#FAFBFA}
+    .compare td:first-child{font-weight:700;color:var(--ink);width:21%}
+    .compare td:nth-child(2),.compare td:nth-child(3){color:var(--muted)}
+    .compare td:last-child{background:#F3F9F6;color:var(--primary);font-weight:700}
+    .compare tr:last-child td{border-bottom:0}
+
+    /* 路线 */
+    .roadmap{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+    .road{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 14px;min-height:132px;display:flex;flex-direction:column}
+    .road.now{border-color:#BFDCD2;background:#F4FBF8}
+    .road .rv{font-size:11px;font-weight:800;color:var(--primary);letter-spacing:.04em}
+    .road h4{font-size:13.5px;margin-top:7px}
+    .road p{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.55}
+    .road .tag{margin-top:auto;font-size:10.5px;color:var(--faint);padding-top:9px}
+    .roadmap-note{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--faint)}
+
+    /* 开始 */
+    .start-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;align-items:stretch}
+    .steps{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:var(--shadow)}
+    .step{display:grid;grid-template-columns:30px 1fr;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+    .step:last-child{border-bottom:0;padding-bottom:0}
+    .step-num{width:28px;height:28px;border-radius:8px;background:var(--primary-soft);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+    .step h4{font-size:14px}
+    .step p{font-size:12.5px;color:var(--muted);margin-top:3px}
+    .download{
+      background:linear-gradient(150deg,#173F39,#176B63 58%,#1C786F);
+      color:#fff;border-radius:16px;padding:26px 24px;display:flex;flex-direction:column;
+      box-shadow:0 18px 40px rgba(23,107,99,.20);
+    }
+    .download .dl-kicker{font-size:11px;letter-spacing:.14em;opacity:.72;font-weight:800}
+    .download h3{font-size:22px;margin-top:8px;line-height:1.3}
+    .download p{font-size:12.5px;opacity:.82;margin-top:8px}
+    .dl-meta{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 16px}
+    .dl-meta span{font-size:10.5px;border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:3px 8px;opacity:.9}
+    .dl-actions{display:flex;flex-direction:column;gap:9px;margin-top:auto}
+    .dl-actions .btn-primary{background:#fff;color:var(--primary)}
+    .dl-actions .btn-primary:hover{background:#EAF5F1}
+    .dl-actions .btn-ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.3)}
+    .dl-actions .btn-ghost:hover{background:rgba(255,255,255,.1)}
+    .dl-small{font-size:10.5px;opacity:.7;margin-top:10px}
+    .dl-small a{text-decoration:underline}
+
+    /* 边界 */
+    .promise-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .promise{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 18px}
+    .promise .p-ico{width:30px;height:30px;border-radius:9px;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+    .promise b{font-size:14px}
+    .promise p{font-size:12.5px;color:var(--muted);margin-top:5px}
+    .faq{margin-top:22px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .qa{background:#FAFBFA;border:1px solid var(--line);border-radius:10px;padding:15px 16px}
+    .qa b{font-size:13px}
+    .qa p{font-size:12.5px;color:var(--muted);margin-top:4px}
+
+    footer{border-top:1px solid var(--line);padding:28px 0 38px;margin-top:8px}
+    .foot-wrap{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--faint)}
+    .foot-links{display:flex;gap:14px;flex-wrap:wrap}
+    .foot-links a:hover{color:var(--primary)}
+
+    @media (max-width:980px){
+      .hero-grid{grid-template-columns:1fr;gap:34px}
+      .preview{max-width:560px}
+      .roles{grid-template-columns:1fr 1fr}
+      .status-grid{grid-template-columns:1fr 1fr}
+      .roadmap{grid-template-columns:repeat(4,1fr)}
+      .start-grid{grid-template-columns:1fr}
+      .nav-links{display:none}
+    }
+    @media (max-width:680px){
+      .section{padding:46px 0}
+      .wrap{padding:0 18px}
+      .nav-wrap{padding:12px 18px}
+      .hero{padding:42px 0 34px}
+      .hero h1{font-size:31px}
+      .hero-copy p{font-size:14.5px}
+      .roles,.feature-grid,.promise-grid,.status-grid,.faq{grid-template-columns:1fr}
+      .flow-grid{grid-template-columns:1fr 1fr;gap:18px 0}
+      .flow-step::after{display:none}
+      .roadmap{grid-template-columns:1fr 1fr}
+      .compare-wrap{overflow-x:auto}
+      table.compare{min-width:620px}
+      .section-head h2{font-size:25px}
+      .preview{transform:none}
+      .brand-sub{display:none}
     }
   </style>
 </head>
 <body>
-  <header class="wrap">
-    <div class="logo" aria-hidden="true">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3D5BDD"
-           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5z"/>
-        <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14v16h4.5A1.5 1.5 0 0 0 20 18.5z"/>
-      </svg>
+  <header class="site-head">
+    <div class="nav-wrap">
+      <a class="brand" href="#top" aria-label="回到顶部">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H11v16H6.5A1.5 1.5 0 0 1 5 18.5z"/>
+            <path d="M19 5.5A1.5 1.5 0 0 0 17.5 4H13v16h4.5A1.5 1.5 0 0 0 19 18.5z"/>
+          </svg>
+        </span>
+        <span>
+          <span class="brand-name">班级操作台</span><br>
+          <span class="brand-sub">CLASS CONSOLE</span>
+        </span>
+      </a>
+      <nav class="nav-links" aria-label="页面导航">
+        <a href="#roles">谁在用</a>
+        <a href="#flow">怎么走</a>
+        <a href="#capability">能做什么</a>
+        <a href="#roadmap">路线</a>
+        <a href="#start">开始</a>
+      </nav>
+      <a class="nav-cta" href="#start">开始使用</a>
     </div>
-    <h1>班级材料操作台</h1>
-    <p>面向材料经办、审核、汇总与提交各岗位的离线工作台：把材料从提交、审核、归档到留痕的过程收拢在一个本地程序里闭环。</p>
-    <div class="ver"><span class="dot"></span>网页版 v0.28.1 · 桌面端 v0.30.1</div>
   </header>
 
-  <main class="wrap">
-    <section class="actions">
-      <div class="card">
-        <h2>
-          <span class="ico" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3D5BDD"
-                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
-            </svg>
-          </span>
-          在线使用（浏览器版）
-        </h2>
-        <p>打开即用，无需安装。数据保存在当前浏览器的本地缓存（localStorage），断网可用；与桌面版数据各自独立、互不同步。</p>
-        <div class="meta"><span>v0.28.1</span><span>无需安装</span><span>能力中心独立成页</span><span>断网可用</span></div>
-        <a class="btn btn-primary" href="web/index.html">进入在线版</a>
-      </div>
+  <main id="top">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow"><span class="dot"></span>为师生服务 · 离线优先</span>
+          <h1>让班级工作<br><em>少跑一趟，少熬一夜</em></h1>
+          <p>学生不用装软件就能提交；班委收得齐、催得准、归得对；老师打开就能看进度与证据。材料、名单、催交、归档、证据包先在一处闭环；音频、比赛、产品等项目，按同一套项目骨架逐步接入。</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="web/index.html">进入在线版</a>
+            <a class="btn btn-ghost" href="#start">下载桌面版</a>
+            <a class="btn btn-text" href="#roadmap">看路线</a>
+          </div>
+          <div class="hero-note">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>无需注册</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>不装也能提交</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>数据留在本机</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>断网可用</span>
+          </div>
+        </div>
 
-      <div class="card">
-        <h2>
-          <span class="ico" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3D5BDD"
-                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
-            </svg>
-          </span>
-          下载 Windows 桌面版
-        </h2>
-        <p>推荐便携目录版：解压一次即用。0.30.1 收口「能力中心」：第三组「实验与重活」只放已验证的真实能力——桌面文件批量工具、网页归档规则设计；本地处理器未过收益审核，留在验证台，不占产品入口。岗位一张可用卡都没有时会说明并给回概览，置灰卡点击不再静默。启动路径没动，参照 0.28.2 同机 12 次中位：窗口 0.72 秒、当前页 1.22 秒。新包第一次被杀软全量扫描会明显变慢，属正常。单文件 exe 适合 U 盘带走。材料与日志保存在本机 SQLite，隐私最小化。</p>
-        <div class="meta"><span>v0.30.1</span><span>Windows 64 位</span><span>能力中心收口</span><span>21MB 便携包</span></div>
-        <div class="links">
-          <a class="btn btn-primary"
-             href="https://github.com/MedianiGray/class-console/releases/download/v0.30.1/class-console-v0.30.1-portable.zip">
-            下载便携版（推荐）
-          </a>
-          <a class="btn btn-ghost"
-             href="https://github.com/MedianiGray/class-console/releases/download/v0.30.1/class-console-v0.30.1.exe">
-            单文件版
-          </a>
-          <a class="btn btn-ghost"
-             href="https://github.com/MedianiGray/class-console/releases">查看全部版本</a>
+        <div class="preview" aria-label="工作台界面预览">
+          <div class="preview-top">
+            <span class="preview-title">工作台概览</span>
+            <span class="preview-pill">本地模式</span>
+          </div>
+          <div class="preview-body">
+            <div class="preview-side" aria-hidden="true">
+              <span class="side-item active"></span>
+              <span class="side-item"></span>
+              <span class="side-item"></span>
+              <span class="side-item"></span>
+              <div class="side-block"><i></i><i></i><i></i><i></i></div>
+            </div>
+            <div class="preview-main">
+              <div class="p-stats">
+                <div class="p-stat"><b>3</b><span>待我处理</span></div>
+                <div class="p-stat"><b>2</b><span>未交</span></div>
+                <div class="p-stat"><b>1</b><span>临期</span></div>
+              </div>
+              <div class="p-list">
+                <div class="p-row">
+                  <span class="p-dot"></span>
+                  <span class="p-row-main"><b>主题班会记录 · 250201 覃祖悦</b><span>待审核 · 今天 09:12 提交</span></span>
+                  <span class="p-tag">审核</span>
+                </div>
+                <div class="p-row">
+                  <span class="p-dot green"></span>
+                  <span class="p-row-main"><b>青年大学习 · 2 人未交</b><span>已生成不点名催交话术</span></span>
+                  <span class="p-tag">催交</span>
+                </div>
+                <div class="p-row">
+                  <span class="p-dot"></span>
+                  <span class="p-row-main"><b>奖助材料 · 缺 1 份困难认定</b><span>截止 11-30 · 还差 2 天</span></span>
+                  <span class="p-tag">缺项</span>
+                </div>
+              </div>
+              <div class="p-foot"><span>材料 128 · 索引一致</span><span>桌面端 v0.30.1</span></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="features">
-      <div class="feat"><b>材料台账</b><span>编号列、搜索与类型 / 类别 / 状态筛选，详情附模板栏目与处理留痕</span></div>
-      <div class="feat"><b>文件夹收集</b><span>扫描本机未登记文件，勾选批量入账并自动编号</span></div>
-      <div class="feat"><b>表单与审核</b><span>班会 / 走访 / 承诺 / 约谈四类模板加自定义入口，必填校验，归档驳回可填备注</span></div>
-      <div class="feat"><b>台账与审计</b><span>编号检索、完整流转时间线，索引 / 磁盘 / 台账完整性检查与可脱离软件阅读的 ZIP 证据包</span></div>
-      <div class="feat"><b>名单与跟进</b><span>缺交核对、完成矩阵、免交 / 延期、催交话术与回执留痕，同一学生 24 小时不重复催</span></div>
-      <div class="feat"><b>交接与服务</b><span>近 7 天服务留痕可筛选导出，届别交接包一键带走数据、索引与说明</span></div>
-      <div class="feat"><b>空态引导</b><span>每一屏空着时都说清为什么空、下一步点哪里；筛选无结果可一键清除，不把空名单说成已完成</span></div>
-      <div class="feat"><b>能力中心</b><span>两端侧栏同构：主流程之外的低频入口收进独立的「能力中心」，一页分组卡片，页内可搜索，按岗位显隐；不再用第二层「更多」弹窗</span></div>
-      <div class="feat"><b>出错有兜底</b><span>存储失败、备份损坏、目录权限、AI 失败与归档写盘失败都说明发生了什么、影响范围、下一步与兜底，不静默吞错</span></div>
+    <section class="section" id="roles">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">先看人，再看功能</div>
+          <h2>学生、班委、老师，各自少做一步</h2>
+          <p>同一套工作台，按岗位给不同的入口和可见范围。没有账号体系之前，角色是视图切换；但每一步都按真实岗位来设计。</p>
+        </div>
+        <div class="roles">
+          <article class="role-card">
+            <span class="role-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#176B63" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c.6-4 3.2-6 7-6s6.4 2 7 6"/></svg>
+            </span>
+            <h3>学生</h3>
+            <div class="role-sub">不装 exe，打开网页就交</div>
+            <p>只看自己的材料与缺项，不用加群、不用问“交了没”。</p>
+            <ul class="role-list">
+              <li>手机或电脑打开网页即可提交</li>
+              <li>提交后看到待审 / 已归档 / 被驳回</li>
+              <li>缺什么、补什么，页面直接说</li>
+            </ul>
+            <a class="role-link" href="web/index.html">进入学生入口 →</a>
+          </article>
+
+          <article class="role-card">
+            <span class="role-ico amber" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B86F2A" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8 12h8M8 16h5"/></svg>
+            </span>
+            <h3>班委</h3>
+            <div class="role-sub">收得齐、催得准、归得对</div>
+            <p>文件夹一拖、名单一对，缺谁、缺什么、该催谁，不用靠脑子记。</p>
+            <ul class="role-list">
+              <li>文件夹收集、台账、完成矩阵</li>
+              <li>催交不点名，同一人 24 小时不重复催</li>
+              <li>归档、索引、证据包、交接包</li>
+            </ul>
+            <a class="role-link" href="#start">下载班委 / 教师桌面版 →</a>
+          </article>
+
+          <article class="role-card">
+            <span class="role-ico" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#176B63" stroke-width="1.8" stroke-linecap="round"><path d="M4 19V6h10v13"/><path d="M14 10h6v9"/><path d="M7 9h4M7 12h4M7 15h3M17 13h1M17 16h1"/></svg>
+            </span>
+            <h3>教师 / 辅导员</h3>
+            <div class="role-sub">看全局、抽查、收上报</div>
+            <p>不用翻聊天记录找材料，打开台账与证据包就能核对。</p>
+            <ul class="role-list">
+              <li>岗位视角看待审、未交、逾期</li>
+              <li>操作日志、完整流转时间线</li>
+              <li>证据包与届别交接包</li>
+            </ul>
+            <a class="role-link" href="#capability">查看教师可用能力 →</a>
+          </article>
+        </div>
+      </div>
     </section>
 
-    <p class="note">
-      说明：当前为纯离线单机版，未接入账号登录与多人实时同步；桌面端归档时会把附件复制到本机归档根目录，网页端受浏览器边界限制只记录文件名。
-      在线版与桌面版数据互不连通；批量数据与跨设备同步需后续远程方案。
-    </p>
+    <section class="section" id="flow">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">一条材料，完整走完</div>
+          <h2>不是把文件堆在网盘里，而是让一件事有始有终</h2>
+          <p>提交只登记，审核才归档；每一步有人、有时间、有原因、有文件位置。</p>
+        </div>
+        <div class="flow">
+          <div class="flow-grid">
+            <div class="flow-step">
+              <div class="flow-num">01</div>
+              <h4>提交 / 收集</h4>
+              <p>表单、文件夹、拖入文件，三种入口统一登记；先预览再入账。</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">02</div>
+              <h4>审核</h4>
+              <p>通过或驳回，驳回必须写原因；状态就地变化，留痕可回放。</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">03</div>
+              <h4>归档</h4>
+              <p>按“类别 / 学号-姓名 / 编号_材料名”落盘，写索引，重名不覆盖。</p>
+            </div>
+            <div class="flow-step">
+              <div class="flow-num">04</div>
+              <h4>交差</h4>
+              <p>证据包、交接包、汇总表；评审方不装软件也能看懂。</p>
+            </div>
+          </div>
+          <div class="flow-foot">一条材料从选中到归档 ≤3 次点击；每天巡检待审、未交、逾期 ≤2 分钟。这是当前版本已经验收的硬尺。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="capability">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">现在能做什么</div>
+          <h2>先把材料这件事做深，再把项目这件事接上</h2>
+          <p>不拿“未来功能”冒充现在可用；下面把已可用、建设中、边界外分开写。</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature"><b><span class="mini"></span>材料台账</b><span>编号、搜索、类别 / 类型 / 状态筛选，详情带模板栏目与流转时间线。</span></article>
+          <article class="feature"><b><span class="mini"></span>名单与催交</b><span>完成矩阵看谁缺什么；免交 / 延期、催交话术、回执与 24 小时限频。</span></article>
+          <article class="feature"><b><span class="mini"></span>归档与证据</b><span>归档索引、完整性检查、ZIP 证据包；脱离软件也能读懂目录与字段。</span></article>
+          <article class="feature"><b><span class="mini"></span>文件室与批量</b><span>目录树、预览、缺失反查；批量改名、图片转换、按类别归位，先预览后执行。</span></article>
+          <article class="feature"><b><span class="mini"></span>AI 副驾</b><span>查缺项、驳回草稿、归档命名、情况说明；只给建议，不改台账、不自动归档。</span></article>
+          <article class="feature"><b><span class="mini"></span>能力中心</b><span>低频能力一页分组卡，按岗位显隐；入口只负责找到并打开，不绕开主流程。</span></article>
+        </div>
+
+        <div class="status-grid">
+          <div class="status-box">
+            <h4>已可用</h4>
+            <div class="chips">
+              <span class="chip ok">提交 / 审核 / 归档</span>
+              <span class="chip ok">名单矩阵</span>
+              <span class="chip ok">催交 / 回执</span>
+              <span class="chip ok">证据包</span>
+              <span class="chip ok">交接包</span>
+              <span class="chip ok">文件室</span>
+            </div>
+          </div>
+          <div class="status-box">
+            <h4>建设中</h4>
+            <div class="chips">
+              <span class="chip build">项目底座</span>
+              <span class="chip build">音频转码</span>
+              <span class="chip build">文档工具</span>
+              <span class="chip build">赛事模板</span>
+              <span class="chip build">产品模板</span>
+            </div>
+          </div>
+          <div class="status-box">
+            <h4>边界外</h4>
+            <div class="chips">
+              <span class="chip out">账号登录</span>
+              <span class="chip out">多人实时</span>
+              <span class="chip out">云端收集</span>
+              <span class="chip out">自动群发</span>
+              <span class="chip out">平台爬取</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">为什么不是网盘 / 群接龙</div>
+          <h2>网盘存的是文件，工作台管的是“事”</h2>
+          <p>材料工作最耗时间的不是存，而是“谁交了、缺什么、该催谁、最后怎么交差”。</p>
+        </div>
+        <div class="compare-wrap">
+          <table class="compare">
+            <thead><tr><th>问题</th><th>网盘</th><th>群接龙 / 聊天</th><th>班级操作台</th></tr></thead>
+            <tbody>
+              <tr><td>谁交没交</td><td>只知道有文件</td><td>要人翻记录</td><td>台账 + 完成矩阵</td></tr>
+              <tr><td>缺什么、催谁</td><td>靠人记</td><td>靠人挨个问</td><td>自动缺项 + 不点名话术</td></tr>
+              <tr><td>文件在哪</td><td>靠搜文件名</td><td>散在聊天记录里</td><td>归档索引 + 文件室反查</td></tr>
+              <tr><td>怎么交差</td><td>临时压缩打包</td><td>截图拼凑</td><td>证据包 / 交接包 / 汇总表</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="roadmap">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">版本路线</div>
+          <h2>一个版本一条闭环，不再从 0.3 直接跳 1.0</h2>
+          <p>先项目底座，再媒体样板，再文档工具，再赛事与产品模板；每版验收通过才进下一版。完整阶梯见总图。</p>
+        </div>
+        <div class="roadmap">
+          <div class="road now"><span class="rv">v0.30.1 · 现在</span><h4>材料闭环</h4><p>提交、审核、归档、矩阵、催交、证据包、交接包。</p><span class="tag">已发布</span></div>
+          <div class="road"><span class="rv">v0.31</span><h4>项目底座</h4><p>项目、阶段、交付物、资产、质量门；材料变第一个模板。</p><span class="tag">下一步</span></div>
+          <div class="road"><span class="rv">v0.32</span><h4>音频样板</h4><p>批量转码、预检、质检、清单与哈希；先跑通一条真项目。</p><span class="tag">排队中</span></div>
+          <div class="road"><span class="rv">v0.33</span><h4>文档工具</h4><p>PDF 拆分合并、OCR、Office/PDF 转换、图片批处理。</p><span class="tag">排队中</span></div>
+          <div class="road"><span class="rv">v0.34</span><h4>赛事模板</h4><p>报名清单、评审标准矩阵、提交校验、答辩包。</p><span class="tag">排队中</span></div>
+          <div class="road"><span class="rv">v0.35</span><h4>产品模板</h4><p>PRD、BOM/架构、原型、测试、发布包、路演。</p><span class="tag">排队中</span></div>
+          <div class="road"><span class="rv">v1.0</span><h4>稳定版</h4><p>安装、性能、文档、发布门禁、换届交接全部收口。</p><span class="tag">目标</span></div>
+        </div>
+        <div class="roadmap-note">
+          <span>一个版本只做一个闭环；验收不过不进下一版。</span>
+          <a href="https://github.com/MedianiGray/class-console/blob/main/docs/办公工作台总图-v2.0.md">查看《办公工作台总图 v2.0》→</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="start">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">现在开始</div>
+          <h2>三步就能收第一份材料</h2>
+          <p>学生用网页，班委和老师用桌面版；数据各自留在本机，需要搬运时用备份或交接包。</p>
+        </div>
+        <div class="start-grid">
+          <div class="steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div><h4>打开或下载</h4><p>学生直接进在线版；班委 / 教师下载便携包，解压一次，双击 `班级操作台.exe`。</p></div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div><h4>导入名单、选模板</h4><p>录入学号—姓名，选班会 / 走访 / 承诺 / 约谈模板；没有模板就自定义。</p></div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div><h4>收第一份材料，归档出证据包</h4><p>提交或拖入文件 → 审核 → 归档 → 导出证据包；一条材料走完整条链。</p></div>
+            </div>
+          </div>
+
+          <div class="download">
+            <span class="dl-kicker">WINDOWS 64 位 · 离线可用</span>
+            <h3>下载班级操作台</h3>
+            <p>推荐便携目录版：解压一次，之后双击即用。单文件版适合 U 盘带走。</p>
+            <div class="dl-meta"><span>桌面 v0.30.1</span><span>网页 v0.28.1</span><span>21MB 便携包</span><span>数据本机 SQLite</span></div>
+            <div class="dl-actions">
+              <a class="btn btn-primary" href="https://github.com/MedianiGray/class-console/releases/download/v0.30.1/class-console-v0.30.1-portable.zip">下载便携版（推荐）</a>
+              <a class="btn btn-ghost" href="https://github.com/MedianiGray/class-console/releases/download/v0.30.1/class-console-v0.30.1.exe">下载单文件版</a>
+            </div>
+            <div class="dl-small"><a href="https://github.com/MedianiGray/class-console/releases">查看全部版本</a> · <a href="https://github.com/MedianiGray/class-console/blob/main/docs/安装与首启说明.md">安装与校验说明</a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="kicker">服务边界</div>
+          <h2>先把“不伤害”写清楚，再谈功能</h2>
+          <p>工具替人记事，不替人评判；数据属于班级，不属于个人；服务在不需要时消失。</p>
+        </div>
+        <div class="promise-grid">
+          <article class="promise">
+            <span class="p-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#176B63" stroke-width="1.9"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+            <b>数据留在本机</b>
+            <p>桌面用 SQLite，网页用浏览器本地存储；不上传、不要账号，断网也能用。</p>
+          </article>
+          <article class="promise">
+            <span class="p-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#176B63" stroke-width="1.9"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg></span>
+            <b>AI 只给建议</b>
+            <p>查缺项、写草稿、做摘要；不改台账、不自动归档、不自动发消息，关键动作人点第二次。</p>
+          </article>
+          <article class="promise">
+            <span class="p-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#176B63" stroke-width="1.9"><path d="M4 12h16"/><path d="M7 8h10M7 16h10"/></svg></span>
+            <b>不公开点名、不排名</b>
+            <p>催交说“这项还差你一份”，不贴“你怎么还没交”；免交、延期、回执都能留痕。</p>
+          </article>
+        </div>
+        <div class="faq">
+          <div class="qa"><b>学生要装软件吗？</b><p>不用。打开在线版就能提交；桌面版是给班委 / 教师做收集、审核、归档和交差用的。</p></div>
+          <div class="qa"><b>能多人同时用吗？</b><p>当前不能。桌面与网页各自本机存储；换届或换机用备份、交接包搬运。多人实时要后端，单独立项。</p></div>
+          <div class="qa"><b>专业功能什么时候有？</b><p>按路线逐版接入：项目底座 → 音频转码 → 文档工具 → 赛事 / 产品模板。未上线的不在本页冒充可用。</p></div>
+          <div class="qa"><b>数据丢了怎么办？</b><p>桌面有备份 / 恢复与恢复预览；网页可导出备份。换电脑前先导出，别只留在浏览器缓存里。</p></div>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <footer class="wrap">
-    <span>维护者：覃祖悦 · 广西农业职业技术大学 网络工程技术 2502 班</span>
-    <span>
-      <a href="https://github.com/MedianiGray/class-console">源码仓库</a> ｜
-      <a href="https://github.com/MedianiGray/class-console/releases">发布记录</a> ｜
-      协议 MIT（占位）
-    </span>
+  <footer>
+    <div class="wrap foot-wrap">
+      <span>班级操作台 · Class Console ｜ 为师生服务，先把材料这件事做扎实</span>
+      <span class="foot-links">
+        <a href="https://github.com/MedianiGray/class-console">源码仓库</a>
+        <a href="https://github.com/MedianiGray/class-console/releases">发布记录</a>
+        <a href="https://github.com/MedianiGray/class-console/blob/main/docs/办公工作台总图-v2.0.md">路线总图</a>
+        <a href="https://github.com/MedianiGray/class-console/blob/main/docs/安装与首启说明.md">安装说明</a>
+      </span>
+      <span>维护者：覃祖悦 · 广西农业职业技术大学 网络工程技术 2502 班 ｜ 协议 MIT（占位）</span>
+    </div>
   </footer>
 </body>
 </html>
