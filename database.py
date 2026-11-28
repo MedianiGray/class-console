@@ -256,6 +256,14 @@ PRODUCT_TEST_RESULTS = ("未测", "通过", "不通过", "阻塞")
 PRODUCT_TEST_SEVERITIES = ("高", "中", "低")
 PRODUCT_REVIEW_GATES = ("立项评审", "方案评审", "样机评审", "发布评审")
 PRODUCT_REVIEW_CONCLUSIONS = ("待评审", "通过", "有条件通过", "驳回")
+# v0.36 数据/活动模板：字段动作、策划小节、名单角色与签到状态。
+DATA_FIELD_ACTIONS = ("保留", "剔除")
+DATA_NOTE_SECTIONS = ("数据来源与口径", "样本与字段", "清洗规则", "已知限制", "结论摘要")
+EVENT_PLAN_SECTIONS = ("活动目标", "对象与规模", "时间与地点", "流程安排",
+                       "人员分工", "预算与来源", "风险预案", "物料清单")
+EVENT_SUMMARY_SECTIONS = ("执行概况", "签到与到场", "预算结算", "问题与改进")
+EVENT_ROLES = ("参与者", "志愿者", "嘉宾", "工作人员")
+EVENT_STATUS = ("已报名", "已签到", "缺席", "临时到场")
 PROJECT_TEMPLATES = {
     "class": (
         ("材料收集", "采集"), ("逐份审核", "评审"),
@@ -465,6 +473,54 @@ class LocalRepository:
                     project_id INTEGER, gate TEXT, reviewer TEXT, date TEXT,
                     conclusion TEXT, note TEXT, sort_order INTEGER,
                     created_at TEXT, updated_at TEXT
+                )""")
+            # v0.36 数据模板：单一数据源、字段画像与口径说明。
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS data_sources (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, path TEXT, encoding TEXT,
+                    rows INTEGER, cols INTEGER, trim INTEGER, dedupe INTEGER,
+                    numeric_guard INTEGER, note TEXT, sort_order INTEGER,
+                    created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS data_fields (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, dtype TEXT, missing INTEGER,
+                    unique_n INTEGER, action TEXT, target TEXT, note TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS data_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, section TEXT, content TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            # v0.36 活动模板：策划、名单签到、预算结算与总结。
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS event_plan (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, section TEXT, content TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS event_people (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, name TEXT, sid TEXT, role TEXT,
+                    status TEXT, contact TEXT, note TEXT, sort_order INTEGER,
+                    created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS event_expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, item TEXT, budget REAL, actual REAL,
+                    note TEXT, sort_order INTEGER, created_at TEXT, updated_at TEXT
+                )""")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS event_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER, section TEXT, content TEXT,
+                    sort_order INTEGER, created_at TEXT, updated_at TEXT
                 )""")
             # 旧库迁移：补齐 reason / code / path / form_type / extra 列（已存在则忽略）
             cols = [r[1] for r in c.execute("PRAGMA table_info(docs)").fetchall()]
@@ -1555,7 +1611,10 @@ class LocalRepository:
                           "project_runs", "project_gates", "project_events",
                           "competition_events", "competition_entries",
                           "competition_rubric", "product_specs", "product_bom",
-                          "product_protos", "product_tests", "product_reviews"):
+                          "product_protos", "product_tests", "product_reviews",
+                          "data_sources", "data_fields", "data_notes",
+                          "event_plan", "event_people", "event_expenses",
+                          "event_notes"):
                 conn.execute("DELETE FROM %s WHERE project_id=?" % table, (project_id,))
             conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
             conn.commit()
@@ -2809,6 +2868,570 @@ class LocalRepository:
         finally:
             conn.close()
 
+    # ---------- v0.36 数据 / 活动模板 ----------
+    def _de_rows(self, table, project_id) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM %s WHERE project_id=? ORDER BY sort_order, id" % table,
+                (project_id,)).fetchall()]
+        except sqlite3.Error as e:
+            raise RepositoryError("读取数据/活动失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_all_de_rows(self, table) -> list:
+        conn = self._conn()
+        try:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM %s ORDER BY project_id, sort_order, id" % table).fetchall()]
+        finally:
+            conn.close()
+
+    def list_data_source(self, project_id) -> dict:
+        rows = self._de_rows("data_sources", project_id)
+        return rows[0] if rows else {}
+
+    def list_all_data_sources(self) -> list:
+        return self.list_all_de_rows("data_sources")
+
+    def set_data_source(self, project_id, data: dict, fields: list) -> int:
+        if not isinstance(data, dict) or not isinstance(fields, list):
+            raise RepositoryError("数据源格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("数据源名称不能为空")
+        try:
+            row_count = int(data.get("rows") or 0)
+            col_count = int(data.get("cols") or 0)
+        except (TypeError, ValueError):
+            raise RepositoryError("数据行列数应为整数")
+        if row_count < 0 or col_count < 0:
+            raise RepositoryError("数据行列数不能为负")
+        now = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("DELETE FROM data_fields WHERE project_id=?", (project_id,))
+            conn.execute("DELETE FROM data_sources WHERE project_id=?", (project_id,))
+            cur = conn.execute("""INSERT INTO data_sources
+                (project_id,name,path,encoding,rows,cols,trim,dedupe,numeric_guard,
+                 note,sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (project_id, name, _clean(data.get("path")),
+                 _clean(data.get("encoding")) or "UTF-8", row_count, col_count,
+                 1 if data.get("trim", True) else 0,
+                 1 if data.get("dedupe", True) else 0,
+                 1 if data.get("numeric_guard", True) else 0,
+                 _clean(data.get("note")), 1, now, now))
+            for idx, field in enumerate(fields, 1):
+                if not isinstance(field, dict):
+                    continue
+                fname = _clean(field.get("name"))
+                if not fname:
+                    continue
+                action = _clean(field.get("action")) or "保留"
+                if action not in DATA_FIELD_ACTIONS:
+                    action = "保留"
+                try:
+                    missing = max(0, int(field.get("missing") or 0))
+                    unique_n = max(0, int(field.get("unique_n") or 0))
+                except (TypeError, ValueError):
+                    missing, unique_n = 0, 0
+                conn.execute("""INSERT INTO data_fields
+                    (project_id,name,dtype,missing,unique_n,action,target,note,
+                     sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (project_id, fname, _clean(field.get("dtype")) or "文本",
+                     missing, unique_n, action, _clean(field.get("target")),
+                     _clean(field.get("note")), idx, now, now))
+            self._project_event(conn, project_id, "导入数据源", "系统",
+                                "%s（%d 行 %d 列）" % (name, row_count, col_count))
+            conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now, project_id))
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("写入数据源失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_data_options(self, project_id, trim=True, dedupe=True,
+                            numeric_guard=True, note=None):
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        values = {"trim": 1 if trim else 0, "dedupe": 1 if dedupe else 0,
+                  "numeric_guard": 1 if numeric_guard else 0,
+                  "updated_at": now_full()}
+        if note is not None:
+            values["note"] = _clean(note)
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE data_sources SET %s WHERE project_id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [project_id])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新清洗选项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_data_fields(self, project_id) -> list:
+        return self._de_rows("data_fields", project_id)
+
+    def list_all_data_fields(self) -> list:
+        return self.list_all_de_rows("data_fields")
+
+    def update_data_field(self, field_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("字段数据格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM data_fields WHERE id=?",
+                               (field_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("字段不存在")
+        allowed = ("action", "target", "note")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "action":
+                value = _clean(data.get(key)) or "保留"
+                if value not in DATA_FIELD_ACTIONS:
+                    raise RepositoryError("字段动作不在允许范围内")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE data_fields SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [field_id])
+            self._project_event(conn, row["project_id"], "更新字段处理", "系统",
+                                "%s · %s" % (row["name"], values.get("action", "")))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新字段处理失败：%s" % e)
+        finally:
+            conn.close()
+
+    def list_data_notes(self, project_id) -> list:
+        return self._de_rows("data_notes", project_id)
+
+    def list_all_data_notes(self) -> list:
+        return self.list_all_de_rows("data_notes")
+
+    def _add_note(self, table, project_id, section, content, allowed):
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        section = _clean(section)
+        if section not in allowed:
+            raise RepositoryError("说明小节不在允许范围内")
+        now = now_full()
+        conn = self._conn()
+        try:
+            dup = conn.execute("SELECT id FROM %s WHERE project_id=? AND section=?" % table,
+                               (project_id, section)).fetchone()
+            if dup is not None:
+                raise RepositoryError("同一项目下已有同名小节")
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM %s "
+                               "WHERE project_id=?" % table, (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO %s
+                (project_id,section,content,sort_order,created_at,updated_at)
+                VALUES (?,?,?,?,?,?)""" % table,
+                (project_id, section, _clean(content), int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加说明小节", "系统", section)
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加说明小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def add_data_note(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("说明数据格式不正确")
+        return self._add_note("data_notes", project_id, data.get("section"),
+                              data.get("content"), DATA_NOTE_SECTIONS)
+
+    def update_data_note(self, note_id, data: dict):
+        return self._update_note("data_notes", note_id, data, DATA_NOTE_SECTIONS)
+
+    def remove_data_note(self, note_id):
+        return self._remove_note("data_notes", note_id)
+
+    def list_event_plan(self, project_id) -> list:
+        return self._de_rows("event_plan", project_id)
+
+    def list_all_event_plan(self) -> list:
+        return self.list_all_de_rows("event_plan")
+
+    def add_event_plan(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("策划条目格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        section = _clean(data.get("section"))
+        if section not in EVENT_PLAN_SECTIONS:
+            raise RepositoryError("策划小节不在允许范围内")
+        now = now_full()
+        conn = self._conn()
+        try:
+            if conn.execute("SELECT id FROM event_plan WHERE project_id=? AND section=?",
+                            (project_id, section)).fetchone() is not None:
+                raise RepositoryError("同一项目下已有同名小节")
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM event_plan WHERE project_id=?", (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO event_plan
+                (project_id,section,content,sort_order,created_at,updated_at)
+                VALUES (?,?,?,?,?,?)""",
+                (project_id, section, _clean(data.get("content")), int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加策划小节", "系统", section)
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加策划小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_event_plan(self, plan_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("策划条目格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM event_plan WHERE id=?", (plan_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("策划小节不存在")
+        values = {}
+        for key in ("section", "content", "sort_order"):
+            if key not in data:
+                continue
+            if key == "section":
+                value = _clean(data.get(key))
+                if value not in EVENT_PLAN_SECTIONS:
+                    raise RepositoryError("策划小节不在允许范围内")
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            if "section" in values:
+                dup = conn.execute("SELECT id FROM event_plan WHERE project_id=? "
+                                   "AND section=? AND id<>?",
+                                   (row["project_id"], values["section"], plan_id)).fetchone()
+                if dup is not None:
+                    raise RepositoryError("同一项目下已有同名小节")
+            conn.execute("UPDATE event_plan SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [plan_id])
+            self._project_event(conn, row["project_id"], "更新策划小节", "系统",
+                                values.get("section", row["section"]))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新策划小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_event_plan(self, plan_id):
+        return self._remove_simple("event_plan", plan_id, "策划小节")
+
+    def list_event_people(self, project_id) -> list:
+        return self._de_rows("event_people", project_id)
+
+    def list_all_event_people(self) -> list:
+        return self.list_all_de_rows("event_people")
+
+    def add_event_person(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("名单格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        name = _clean(data.get("name"))
+        if not name:
+            raise RepositoryError("姓名不能为空")
+        role = _clean(data.get("role")) or "参与者"
+        if role not in EVENT_ROLES:
+            raise RepositoryError("名单角色不在允许范围内")
+        status = _clean(data.get("status")) or "已报名"
+        if status not in EVENT_STATUS:
+            raise RepositoryError("签到状态不在允许范围内")
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM event_people WHERE project_id=?", (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO event_people
+                (project_id,name,sid,role,status,contact,note,sort_order,
+                 created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (project_id, name, _clean(data.get("sid")), role, status,
+                 _clean(data.get("contact")), _clean(data.get("note")),
+                 int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加名单", "系统", name)
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加名单失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_event_person(self, person_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("名单格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM event_people WHERE id=?",
+                               (person_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("名单记录不存在")
+        allowed = ("name", "sid", "role", "status", "contact", "note", "sort_order")
+        values = {}
+        for key in allowed:
+            if key not in data:
+                continue
+            if key == "name":
+                value = _clean(data.get(key))
+                if not value:
+                    raise RepositoryError("姓名不能为空")
+            elif key == "role":
+                value = _clean(data.get(key)) or "参与者"
+                if value not in EVENT_ROLES:
+                    raise RepositoryError("名单角色不在允许范围内")
+            elif key == "status":
+                value = _clean(data.get(key)) or "已报名"
+                if value not in EVENT_STATUS:
+                    raise RepositoryError("签到状态不在允许范围内")
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE event_people SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [person_id])
+            self._project_event(conn, row["project_id"], "更新名单", "系统",
+                                values.get("name", row["name"]))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新名单失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_event_person(self, person_id):
+        return self._remove_simple("event_people", person_id, "名单记录")
+
+    def list_event_expenses(self, project_id) -> list:
+        return self._de_rows("event_expenses", project_id)
+
+    def list_all_event_expenses(self) -> list:
+        return self.list_all_de_rows("event_expenses")
+
+    def add_event_expense(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("结算数据格式不正确")
+        if not self._project_exists(project_id):
+            raise RepositoryError("项目不存在")
+        item = _clean(data.get("item"))
+        if not item:
+            raise RepositoryError("结算项目不能为空")
+        budget, actual = self._amounts(data)
+        now = now_full()
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT COALESCE(MAX(sort_order),0)+1 AS n "
+                               "FROM event_expenses WHERE project_id=?", (project_id,)).fetchone()
+            cur = conn.execute("""INSERT INTO event_expenses
+                (project_id,item,budget,actual,note,sort_order,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?)""",
+                (project_id, item, budget, actual, _clean(data.get("note")),
+                 int(row["n"]), now, now))
+            self._project_event(conn, project_id, "添加结算项", "系统", item)
+            conn.commit()
+            return cur.lastrowid
+        except sqlite3.Error as e:
+            raise RepositoryError("添加结算项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def update_event_expense(self, expense_id, data: dict):
+        if not isinstance(data, dict):
+            raise RepositoryError("结算数据格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM event_expenses WHERE id=?",
+                               (expense_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("结算项不存在")
+        values = {}
+        if "item" in data:
+            item = _clean(data.get("item"))
+            if not item:
+                raise RepositoryError("结算项目不能为空")
+            values["item"] = item
+        if "budget" in data or "actual" in data:
+            budget, actual = self._amounts({
+                "budget": data.get("budget", row["budget"]),
+                "actual": data.get("actual", row["actual"])})
+            values["budget"], values["actual"] = budget, actual
+        if "note" in data:
+            values["note"] = _clean(data.get("note"))
+        if "sort_order" in data:
+            try:
+                values["sort_order"] = int(data.get("sort_order"))
+            except (TypeError, ValueError):
+                raise RepositoryError("排序应为整数")
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            conn.execute("UPDATE event_expenses SET %s WHERE id=?" %
+                         ", ".join("%s=?" % k for k in values),
+                         list(values.values()) + [expense_id])
+            self._project_event(conn, row["project_id"], "更新结算项", "系统",
+                                values.get("item", row["item"]))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新结算项失败：%s" % e)
+        finally:
+            conn.close()
+
+    def remove_event_expense(self, expense_id):
+        return self._remove_simple("event_expenses", expense_id, "结算项")
+
+    def list_event_notes(self, project_id) -> list:
+        return self._de_rows("event_notes", project_id)
+
+    def list_all_event_notes(self) -> list:
+        return self.list_all_de_rows("event_notes")
+
+    def add_event_note(self, project_id, data: dict) -> int:
+        if not isinstance(data, dict):
+            raise RepositoryError("总结数据格式不正确")
+        return self._add_note("event_notes", project_id, data.get("section"),
+                              data.get("content"), EVENT_SUMMARY_SECTIONS)
+
+    def update_event_note(self, note_id, data: dict):
+        return self._update_note("event_notes", note_id, data, EVENT_SUMMARY_SECTIONS)
+
+    def remove_event_note(self, note_id):
+        return self._remove_note("event_notes", note_id)
+
+    def _amounts(self, data) -> tuple:
+        try:
+            budget = float(data.get("budget") or 0)
+            actual = float(data.get("actual") or 0)
+        except (TypeError, ValueError):
+            raise RepositoryError("预算与实付应为数字")
+        if budget < 0 or actual < 0:
+            raise RepositoryError("预算与实付不能为负")
+        return round(budget, 2), round(actual, 2)
+
+    def _update_note(self, table, note_id, data, allowed):
+        if not isinstance(data, dict):
+            raise RepositoryError("说明数据格式不正确")
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM %s WHERE id=?" % table,
+                               (note_id,)).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise RepositoryError("说明小节不存在")
+        values = {}
+        for key in ("section", "content", "sort_order"):
+            if key not in data:
+                continue
+            if key == "section":
+                value = _clean(data.get(key))
+                if value not in allowed:
+                    raise RepositoryError("说明小节不在允许范围内")
+            elif key == "sort_order":
+                try:
+                    value = int(data.get(key))
+                except (TypeError, ValueError):
+                    raise RepositoryError("排序应为整数")
+            else:
+                value = _clean(data.get(key))
+            values[key] = value
+        if not values:
+            return
+        values["updated_at"] = now_full()
+        conn = self._conn()
+        try:
+            if "section" in values:
+                dup = conn.execute("SELECT id FROM %s WHERE project_id=? AND section=? "
+                                   "AND id<>?" % table,
+                                   (row["project_id"], values["section"], note_id)).fetchone()
+                if dup is not None:
+                    raise RepositoryError("同一项目下已有同名小节")
+            conn.execute("UPDATE %s SET %s WHERE id=?" % (table,
+                         ", ".join("%s=?" % k for k in values)),
+                         list(values.values()) + [note_id])
+            self._project_event(conn, row["project_id"], "更新说明小节", "系统",
+                                values.get("section", row["section"]))
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("更新说明小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def _remove_note(self, table, note_id):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM %s WHERE id=?" % table,
+                               (note_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("说明小节不存在")
+            conn.execute("DELETE FROM %s WHERE id=?" % table, (note_id,))
+            self._project_event(conn, row["project_id"], "删除说明小节", "系统",
+                                row["section"])
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除说明小节失败：%s" % e)
+        finally:
+            conn.close()
+
+    def _remove_simple(self, table, item_id, label):
+        conn = self._conn()
+        try:
+            row = conn.execute("SELECT * FROM %s WHERE id=?" % table, (item_id,)).fetchone()
+            if row is None:
+                raise RepositoryError("%s不存在" % label)
+            conn.execute("DELETE FROM %s WHERE id=?" % table, (item_id,))
+            key = row["section"] if "section" in row.keys() else row["name"] if "name" in row.keys() else row["item"]
+            self._project_event(conn, row["project_id"], "删除%s" % label, "系统", key)
+            conn.commit()
+        except sqlite3.Error as e:
+            raise RepositoryError("删除%s失败：%s" % (label, e))
+        finally:
+            conn.close()
+
     # ---------- 统计 / 备份 ----------
     def stats(self) -> dict:
         conn = self._conn()
@@ -2842,6 +3465,13 @@ class LocalRepository:
         prod_protos = self.list_all_product_protos()
         prod_tests = self.list_all_product_tests()
         prod_reviews = self.list_all_product_reviews()
+        data_sources = self.list_all_data_sources()
+        data_fields = self.list_all_data_fields()
+        data_notes = self.list_all_data_notes()
+        event_plan = self.list_all_event_plan()
+        event_people = self.list_all_event_people()
+        event_expenses = self.list_all_event_expenses()
+        event_notes = self.list_all_event_notes()
         return {"app": "class-console", "version": VERSION,
                 "exportedAt": datetime.datetime.now().isoformat(timespec="seconds"),
                 "counts": {"docs": len(docs), "logs": len(self.list_logs()),
@@ -2859,7 +3489,14 @@ class LocalRepository:
                            "product_bom": len(prod_bom),
                            "product_protos": len(prod_protos),
                            "product_tests": len(prod_tests),
-                           "product_reviews": len(prod_reviews)},
+                           "product_reviews": len(prod_reviews),
+                           "data_sources": len(data_sources),
+                           "data_fields": len(data_fields),
+                           "data_notes": len(data_notes),
+                           "event_plan": len(event_plan),
+                           "event_people": len(event_people),
+                           "event_expenses": len(event_expenses),
+                           "event_notes": len(event_notes)},
                 "docs": docs, "logs": self.list_logs(),
                 "roster": self.list_roster(), "tasks": self.list_tasks(),
                 "attachments": atts, "templates": templates,
@@ -2876,7 +3513,14 @@ class LocalRepository:
                 "product_bom": prod_bom,
                 "product_protos": prod_protos,
                 "product_tests": prod_tests,
-                "product_reviews": prod_reviews}
+                "product_reviews": prod_reviews,
+                "data_sources": data_sources,
+                "data_fields": data_fields,
+                "data_notes": data_notes,
+                "event_plan": event_plan,
+                "event_people": event_people,
+                "event_expenses": event_expenses,
+                "event_notes": event_notes}
 
     def restore(self, docs: list, logs: list, roster=None, tasks=None,
                 attachments=None, templates=None, events=None,
@@ -2885,7 +3529,10 @@ class LocalRepository:
                 project_events=None, competition_events=None,
                 competition_entries=None, competition_rubric=None,
                 product_specs=None, product_bom=None, product_protos=None,
-                product_tests=None, product_reviews=None):
+                product_tests=None, product_reviews=None,
+                data_sources=None, data_fields=None, data_notes=None,
+                event_plan=None, event_people=None, event_expenses=None,
+                event_notes=None):
         if not isinstance(docs, list) or not isinstance(logs, list):
             raise RepositoryError("备份数据结构不正确")
         roster = roster if isinstance(roster, list) else []
@@ -2910,6 +3557,13 @@ class LocalRepository:
         product_protos = product_protos if isinstance(product_protos, list) else []
         product_tests = product_tests if isinstance(product_tests, list) else []
         product_reviews = product_reviews if isinstance(product_reviews, list) else []
+        data_sources = data_sources if isinstance(data_sources, list) else []
+        data_fields = data_fields if isinstance(data_fields, list) else []
+        data_notes = data_notes if isinstance(data_notes, list) else []
+        event_plan = event_plan if isinstance(event_plan, list) else []
+        event_people = event_people if isinstance(event_people, list) else []
+        event_expenses = event_expenses if isinstance(event_expenses, list) else []
+        event_notes = event_notes if isinstance(event_notes, list) else []
         conn = self._conn()
         try:
             conn.execute("DELETE FROM docs")
@@ -2933,6 +3587,13 @@ class LocalRepository:
             conn.execute("DELETE FROM product_protos")
             conn.execute("DELETE FROM product_tests")
             conn.execute("DELETE FROM product_reviews")
+            conn.execute("DELETE FROM data_sources")
+            conn.execute("DELETE FROM data_fields")
+            conn.execute("DELETE FROM data_notes")
+            conn.execute("DELETE FROM event_plan")
+            conn.execute("DELETE FROM event_people")
+            conn.execute("DELETE FROM event_expenses")
+            conn.execute("DELETE FROM event_notes")
             conn.execute("DELETE FROM projects")
             if isinstance(templates, list):
                 conn.execute("DELETE FROM template_fields")
@@ -3329,6 +3990,146 @@ class LocalRepository:
                      conclusion, _clean(rv.get("note")), sort_order,
                      _clean(rv.get("created_at")) or now_full(),
                      _clean(rv.get("updated_at")) or now_full()))
+            for ds in data_sources:
+                if not isinstance(ds, dict):
+                    continue
+                pid = project_map.get(str(ds.get("project_id")))
+                if pid is None:
+                    continue
+                name = _clean(ds.get("name"))
+                if not name:
+                    continue
+                try:
+                    rows_n = max(0, int(ds.get("rows") or 0))
+                    cols_n = max(0, int(ds.get("cols") or 0))
+                except (TypeError, ValueError):
+                    rows_n, cols_n = 0, 0
+                conn.execute("""INSERT INTO data_sources
+                    (project_id,name,path,encoding,rows,cols,trim,dedupe,numeric_guard,
+                     note,sort_order,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, name, _clean(ds.get("path")),
+                     _clean(ds.get("encoding")) or "UTF-8", rows_n, cols_n,
+                     1 if ds.get("trim", 1) else 0,
+                     1 if ds.get("dedupe", 1) else 0,
+                     1 if ds.get("numeric_guard", 1) else 0,
+                     _clean(ds.get("note")), int(ds.get("sort_order") or 0),
+                     _clean(ds.get("created_at")) or now_full(),
+                     _clean(ds.get("updated_at")) or now_full()))
+            for df in data_fields:
+                if not isinstance(df, dict):
+                    continue
+                pid = project_map.get(str(df.get("project_id")))
+                if pid is None:
+                    continue
+                name = _clean(df.get("name"))
+                if not name:
+                    continue
+                action = _clean(df.get("action")) or "保留"
+                if action not in DATA_FIELD_ACTIONS:
+                    action = "保留"
+                conn.execute("""INSERT INTO data_fields
+                    (project_id,name,dtype,missing,unique_n,action,target,note,
+                     sort_order,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, name, _clean(df.get("dtype")) or "文本",
+                     max(0, int(df.get("missing") or 0)),
+                     max(0, int(df.get("unique_n") or 0)), action,
+                     _clean(df.get("target")), _clean(df.get("note")),
+                     int(df.get("sort_order") or 0),
+                     _clean(df.get("created_at")) or now_full(),
+                     _clean(df.get("updated_at")) or now_full()))
+            for dn in data_notes:
+                if not isinstance(dn, dict):
+                    continue
+                pid = project_map.get(str(dn.get("project_id")))
+                if pid is None:
+                    continue
+                section = _clean(dn.get("section"))
+                if section not in DATA_NOTE_SECTIONS:
+                    continue
+                conn.execute("""INSERT INTO data_notes
+                    (project_id,section,content,sort_order,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?)""",
+                    (pid, section, _clean(dn.get("content")),
+                     int(dn.get("sort_order") or 0),
+                     _clean(dn.get("created_at")) or now_full(),
+                     _clean(dn.get("updated_at")) or now_full()))
+            for ep in event_plan:
+                if not isinstance(ep, dict):
+                    continue
+                pid = project_map.get(str(ep.get("project_id")))
+                if pid is None:
+                    continue
+                section = _clean(ep.get("section"))
+                if section not in EVENT_PLAN_SECTIONS:
+                    continue
+                conn.execute("""INSERT INTO event_plan
+                    (project_id,section,content,sort_order,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?)""",
+                    (pid, section, _clean(ep.get("content")),
+                     int(ep.get("sort_order") or 0),
+                     _clean(ep.get("created_at")) or now_full(),
+                     _clean(ep.get("updated_at")) or now_full()))
+            for ppl in event_people:
+                if not isinstance(ppl, dict):
+                    continue
+                pid = project_map.get(str(ppl.get("project_id")))
+                if pid is None:
+                    continue
+                name = _clean(ppl.get("name"))
+                if not name:
+                    continue
+                role = _clean(ppl.get("role")) or "参与者"
+                if role not in EVENT_ROLES:
+                    role = "参与者"
+                status = _clean(ppl.get("status")) or "已报名"
+                if status not in EVENT_STATUS:
+                    status = "已报名"
+                conn.execute("""INSERT INTO event_people
+                    (project_id,name,sid,role,status,contact,note,sort_order,
+                     created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (pid, name, _clean(ppl.get("sid")), role, status,
+                     _clean(ppl.get("contact")), _clean(ppl.get("note")),
+                     int(ppl.get("sort_order") or 0),
+                     _clean(ppl.get("created_at")) or now_full(),
+                     _clean(ppl.get("updated_at")) or now_full()))
+            for ex in event_expenses:
+                if not isinstance(ex, dict):
+                    continue
+                pid = project_map.get(str(ex.get("project_id")))
+                if pid is None:
+                    continue
+                item = _clean(ex.get("item"))
+                if not item:
+                    continue
+                try:
+                    budget = max(0, float(ex.get("budget") or 0))
+                    actual = max(0, float(ex.get("actual") or 0))
+                except (TypeError, ValueError):
+                    budget, actual = 0, 0
+                conn.execute("""INSERT INTO event_expenses
+                    (project_id,item,budget,actual,note,sort_order,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?)""",
+                    (pid, item, round(budget, 2), round(actual, 2),
+                     _clean(ex.get("note")), int(ex.get("sort_order") or 0),
+                     _clean(ex.get("created_at")) or now_full(),
+                     _clean(ex.get("updated_at")) or now_full()))
+            for en in event_notes:
+                if not isinstance(en, dict):
+                    continue
+                pid = project_map.get(str(en.get("project_id")))
+                if pid is None:
+                    continue
+                section = _clean(en.get("section"))
+                if section not in EVENT_SUMMARY_SECTIONS:
+                    continue
+                conn.execute("""INSERT INTO event_notes
+                    (project_id,section,content,sort_order,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?)""",
+                    (pid, section, _clean(en.get("content")),
+                     int(en.get("sort_order") or 0),
+                     _clean(en.get("created_at")) or now_full(),
+                     _clean(en.get("updated_at")) or now_full()))
             conn.commit()
         except sqlite3.Error as e:
             conn.rollback()

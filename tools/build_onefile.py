@@ -22,6 +22,7 @@ HIDDEN = [
     "ui_media", "media", "ui_doc_tools", "docs_tools",
     "ui_competition", "competition",
     "ui_product", "products",
+    "ui_data", "datalab", "ui_event", "events",
     "pypdf", "pypdfium2", "reportlab", "docx",
 ]
 

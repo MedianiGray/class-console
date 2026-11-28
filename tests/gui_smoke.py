@@ -22,6 +22,8 @@ import media  # noqa: E402
 import docs_tools as dt  # noqa: E402
 import competition as cp  # noqa: E402
 import products as pp  # noqa: E402
+import datalab as dl  # noqa: E402
+import events as ev  # noqa: E402
 from ui_empty import EmptyState  # noqa: E402
 from database import LocalRepository  # noqa: E402
 from ui_main import MainWindow  # noqa: E402
@@ -172,6 +174,67 @@ def main():
     repo.remove_project(pid2); pv.refresh(); root.update()
     assert not pv.prd_tree.get_children() and not pv.check_tree.get_children()
     print("产品视图 OK")
+
+    # 数据工作台：双页签、字段画像、口径小节、检查与图表画布
+    app.switch("data"); root.update()
+    dv = app.views["data"]
+    assert len(dv.nb.tabs()) == 2, dv.nb.tabs()
+    assert "data" in app.nav_items, "经办人应能看到数据工作台入口"
+    did = repo.add_project({"name": "数据冒烟项目", "kind": "data",
+                            "stage": "采集", "owner": "覃祖悦"})
+    repo.apply_project_template(did, "data")
+    dl.seed_data(repo, did)
+    csv_path = Path(tempfile.mkdtemp()) / "gui.csv"
+    csv_path.write_text("姓名,班级,成绩\n甲,2502,80\n乙,2502,90\n甲,2502,80\n丙,2510,85\n",
+                        encoding="utf-8-sig")
+    loaded = dl.read_table(csv_path)
+    prof = dl.profile(loaded["headers"], loaded["rows"])
+    repo.set_data_source(did, {"name": "gui.csv", "path": str(csv_path),
+                               "encoding": loaded["encoding"],
+                               "rows": len(loaded["rows"]), "cols": 3},
+                         [{"name": f["name"], "dtype": f["dtype"],
+                           "missing": f["missing"], "unique_n": f["unique_n"]}
+                          for f in prof["fields"]])
+    dv.refresh(did); root.update()
+    assert len(dv.field_tree.get_children()) == 3, "字段画像未显示"
+    assert len(dv.note_tree.get_children()) == 5, "口径小节未显示"
+    assert len(dv.chk_tree.get_children()) == 5, "数据检查应有五项"
+    assert dv.cat_var.get() == "班级", dv.cat_var.get()
+    assert dv.num_var.get() == "成绩", dv.num_var.get()
+    dv.after(80, dv.refresh_preview); root.update()
+    assert dv.cat_canvas.find_all(), "分类图未绘制"
+    assert dv.num_canvas.find_all(), "数值图未绘制"
+    repo.remove_project(did); dv.refresh(); root.update()
+    assert not dv.field_tree.get_children() and not dv.note_tree.get_children()
+    print("数据视图 OK")
+
+    # 活动工作台：四页签、八小节策划、名单签到、结算与结项检查
+    app.switch("event"); root.update()
+    evv = app.views["event"]
+    assert len(evv.nb.tabs()) == 4, evv.nb.tabs()
+    assert "event" in app.nav_items, "经办人应能看到活动工作台入口"
+    eid = repo.add_project({"name": "活动冒烟项目", "kind": "event",
+                            "stage": "定义", "owner": "覃祖悦",
+                            "start_date": "2099-01-01"})
+    repo.apply_project_template(eid, "event")
+    ev.seed_event(repo, eid)
+    evv.refresh(eid); root.update()
+    assert len(evv.plan_tree.get_children()) == 8, "策划八小节未显示"
+    assert len(evv.note_tree.get_children()) == 4, "总结四小节未显示"
+    assert len(evv.chk_tree.get_children()) == 6, "活动检查应有六项"
+    for p in repo.list_event_plan(eid):
+        repo.update_event_plan(p["id"], {"content": "冒烟演练。"})
+    repo.add_event_person(eid, {"name": "甲", "status": "已签到"})
+    repo.add_event_person(eid, {"name": "乙", "status": "缺席"})
+    repo.add_event_expense(eid, {"item": "物料", "budget": 30, "actual": 25})
+    evv._load_project(eid); root.update()
+    assert len(evv.sign_tree.get_children()) == 2, "签到名单未显示"
+    assert "到场率 50.0%" in evv.sign_summary.cget("text"), evv.sign_summary.cget("text")
+    assert "预算 30.00" in evv.money_summary.cget("text"), evv.money_summary.cget("text")
+    assert "8 / 8 已填" in evv.chk_tree.item(evv.chk_tree.get_children()[0])["values"][2]
+    repo.remove_project(eid); evv.refresh(); root.update()
+    assert not evv.plan_tree.get_children() and not evv.sign_tree.get_children()
+    print("活动视图 OK")
 
     # 名单视图：添加 / 移除
     rv = app.views["roster"]

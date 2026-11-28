@@ -25,6 +25,8 @@ import media  # noqa: E402
 import docs_tools as dt  # noqa: E402
 import competition as cp  # noqa: E402
 import products as pp  # noqa: E402
+import datalab as dl  # noqa: E402
+import events as ev  # noqa: E402
 import main as app_main  # noqa: E402
 import service  # noqa: E402
 from ui_main import old_user_should_skip_first_run  # noqa: E402
@@ -1155,6 +1157,70 @@ def main():
     ov = pa.handle("打开产品工作台")
     assert ov["action"] == "open_view" and psw[-1] == "product", (ov, psw)
     print("59. 产品数据层/上线检查/备份/助手入口 OK")
+
+    # 60. 数据/活动：七表 CRUD、报告包、结项包、备份恢复与助手入口
+    dr = LocalRepository(Path(tempfile.mkdtemp()) / "de.db")
+    dr.restore([], [])
+    dpid = dr.add_project({"name": "自检数据项目", "kind": "data", "stage": "采集",
+                           "start_date": "2026-11-20"})
+    dr.apply_project_template(dpid, "data")
+    dl.seed_data(dr, dpid)
+    csv_path = Path(tempfile.mkdtemp()) / "self.csv"
+    csv_path.write_text("姓名,班级,分数\n甲,2502,80\n乙,2502,90\n甲,2502,80\n",
+                        encoding="utf-8-sig")
+    loaded = dl.read_table(csv_path)
+    prof = dl.profile(loaded["headers"], loaded["rows"])
+    dr.set_data_source(dpid, {"name": csv_path.name, "path": str(csv_path),
+                              "encoding": loaded["encoding"], "rows": 3, "cols": 3},
+                       [{"name": f["name"], "dtype": f["dtype"],
+                         "missing": f["missing"], "unique_n": f["unique_n"]}
+                        for f in prof["fields"]])
+    assert dl.readiness(dr, dpid)["ok"]
+    dpkg = dl.make_package(dr, dpid, str(Path(tempfile.mkdtemp()) / "out"))
+    assert len(dpkg["files"]) == 4 and dpkg["stats"]["rows_out"] == 2
+    assert "<svg" in Path(dpkg["files"][2]).read_text(encoding="utf-8")
+    epid = dr.add_project({"name": "自检活动项目", "kind": "event", "stage": "计划",
+                           "start_date": "2026-11-26"})
+    dr.apply_project_template(epid, "event")
+    ev.seed_event(dr, epid)
+    for p in dr.list_event_plan(epid):
+        dr.update_event_plan(p["id"], {"content": "按演练记录填写。"})
+    for name, status in (("甲", "已签到"), ("乙", "已签到"), ("丙", "缺席")):
+        dr.add_event_person(epid, {"name": name, "status": status})
+    dr.add_event_expense(epid, {"item": "物料", "budget": 50, "actual": 42})
+    for n in dr.list_event_notes(epid)[:3]:
+        dr.update_event_note(n["id"], {"content": "按实际执行填写。"})
+    assert ev.readiness(dr, epid)["ok"]
+    epkg = ev.make_package(dr, epid, str(Path(tempfile.mkdtemp()) / "out"))
+    assert len(epkg["files"]) == 6 and Path(epkg["zip"]).exists()
+    bak = dr.backup()
+    assert bak["counts"]["data_sources"] == 1
+    assert bak["counts"]["data_fields"] == 3
+    assert bak["counts"]["data_notes"] == 5
+    assert bak["counts"]["event_plan"] == 8
+    assert bak["counts"]["event_people"] == 3
+    assert bak["counts"]["event_expenses"] == 1
+    dr2 = LocalRepository(Path(tempfile.mkdtemp()) / "de2.db")
+    dr2.restore([], [], projects=bak["projects"],
+                data_sources=bak["data_sources"], data_fields=bak["data_fields"],
+                data_notes=bak["data_notes"], event_plan=bak["event_plan"],
+                event_people=bak["event_people"],
+                event_expenses=bak["event_expenses"],
+                event_notes=bak["event_notes"])
+    assert len(dr2.list_all_data_sources()) == 1
+    assert len(dr2.list_all_data_fields()) == 3
+    assert len(dr2.list_all_event_people()) == 3
+    dr2.remove_project(bak["projects"][0]["id"])
+    assert dr2.list_all_data_fields() == []
+    dr2.remove_project(bak["projects"][1]["id"])
+    assert dr2.list_all_event_people() == []
+    dsw = []
+    da = assistant.Assistant(dr, open_view=dsw.append)
+    ov = da.handle("打开数据工作台")
+    assert ov["action"] == "open_view" and dsw[-1] == "data", (ov, dsw)
+    ov = da.handle("打开活动工作台")
+    assert ov["action"] == "open_view" and dsw[-1] == "event", (ov, dsw)
+    print("60. 数据/活动七表、报告包、结项包、备份与助手入口 OK")
 
     print("SELFTEST OK")
 

@@ -27,14 +27,14 @@ ROLES = {
 PERMISSIONS = {
     "handler":   ["docs:create", "docs:edit", "docs:import", "docs:collect", "docs:archive", "docs:reject",
                   "docs:export", "roster:manage", "task:manage", "template:config", "logs:view", "media:run",
-                  "doc:run", "comp:run", "prod:run"],
+                  "doc:run", "comp:run", "prod:run", "data:run", "event:run"],
     "reviewer":  ["docs:create", "docs:edit", "docs:import", "docs:collect", "docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "template:config", "backup:restore", "logs:view", "media:run",
-                  "doc:run", "comp:run", "prod:run"],
+                  "doc:run", "comp:run", "prod:run", "data:run", "event:run"],
     "manager":   ["docs:collect", "docs:archive", "docs:reject", "docs:export",
                   "roster:manage", "task:manage", "template:config",
                   "backup:restore", "logs:view", "config:manage", "media:run", "doc:run",
-                  "comp:run", "prod:run"],
+                  "comp:run", "prod:run", "data:run", "event:run"],
     "applicant": ["docs:create", "docs:edit"],
 }
 
@@ -49,6 +49,8 @@ VIEWS = {
     "projects": ("ui_projects", "ProjectsView"),
     "competition": ("ui_competition", "CompetitionView"),
     "product": ("ui_product", "ProductView"),
+    "data": ("ui_data", "DataView"),
+    "event": ("ui_event", "EventView"),
     "media": ("ui_media", "MediaView"),
     "doctools": ("ui_doc_tools", "DocToolsView"),
     "docs": ("ui_docs", "DocsView"),
@@ -98,6 +100,8 @@ class MainWindow(ttk.Frame):
         ("projects", "项目工作台", None, "▦", "project"),
         ("competition", "赛事工作台", "comp:run", "▨", "project"),
         ("product", "产品工作台", "prod:run", "◫", "project"),
+        ("data", "数据工作台", "data:run", "▩", "project"),
+        ("event", "活动工作台", "event:run", "◍", "project"),
         ("media", "媒体工作台", "media:run", "▷", "project"),
         ("doctools", "文档工作台", "doc:run", "▥", "project"),
         ("docs", "材料台账", None, "▤", "flow"),
@@ -110,7 +114,7 @@ class MainWindow(ttk.Frame):
         ("collect", "文件夹收集", "docs:collect", "▣", "aux"),
         ("logs", "操作日志", "logs:view", "≡", "aux"),
     ]
-    NAV_SHORT = {"dashboard": "概览", "projects": "项目", "competition": "赛事", "product": "产品", "media": "媒体", "doctools": "文档", "docs": "台账", "files": "文件",
+    NAV_SHORT = {"dashboard": "概览", "projects": "项目", "competition": "赛事", "product": "产品", "data": "数据", "event": "活动", "media": "媒体", "doctools": "文档", "docs": "台账", "files": "文件",
                  "collect": "收集", "roster": "名单", "tasks": "任务",
                  "submit": "提交", "service": "服务", "logs": "日志",
                  "hub": "中心"}
